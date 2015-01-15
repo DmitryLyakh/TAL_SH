@@ -292,8 +292,8 @@
         integer(INTD), intent(in):: dim_num                !in: tensor rank
         integer(INTD), intent(in):: dim_extents(1:dim_num) !in: tensor dimension extents
         integer(INTD), intent(in):: dim_transp(1:dim_num)  !in: dimension permutation (O2N)
-        real(real_kind), intent(in):: tens_in(0:*)         !in: input tensor
-        real(real_kind), intent(out):: tens_out(0:*)       !out: output (permuted) tensor
+        real(real_kind), intent(in):: tens_in(0:*)         !in: input tensor (Fortran-like linearized storage)
+        real(real_kind), intent(out):: tens_out(0:*)       !out: output (permuted) tensor (Fortran-like linearized storage)
         integer(INTD), intent(inout):: ierr                !out: error code (0:success)
         integer(INTD):: i,j,k,l,m,n,k1,k2,ks,kf,split_in,split_out
         integer(INTD):: im(1:dim_num),n2o(0:dim_num+1),ipr(1:dim_num+1),dim_beg(1:dim_num),dim_end(1:dim_num)
