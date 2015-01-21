@@ -1,0 +1,168 @@
+*** Tensor algebra library for NVidia GPU ***
+Appendix: Data types and function prototypes.
+AUTHOR: Dmitry I. Lyakh: quant4me@gmail.com
+REVISION: 2014/12/09
+DESCRIPTION:
+ # Functions with no underscores at the end are blocking.
+ # Functions with one underscore at the end are non-blocking.
+ # Non-blocking tensor algebra functions schedule the tensor operation
+   for execution on a given GPU. They return immediately, providing
+   a user with a CUDA task handle that can be used for querying the
+   completion of the task (tensor operation).
+ # Since the non-blocking tensor algebra functions use CUDA streams,
+   no device memory should be allocated/set on device during the
+   execution of the asynchronous CUDA kernels.
+   Instead an explicit memory management is preferred, where
+   once allocated device memory is reused for all subsequent
+   tensor operations scheduled on device.
+
+DERIVED TYPES:
+ //Tensor block:
+ typedef struct{
+  int device_id;        //device on which the tensor block already resides (+) or will reside (-) (device_id=0 means Host)
+  int data_kind;        //tensor element size in bytes
+  int rank;             //tensor block rank (>=0)
+  int *dims_h;          //tensor block dimension extents (0th index is the most minor one): HOST memory
+  int *divs_h;          //reserved
+  int *grps_h;          //reserved
+  int *prmn_h;          //tensor block dimension permutation (not to be set by user!): HOST memory
+  void *elems_h;        //tensor block elements: HOST memory (only one element for scalars)
+  void *elems_d;        //tensor block elements: DEVICE global memory (only one element for scalars)
+  int buf_entry_gpu;    //GPU argument buffer entry pointed to by *elems_d: GPU global memory
+  int const_args_entry; //entry number in const_args[]: GPU constant memory (dims[] and prmn[] arrays are stored there)
+ } tensBlck_t;
+
+ //CUDA task information (returned by non-blocking CUDA calling functions):
+ typedef struct{
+  int task_error;                     //error code (<0: Task is either empty or in progress; 0: Success; >0: Launch error code)
+  int gpu_id;                         //Nvidia GPU ID on which the task was scheduled (-1 means CPU Host)
+  cudaStream_t task_stream;           //CUDA stream the task went into
+  cudaEvent_t task_start;             //CUDA event recorded at the beginning of the task
+  cudaEvent_t task_comput;            //CUDA event recorded before the computing kernels start (all input data is on Device)
+  cudaEvent_t task_output;            //CUDA event recorded when the computing kernels finish (before output to the Host)
+  cudaEvent_t task_finish;            //CUDA event recorded at the end of the task (full completion)
+  int scr_entry_count;                //number of additional GPU argument-buffer entries allocated by the task
+  int scr_entry[MAX_SCR_ENTRY_COUNT]; //additional GPU argument-buffer entries allocated by the task
+ } cudaTask_t;
+
+FUNCTIONS:
+ void gpu_set_event_policy(int alg):
+  This function turns on/off CUDA event recording.
+
+ void gpu_set_transpose_algorithm(int alg):
+  This function turns on/off efficient tensor transpose algorithm.
+
+ void gpu_set_matmult_algorithm(int alg):
+  This function turns on/off hand-written matrix multiplication kernel (not recommended).
+
+ int encode_device_id(int dev_kind, int dev_num):
+  This function returns a flat device id based on the device kind and internal number.
+
+ int decode_device_id(int dev_id, int *dev_kind):
+  This function decodes a flat device id into a device kind and internal number.
+
+ int tensBlck_create(tensBlck_t **ctens):
+  This function creates an empty instance of tensBlck_t (tensor block).
+
+ int tensBlck_destroy(tensBlck_t *ctens):
+  This function destroys an instance of tensBlck_t (tensor block).
+
+ int tensBlck_construct(tensBlck_t *ctens, int dev_kind, int dev_num, int data_kind, int trank,
+                        int *dims, int *divs, int *grps, int *prmn, void *addr_host, void *addr_gpu,
+                        int entry_gpu, int entry_const):
+  This function fills in an instance of tensBlck_t (tensor block).
+
+ int tensBlck_acc_id(const tensBlck_t *ctens, int *dev_kind, int *entry_gpu, int *entry_const, int *data_kind, int *there):
+  This function returns device id on which the tensor block resides or will reside.
+
+ int tensBlck_set_presence(tensBlck_t *ctens):
+  This function marks a tensor block as present on device.
+
+ int tensBlck_set_absence(tensBlck_t *ctens):
+  This function marks a tensor block as absent on device.
+
+ int tensBlck_hab_null(tensBlck_t *ctens):
+  This function nullifies Host memory pointer for a tensor block (absent on Host).
+
+ size_t tensBlck_volume(const tensBlck_t *ctens):
+  This function returns the number of elements in a tensor block.
+
+ int cuda_task_create(cudaTask_t **cuda_task):
+  This function creates an empty CUDA task.
+
+ int cuda_task_destroy(cudaTask_t *cuda_task):
+  This function destroys a CUDA task.
+
+ int cuda_task_gpu_id(const cudaTask_t *cuda_task):
+  This function returns the GPU id on which a CUDA task was scheduled.
+
+ int cuda_task_status(cudaTask_t *cuda_task):
+  This function returns the status of a CUDA task.
+
+ int cuda_task_complete(cudaTask_t *cuda_task):
+  This function tests a CUDA task on completion.
+
+ int cuda_task_wait(cudaTask_t *cuda_task):
+  This function blocks until the completion of a CUDA task.
+
+ float cuda_task_time(const cudaTask_t *cuda_task, float *in_copy, float *out_copy, float *comp):
+  This function returns timings for a completed CUDA task (event recording must be on).
+
+ int init_gpus(int gpu_beg, int gpu_end):
+  This function initializes all present GPUs.
+
+ int free_gpus(int gpu_beg, int gpu_end):
+  This function releases all GPUs from use.
+
+ int gpu_is_mine(int gpu_num):
+  This function checks whether a given GPU belongs to the current process.
+
+ int gpu_busy_least():
+  This function returns the ID of the least busy GPU.
+
+ int gpu_activate(int gpu_num):
+  This function activates a given GPU (if mine).
+
+ int gpu_put_arg(tensBlck_t *ctens):
+  This blocking function puts a tensor block into device memory.
+
+ int gpu_get_arg(tensBlck_t *ctens):
+  This blocking function gets a tensor block from the device memory.
+
+ int gpu_put_arg_(tensBlck_t *ctens, cudaTask_t *cuda_task):
+  This non-blocking function puts a tensor block into device memory.
+
+ int gpu_get_arg_(tensBlck_t *ctens, cudaTask_t *cuda_task):
+  This non-blocking function gets a tensor block from the device memory.
+
+ int gpu_array_2norm2_r4(size_t size, const float *arr, float *norm2):
+  This blocking function computes a squared 2-norm of a tensor block (float).
+
+ int gpu_array_2norm2_r8(size_t size, const double *arr, double *norm2):
+  This blocking function computes a squared 2-norm of a tensor block (double).
+
+ int gpu_matrix_multiply_tn_r4(size_t ll, size_t lr, size_t lc, const float *lmat, const float *rmat, float *dmat):
+  This blocking function multiplies two matrices (float).
+
+ int gpu_matrix_multiply_tn_r8(size_t ll, size_t lr, size_t lc, const double *lmat, const double *rmat, double *dmat):
+  This blocking function multiplies two matrices (double).
+
+ int gpu_tensor_block_init_(tensBlck_t *ctens, double val, int copy_back, cudaTask_t *cuda_task):
+  This non-blocking function initializes a tensor block to some value.
+
+ int gpu_tensor_block_scale_(tensBlck_t *ctens, double val, int copy_back, cudaTask_t *cuda_task):
+  This non-blocking function multiplies a tensor block by a scalar value.
+
+ int gpu_tensor_block_add_dlf_(tensBlck_t *ctens0, tensBlck_t *ctens1, double val, int copy_back, cudaTask_t *cuda_task):
+  This non-blocking functions add one tensor block to another.
+
+ int gpu_tensor_block_copy_dlf(const int *dim_trn, tensBlck_t *tens_in, tensBlck_t *tens_out):
+  This blocking function copies one tensor block into another while permuting its dimensions (tensor transpose).
+
+ int gpu_tensor_block_copy_dlf_(const int *dim_trn, tensBlck_t *tens_in, tensBlck_t *tens_out,
+                                int copy_back, cudaTask_t *cuda_task):
+  This non-blocking function copies one tensor block into another while permuting its dimensions (tensor transpose).
+
+ int gpu_tensor_block_contract_dlf_(const int *cptrn, const tensBlck_t *ltens, const tensBlck_t *rtens,
+                                    tensBlck_t *dtens, int copy_back, cudaTask_t *cuda_task):
+  This non-blocking function contracts two tensor blocks.
