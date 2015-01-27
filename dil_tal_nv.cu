@@ -1,5 +1,5 @@
 /** Tensor Algebra Library for NVidia GPUs (CUDA).
-REVISION: 2015/01/21
+REVISION: 2015/01/27
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -179,13 +179,13 @@ __device__ __constant__ double dgemm_beta=1.0;  //beta constant DGEMM
 // Infrastructure for functions <gpu_array_2norm2_XX> (blocking):
 __device__ float gpu_blck_norms2_r4[MAX_CUDA_BLOCKS];
 __device__ double gpu_blck_norms2_r8[MAX_CUDA_BLOCKS];
-static float blck_norms2_r4[MAX_CUDA_BLOCKS];
-static double blck_norms2_r8[MAX_CUDA_BLOCKS];
+static float blck_norms2_r4[MAX_CUDA_BLOCKS];  //`Not multi-GPU safe
+static double blck_norms2_r8[MAX_CUDA_BLOCKS]; //`Not multi-GPU safe
 // Infrastructure for kernels <gpu_array_dot_product_XX__>:
-__device__ int dot_product_wr_lock=0; //write lock for all simultaneously running kernels <gpu_array_dot_product_XX__>
+__device__ int dot_product_wr_lock=0; //write lock (shared by all running <gpu_array_dot_product_XX__>)
 #ifndef NO_BLAS
 // Infrastructure for CUBLAS:
-static cublasHandle_t cublas_handle[MAX_GPUS_PER_NODE]; //each GPU present on a node obtains its own context handle
+static cublasHandle_t cublas_handle[MAX_GPUS_PER_NODE]; //each GPU present on a node obtains its own cuBLAS context handle
 #endif
 
 //------------------------------------------------------------------------------------------------------
@@ -2456,9 +2456,9 @@ __global__ void gpu_array_add_r8__(size_t tsize, double* __restrict__ arr0, cons
  for(size_t l=_ti;l<tsize;l+=_gd){arr0[l]+=(arr1[l]*val);}
  return;
 }
-//----------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------
 // ARRAY DOT-PRODUCT (R4):
-__global__ void gpu_array_dot_product_r4__(size_t tsize, const float *arr1, const float *arr2, float *dprod)
+__global__ void gpu_array_dot_product_r4__(size_t tsize, const float *arr1, const float *arr2, volatile float *dprod)
 {
  extern __shared__ float dprs_r4[]; //volume = blockDim.x
  size_t l;
@@ -2471,14 +2471,16 @@ __global__ void gpu_array_dot_product_r4__(size_t tsize, const float *arr1, cons
  __syncthreads();
  if(threadIdx.x == 0){
   i=1; while(i == 1){i=atomicMax(&dot_product_wr_lock,1);} //waiting for a lock to unlock, then lock
-  *dprod+=dprs_r4[0]; i=atomicExch(&dot_product_wr_lock,0); //write and unlock back
+  *dprod+=dprs_r4[0];
+  __thread_fence();
+  i=atomicExch(&dot_product_wr_lock,0); //unlock
  }
  __syncthreads();
  return;
 }
-//-------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------
 // ARRAY DOT-PRODUCT (R8):
-__global__ void gpu_array_dot_product_r8__(size_t tsize, const double *arr1, const double *arr2, double *dprod)
+__global__ void gpu_array_dot_product_r8__(size_t tsize, const double *arr1, const double *arr2, volatile double *dprod)
 {
  extern __shared__ double dprs_r8[]; //volume = blockDim.x
  size_t l;
@@ -2491,7 +2493,9 @@ __global__ void gpu_array_dot_product_r8__(size_t tsize, const double *arr1, con
  __syncthreads();
  if(threadIdx.x == 0){
   i=1; while(i == 1){i=atomicMax(&dot_product_wr_lock,1);} //waiting for a lock to unlock, then lock
-  *dprod+=dprs_r8[0]; i=atomicExch(&dot_product_wr_lock,0); //write and unlock back
+  *dprod+=dprs_r8[0];
+  __thread_fence();
+  i=atomicExch(&dot_product_wr_lock,0); //unlock
  }
  __syncthreads();
  return;
