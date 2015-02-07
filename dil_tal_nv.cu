@@ -1,5 +1,5 @@
 /** Tensor Algebra Library for NVidia GPUs (CUDA).
-REVISION: 2015/01/27
+REVISION: 2015/02/07
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -22,10 +22,8 @@ OPTIONS:
  # -DNO_BLAS: disables cuBLAS calls, they will be replaced by in-house routines;
  # -DDIL_DEBUG_GPU: collection of debugging information will be activated;
 NOTES:
- # Although the minimal required CUDA device compute capability is 1.1,
-   some parameters in "tensor_algebra.h" might be tuned for Kepler architecture,
-   thus a readjustment may be requried for lower than 3.5 compute capabilities;
- # cuBLAS.v2 is used when BLAS is enabled;
+ # Minimal required compute capability is 1.1;
+ # cuBLAS.v2 is required when BLAS is enabled;
  # Functions without underscores at the end of their names are blocking (Host) functions;
    Functions with one underscore at the end of their names are external non-blocking functions;
    Functions with two underscores at the end of their names are (non-blocking) CUDA kernels.
@@ -36,9 +34,9 @@ NOTES:
    of the tensor data will become outdated that cannot be checked!
    To restore coherence between the Host and GPU argument buffers,
    a GPU argument entry has to be explictly fetched by Host (user responsibility).
- # Seems like cudaEventRecord() issued in different streams can serialize stream execution!
-   Thus, by default, event recording should be disabled (EVENT_RECORD=0).
-   If timing is needed, event recording has to be reenabled (EVENT_RECORD=1).
+ # Seems like cudaEventRecord() issued in different streams can serialize the stream
+   execution for some compute capabilities. EVENT_RECORD=0 will disable even recording.
+   If GPU timing is needed, event recording has to be enabled (EVENT_RECORD=1).
 **/
 
 #ifndef NO_GPU
@@ -56,78 +54,26 @@ NOTES:
 
 //PARAMETERS:
 #define GPU_DEBUG_DUMP_SIZE 128 //size of the GPU debug dump (int array)
-
 //----------------------------------------------------------------------
-//FUNCTION PROTOTYPES (exported/imported functions):
+//FUNCTION PROTOTYPES:
+// IMPORTED:
 #ifdef __cplusplus
 extern "C" {
 #endif
-// Exported (public):
- int gpu_get_error_count();
- int gpu_get_debug_dump(int *dump);
- void gpu_set_event_policy(int alg);
- void gpu_set_transpose_algorithm(int alg);
- void gpu_set_matmult_algorithm(int alg);
- int encode_device_id(int dev_kind, int dev_num);
- int decode_device_id(int dev_id, int *dev_kind);
- int tensBlck_create(tensBlck_t **ctens);
- int tensBlck_destroy(tensBlck_t *ctens);
- int tensBlck_construct(tensBlck_t *ctens, int dev_kind, int dev_num, int data_kind, int trank,
-                        int *dims, int *divs, int *grps, int *prmn, void *addr_host, void *addr_gpu,
-                        int entry_gpu, int entry_const);
- int tensBlck_acc_id(const tensBlck_t *ctens, int *dev_kind, int *entry_gpu, int *entry_const, int *data_kind, int *there);
- int tensBlck_set_presence(tensBlck_t *ctens);
- int tensBlck_set_absence(tensBlck_t *ctens);
- int tensBlck_hab_null(tensBlck_t *ctens);
- size_t tensBlck_volume(const tensBlck_t *ctens);
- int cuda_task_create(cudaTask_t **cuda_task);
- int cuda_task_destroy(cudaTask_t *cuda_task);
- int cuda_task_gpu_id(const cudaTask_t *cuda_task);
- int cuda_task_status(cudaTask_t *cuda_task);
- int cuda_task_complete(cudaTask_t *cuda_task);
- int cuda_task_wait(cudaTask_t *cuda_task);
- float cuda_task_time(const cudaTask_t *cuda_task, float *in_copy, float *out_copy, float *comp);
- int init_gpus(int gpu_beg, int gpu_end);
- int free_gpus(int gpu_beg, int gpu_end);
- int gpu_is_mine(int gpu_num);
- int gpu_busy_least();
- int gpu_activate(int gpu_num);
- int gpu_put_arg(tensBlck_t *ctens);
- int gpu_get_arg(tensBlck_t *ctens);
- int gpu_put_arg_(tensBlck_t *ctens, cudaTask_t *cuda_task);
- int gpu_get_arg_(tensBlck_t *ctens, cudaTask_t *cuda_task);
- int gpu_array_2norm2_r4(size_t size, const float *arr, float *norm2);
- int gpu_array_2norm2_r8(size_t size, const double *arr, double *norm2);
- int gpu_matrix_multiply_tn_r4(size_t ll, size_t lr, size_t lc, const float *lmat, const float *rmat, float *dmat);
- int gpu_matrix_multiply_tn_r8(size_t ll, size_t lr, size_t lc, const double *lmat, const double *rmat, double *dmat);
- int gpu_tensor_block_init_(tensBlck_t *ctens, double val, int copy_back, cudaTask_t *cuda_task);
- int gpu_tensor_block_scale_(tensBlck_t *ctens, double val, int copy_back, cudaTask_t *cuda_task);
- int gpu_tensor_block_add_dlf_(tensBlck_t *ctens0, tensBlck_t *ctens1, double val, int copy_back, cudaTask_t *cuda_task);
- int gpu_tensor_block_copy_dlf(const int *dim_trn, tensBlck_t *tens_in, tensBlck_t *tens_out);
- int gpu_tensor_block_copy_dlf_(const int *dim_trn, tensBlck_t *tens_in, tensBlck_t *tens_out,
-                                int copy_back, cudaTask_t *cuda_task);
- int gpu_tensor_block_contract_dlf_(const int *cptrn, const tensBlck_t *ltens, const tensBlck_t *rtens,
-                                    tensBlck_t *dtens, int copy_back, cudaTask_t *cuda_task);
-// Imported:
- int get_buf_entry_host(size_t bsize, char **entry_ptr, int *entry_num);
- int free_buf_entry_host(int entry_num);
- int get_buf_entry_gpu(int gpu_num, size_t bsize, char **entry_ptr, int *entry_num);
- int free_buf_entry_gpu(int gpu_num, int entry_num);
- int get_gpu_ptr(void **dev_ptr, size_t tsize);
- int free_gpu_ptr(void *dev_ptr);
  void get_contr_permutations(int lrank, int rrank, const int *cptrn, int *dprm, int *lprm, int *rprm,
                              int *ncd, int *nlu, int *nru, int *ierr);
 #ifdef __cplusplus
 }
 #endif
-// Local (private):
- int prmn_convert(int n, const int *o2n, int *n2o);
- int non_trivial_prmn(int n, const int *prm);
- int cuda_task_finalize(cudaTask_t *cuda_task, int err_code, int gpu_num);
- int cuda_task_record(cudaTask_t *cuda_task, int err_code, int gpu_num, cudaStream_t cuda_stream,
-          cudaEvent_t cuda_start, cudaEvent_t cuda_comput, cudaEvent_t cuda_output, cudaEvent_t cuda_finish,
-          int scr_entry_cnt, int *scr_entries);
- void limit_cuda_blocks2d(int max_blocks, int *bx, int *by);
+// LOCAL (PRIVATE):
+static int prmn_convert(int n, const int *o2n, int *n2o);
+static int non_trivial_prmn(int n, const int *prm);
+static int cuda_task_finalize(cudaTask_t *cuda_task, int err_code, int gpu_num);
+static int cuda_task_record(cudaTask_t *cuda_task, int err_code, int gpu_num, cudaStream_t cuda_stream,
+            cudaEvent_t cuda_start, cudaEvent_t cuda_comput, cudaEvent_t cuda_output, cudaEvent_t cuda_finish,
+            int scr_entry_cnt, int *scr_entries);
+static void limit_cuda_blocks2d(int max_blocks, int *bx, int *by);
+// CUDA KERNELS:
 __global__ void gpu_array_2norm2_r4__(size_t arr_size, const float *arr, float *bnorm2);
 __global__ void gpu_array_2norm2_r8__(size_t arr_size, const double *arr, double *bnorm2);
 __global__ void gpu_array_init_r4__(size_t tsize, float *arr, float val);
@@ -136,8 +82,8 @@ __global__ void gpu_array_scale_r4__(size_t tsize, float *arr, float val);
 __global__ void gpu_array_scale_r8__(size_t tsize, double *arr, double val);
 __global__ void gpu_array_add_r4__(size_t tsize, float* __restrict__ arr0, const float* __restrict__ arr1, float val);
 __global__ void gpu_array_add_r8__(size_t tsize, double* __restrict__ arr0, const double* __restrict__ arr1, double val);
-__global__ void gpu_array_dot_product_r4__(size_t tsize, const float *arr1, const float *arr2, float *dprod);
-__global__ void gpu_array_dot_product_r8__(size_t tsize, const double *arr1, const double *arr2, double *dprod);
+__global__ void gpu_array_dot_product_r4__(size_t tsize, const float *arr1, const float *arr2, volatile float *dprod);
+__global__ void gpu_array_dot_product_r8__(size_t tsize, const double *arr1, const double *arr2, volatile double *dprod);
 __global__ void gpu_array_product_r4__(size_t tsize1, const float* __restrict__ arr1, size_t tsize2,
                                        const float* __restrict__ arr2, float* __restrict__ arr0);
 __global__ void gpu_array_product_r8__(size_t tsize1, const double* __restrict__ arr1, size_t tsize2,
@@ -155,6 +101,8 @@ __global__ void gpu_matrix_multiply_tn_r4__(size_t ll, size_t lr, size_t lc, con
 __global__ void gpu_matrix_multiply_tn_r8__(size_t ll, size_t lr, size_t lc, const double* __restrict__ arg1,
                                             const double* __restrict__ arg2, double* __restrict__ arg0);
 //------------------------------------------------------------------------------------------------------
+//PARAMETERS:
+static int VERBOSE=1; //verbosity for error messages
 //GLOBAL DATA:
 // GPU availability to the current MPI process:
 static int gpu_up[MAX_GPUS_PER_NODE]; //0: GPU is disabled; 1: GPU is enabled; 2: GPU is BLAS enabled.
@@ -167,11 +115,15 @@ __device__ int gpu_error_count=0; //total number of CUDA errors registered on de
 __device__ int gpu_debug_dump[GPU_DEBUG_DUMP_SIZE];
 // Global CUDA event recording policy (for timing only):
 static int EVENT_RECORD=1; //non-zero value enables cudaEventRecord() timing calls
-static int PRINT_TIME=1; //non-zero value enables time printing statements
+static int PRINT_TIMING=1; //non-zero value enables time printing statements
 // Infrastructure for function <gpu_tensor_block_copy_dlf> (blocking and non-blocking):
 static int TRANS_SHMEM=1; //switch between shared-memory tensor transpose (1) and scatter tensor transpose (0)
 // Infrastructure for <gpu_tensor_block_contract_dlf_> (non-blocking):
+#ifndef NO_BLAS
 static int DISABLE_BLAS=0; //non-zero value will disable cuBLAS usage (if it had been cuBLAS compiled/linked)
+#else
+static int DISABLE_BLAS=1; //non-zero value will disable cuBLAS usage (if it had been cuBLAS compiled/linked)
+#endif
 __device__ __constant__ float sgemm_alpha=1.0f; //alpha constant for SGEMM
 __device__ __constant__ float sgemm_beta=1.0f;  //beta constant SGEMM
 __device__ __constant__ double dgemm_alpha=1.0; //alpha constant for DGEMM
@@ -203,7 +155,7 @@ __host__ int gpu_get_debug_dump(int *dump) //returns the debug dump content from
  if(err == cudaSuccess){return GPU_DEBUG_DUMP_SIZE;}else{return -1;}
 }
 
-__host__ int prmn_convert(int n, const int *o2n, int *n2o) //converts o2n into n2o
+__host__ static int prmn_convert(int n, const int *o2n, int *n2o) //converts o2n into n2o
 /** Both permutations are sign-free but numeration starts from 1. **/
 {
  int i,j;
@@ -215,21 +167,26 @@ __host__ int prmn_convert(int n, const int *o2n, int *n2o) //converts o2n into n
  return 0;
 }
 
-__host__ int non_trivial_prmn(int n, const int *prm) //returns 0 if the permutation is trivial, 1 otherwise
+__host__ static int non_trivial_prmn(int n, const int *prm) //returns 0 if the permutation is trivial, 1 otherwise
 /** The permutation is sign-free but numeration starts from 1. **/
 {
- int f=0; for(int i=0;i<n;i++){if(prm[i] != i+1){f=1; break;}}
+ int f=0;
+ for(int i=0;i<n;i++){if(prm[i] != i+1){f=1; break;}}
  return f;
 }
 
 __host__ void gpu_set_event_policy(int alg) //turn on/off timing CUDA events (1/0) on current GPU
-{if(alg == 0){EVENT_RECORD=0;}else{EVENT_RECORD=1;}; return;}
+{if(alg == EVENTS_OFF){EVENT_RECORD=EVENTS_OFF;}else{EVENT_RECORD=EVENTS_ON;}; return;}
 
 __host__ void gpu_set_transpose_algorithm(int alg) //activate scatter (0) or shared-memory (1) tensor transpose algorithm
-{if(alg == 0){TRANS_SHMEM=0;}else{TRANS_SHMEM=1;}; return;} //on current GPU
+{if(alg == EFF_TRN_OFF){TRANS_SHMEM=EFF_TRN_OFF;}else{TRANS_SHMEM=EFF_TRN_ON;}; return;} //on current GPU
 
-__host__ void gpu_set_matmult_algorithm(int alg) //activate cuBLAS (0) or my own BLAS CUDA kernels (1) on current GPU
-{if(alg == 0){DISABLE_BLAS=0;}else{DISABLE_BLAS=1;}; return;}
+__host__ void gpu_set_matmult_algorithm(int alg){ //activate cuBLAS (0) or my own BLAS CUDA kernels (1) on current GPU
+#ifndef NO_BLAS
+ if(alg == BLAS_ON){DISABLE_BLAS=BLAS_ON;}else{DISABLE_BLAS=BLAS_OFF;};
+#endif
+ return;
+}
 
 __host__ int encode_device_id(int dev_kind, int dev_num)
 /** Given a device ID <dev_num> within its kind <dev_kind>, get the flat device ID. **/
@@ -239,6 +196,7 @@ __host__ int encode_device_id(int dev_kind, int dev_num)
   case DEV_HOST: if(dev_num == 0) dev_id=0; break;
   case DEV_NVIDIA_GPU: if(dev_num >= 0 && dev_num < MAX_GPUS_PER_NODE) dev_id=1+dev_num; break;
   case DEV_INTEL_MIC: if(dev_num >= 0 && dev_num < MAX_MICS_PER_NODE) dev_id=1+MAX_GPUS_PER_NODE+dev_num; break;
+  case DEV_AMD_GPU: if(dev_num >= 0 && dev_num < MAX_AMDS_PER_NODE) dev_id=1+MAX_GPUS_PER_NODE+MAX_MICS_PER_NODE+dev_num; break;
   default: return DEV_MAX;
  }
  return dev_id;
@@ -253,20 +211,22 @@ __host__ int decode_device_id(int dev_id, int *dev_kind)
   *dev_kind=DEV_HOST; dvn=0;
  }else if(dvid >= 1 && dvid <= MAX_GPUS_PER_NODE){ //Nvidia GPU
   *dev_kind=DEV_NVIDIA_GPU; dvn=dvid-1;
- }else if(dvid >= MAX_GPUS_PER_NODE+1 && dvid <= MAX_GPUS_PER_NODE+MAX_MICS_PER_NODE){ //Intel MIC
+ }else if(dvid >= 1+MAX_GPUS_PER_NODE && dvid <= MAX_GPUS_PER_NODE+MAX_MICS_PER_NODE){ //Intel MIC
   *dev_kind=DEV_INTEL_MIC; dvn=dvid-1-MAX_GPUS_PER_NODE;
+ }else if(dvid >= 1+MAX_GPUS_PER_NODE+MAX_MICS_PER_NODE && dvid <= MAX_GPUS_PER_NODE+MAX_MICS_PER_NODE+MAX_AMDS_PER_NODE){ //AMD GPU
+  *dev_kind=DEV_AMD_GPU; dvn=dvid-1-MAX_GPUS_PER_NODE-MAX_MICS_PER_NODE;
  }
  return dvn; //ID of the device within its kind
 }
 
 __host__ int tensBlck_create(tensBlck_t **ctens)
-/** Creates an instance of tensBlck_t **/
+/** Creates an empty instance of tensBlck_t **/
 {
  *ctens=(tensBlck_t*)malloc(sizeof(tensBlck_t)); if(*ctens == NULL) return 1;
  (*ctens)->device_id=encode_device_id(DEV_HOST,0); (*ctens)->data_kind=0; (*ctens)->rank=-1;
  (*ctens)->dims_h=NULL; (*ctens)->divs_h=NULL; (*ctens)->grps_h=NULL; (*ctens)->prmn_h=NULL;
  (*ctens)->elems_h=NULL; (*ctens)->elems_d=NULL;
- (*ctens)->buf_entry_gpu=-1; (*ctens)->const_args_entry=-1;
+ (*ctens)->buf_entry_host=-1; (*ctens)->buf_entry_gpu=-1; (*ctens)->const_args_entry=-1;
  return 0;
 }
 
@@ -275,27 +235,142 @@ __host__ int tensBlck_destroy(tensBlck_t *ctens)
 {if(ctens != NULL){free(ctens); return 0;}else{return 1;}}
 
 __host__ int tensBlck_construct(tensBlck_t *ctens, int dev_kind, int dev_num, int data_kind, int trank,
-                                int *dims, int *divs, int *grps, int *prmn, void *addr_host, void *addr_gpu,
-                                int entry_gpu, int entry_const)
-/** Constructor for tensBlck_t (tensor block which is to be processed by an Accelerator)
-Note that .device_id field reflects the general device number (0: CPU; 1..N: GPUs; N+1..M: MICs; etc). **/
+                                const int *dims, const int *divs, const int *grps, const int *prmn,
+                                void *addr_host, void *addr_gpu, int entry_host, int entry_gpu, int entry_const)
+/** Full constructor for tensBlck_t (tensor block to be processed on an accelerator) based
+on the custom memory allocator which uses Host and Device argument buffers (see c_proc_bufs.cu).
+The custom allocator supplies space for all needed arrays: dims, divs, grps, prmn, addr_host, addr_gpu.
+For scalar tensors (rank = 0), pointers dims, divs, grps, prmn are irrelevant (may be NULL).
+If this tensBlck will participate in asynchronous Device operations,
+dims, divs, grps, prmn, elems_h must reside in the pinned Host memory and
+dims, divs, grps, prmn, elems_h, elems_d must have been properly aligned! **/
 {
  int i;
  if(ctens != NULL){
-  if(trank >= 0 && data_kind >= 0 && entry_gpu >= 0 && entry_const >= 0){
-   ctens->device_id=encode_device_id(dev_kind,dev_num); if(ctens->device_id >= DEV_MAX) return 5;
-   ctens->data_kind=data_kind; ctens->rank=trank; if(trank > MAX_TENSOR_RANK) return 4;
-   ctens->dims_h=dims; ctens->divs_h=divs; ctens->grps_h=grps; ctens->prmn_h=prmn;
-   ctens->elems_h=addr_host; ctens->elems_d=addr_gpu;
+  if(trank >= 0 && trank <= MAX_TENSOR_RANK && data_kind >= 0 && entry_host >= 0 && entry_gpu >= 0 && entry_const >= 0){
+   ctens->device_id=encode_device_id(dev_kind,dev_num); if(ctens->device_id >= DEV_MAX) return 1;
+   ctens->data_kind=data_kind; ctens->rank=trank;
+   if(trank > 0){
+    ctens->dims_h=(int*)dims; ctens->divs_h=(int*)divs; ctens->grps_h=(int*)grps; ctens->prmn_h=(int*)prmn;
+   }else{
+    ctens->dims_h=NULL; ctens->divs_h=NULL; ctens->grps_h=NULL; ctens->prmn_h=NULL;
+   }
+   ctens->elems_h=addr_host; ctens->elems_d=addr_gpu; ctens->buf_entry_host=entry_host;
    ctens->buf_entry_gpu=entry_gpu; ctens->const_args_entry=entry_const;
-   i=tensBlck_set_absence(ctens); if(i != 0) return 3;
+   i=tensBlck_set_absence(ctens); if(i) return 2;
   }else{
-   return 2;
+   return 3;
   }
  }else{
-  return 1;
+  return 4;
  }
  return 0;
+}
+
+__host__ int tensBlck_alloc(tensBlck_t *ctens, int dev_num, int data_kind, int trank, const int *dims){
+/** Simplified tensBlck constructor + initialization to zero on the Host.
+The tensBlck_t instance is prepared for the use on NVidia GPU #dev_num.
+The pinned Host memory is allocated here explicitly.
+The GPU memory is taken from the GPU argument buffer. **/
+ int i;
+ size_t tvol,l;
+
+ if(ctens != NULL){
+  if(trank >= 0 && trank <= MAX_TENSOR_RANK){
+//Set tensBlck fields:
+   ctens->device_id=encode_device_id(DEV_NVIDIA_GPU,dev_num); if(ctens->device_id >= DEV_MAX) return 1;
+   ctens->data_kind=data_kind; ctens->rank=trank;
+   if(trank > 0){
+    if(dims != NULL){
+     i=host_mem_alloc_pin((void**)&(ctens->dims_h),sizeof(int)*(size_t)trank); if(i) return 2;
+     i=host_mem_alloc_pin((void**)&(ctens->divs_h),sizeof(int)*(size_t)trank); if(i) return 3;
+     i=host_mem_alloc_pin((void**)&(ctens->grps_h),sizeof(int)*(size_t)trank); if(i) return 4;
+     i=host_mem_alloc_pin((void**)&(ctens->prmn_h),sizeof(int)*(size_t)trank); if(i) return 5;
+     for(i=0;i<trank;i++){ctens->dims_h[i]=dims[i];} //copy dimension extents
+    }else{
+     return 6;
+    }
+   }else{
+    ctens->dims_h=NULL; ctens->divs_h=NULL;
+    ctens->grps_h=NULL; ctens->prmn_h=NULL;
+   }
+   tvol=tensBlck_volume(ctens); //tensor block volume (number of elements)
+   i=const_args_entry_get(dev_num,&(ctens->const_args_entry)); if(i) return 7;
+   ctens->buf_entry_host=-1; //Host argument buffer is not used here
+//Initialize the Host data to zero:
+   switch(data_kind){
+    case R4:
+     i=get_buf_entry_gpu(dev_num,tvol*(size_t)data_kind,(char**)&(ctens->elems_d),&(ctens->buf_entry_gpu)); if(i) return 8;
+     i=host_mem_alloc_pin((void**)&(ctens->elems_h),tvol*(size_t)data_kind); if(i) return 9;
+#pragma omp parallel for
+     for(l=0;l<tvol;l++){((float*)(ctens->elems_h))[l]=0.0f;}
+     break;
+    case R8:
+     i=get_buf_entry_gpu(dev_num,tvol*(size_t)data_kind,(char**)&(ctens->elems_d),&(ctens->buf_entry_gpu)); if(i) return 10;
+     i=host_mem_alloc_pin((void**)&(ctens->elems_h),tvol*(size_t)data_kind); if(i) return 11;
+#pragma omp parallel for
+     for(l=0;l<tvol;l++){((double*)(ctens->elems_h))[l]=0.0;}
+     break;
+    case C8:
+     i=get_buf_entry_gpu(dev_num,tvol*(size_t)data_kind,(char**)&(ctens->elems_d),&(ctens->buf_entry_gpu)); if(i) return 12;
+     i=host_mem_alloc_pin((void**)&(ctens->elems_h),tvol*(size_t)data_kind); if(i) return 13;
+#pragma omp parallel for
+     for(l=0;l<tvol*2;l++){((double*)(ctens->elems_h))[l]=0.0;}
+     break;
+    default:
+     return 14;
+   }
+//Set GPU absence:
+   i=tensBlck_set_absence(ctens); if(i) return 15;
+  }else{
+   return 16;
+  }
+ }else{
+  return 17;
+ }
+ return 0;
+}
+
+__host__ int tensBlck_free(tensBlck_t *ctens){
+/** Frees Host memory occupied by a tensBlck_t instance, frees
+the GPU argument buffer entry. tensBlck itself is not destroyed. **/
+ int i,dev_kind,gpu_num,errc;
+
+ errc=0;
+ if(ctens != NULL){
+  if(ctens->buf_entry_host >= 0){
+   i=free_buf_entry_host(ctens->buf_entry_host); errc+=i;
+  }else{
+   if(ctens->elems_h != NULL){
+    i=host_mem_free_pin(ctens->elems_h); errc+=i;
+   }else{
+    errc+=555;
+   }
+  }
+  if(ctens->dims_h != NULL){i=host_mem_free_pin(ctens->dims_h); errc+=i;}
+  if(ctens->divs_h != NULL){i=host_mem_free_pin(ctens->divs_h); errc+=i;}
+  if(ctens->grps_h != NULL){i=host_mem_free_pin(ctens->grps_h); errc+=i;}
+  if(ctens->prmn_h != NULL){i=host_mem_free_pin(ctens->prmn_h); errc+=i;}
+  ctens->dims_h=NULL; ctens->divs_h=NULL; ctens->grps_h=NULL; ctens->prmn_h=NULL;
+  ctens->elems_h=NULL; ctens->buf_entry_host=-1;
+  gpu_num=decode_device_id(ctens->device_id,&dev_kind);
+  if(dev_kind == DEV_NVIDIA_GPU){
+   if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
+    if(ctens->buf_entry_gpu >= 0){i=free_buf_entry_gpu(gpu_num,ctens->buf_entry_gpu); errc+=i;}
+    if(ctens->const_args_entry >= 0){i=const_args_entry_free(gpu_num,ctens->const_args_entry); errc+=i;}
+    ctens->elems_d=NULL; ctens->buf_entry_gpu=-1; ctens->const_args_entry=-1;
+    ctens->device_id=encode_device_id(DEV_HOST,0);
+   }else{
+    errc+=777;
+   }
+  }else{
+   if(dev_kind != DEV_HOST) errc+=888;
+  }
+  ctens->data_kind=0; ctens->rank=-1;
+ }else{
+  errc+=999;
+ }
+ return errc;
 }
 
 __host__ int tensBlck_acc_id(const tensBlck_t *ctens, int *dev_kind, int *entry_gpu, int *entry_const, int *data_kind,
@@ -306,24 +381,23 @@ INPUT:
 OUTPUT:
  # tensBlck_acc_id - ACC ID (non-negative) OR -1 (Host residence of the tensor block);
  # dev_kind - device (accelerator) kind (GPU, MIC, etc.);
- # entry_gpu - GPU global memory argument-buffer entry number;
+ # entry_gpu - device global memory argument-buffer entry number;
  # entry_const - GPU constant memory entry number;
  # data_kind - 4:float, 8:double, 16:double_complex;
- # there - 0 means that tensor block elements are not in the ACC memory yet, otherwise opposite.
+ # there - 0 means that tensor block elements are not in the ACC memory yet, 1 means opposite.
 **/
 {
  int dev_num;
  if(ctens != NULL){
-  *data_kind=ctens->data_kind;
+  *data_kind=ctens->data_kind; *there=tensBlck_present(ctens);
   *dev_kind=DEV_HOST; dev_num=decode_device_id(ctens->device_id,dev_kind);
-  if(*dev_kind != DEV_HOST){
-   if(ctens->device_id > 0){*there=1;}else{*there=0;}
+  if(*dev_kind == DEV_NVIDIA_GPU){ //GPU residence
    *entry_gpu=ctens->buf_entry_gpu; *entry_const=ctens->const_args_entry;
-  }else{ //Host residence
-   dev_num=-1; *entry_gpu=-1; *entry_const=-1; *there=0; //Host residence (no GPU associated with this tensor block)
+  }else{ //Not GPU residence
+   *entry_gpu=-1; *entry_const=-1;
   }
  }else{
-  dev_num=-1; *dev_kind=-1; *entry_gpu=-1; *entry_const=-1; *there=0; //ERROR: Null pointer passed
+  dev_num=-1; *dev_kind=-1; *entry_gpu=-1; *entry_const=-1; *data_kind=0; *there=0;
  }
  return dev_num;
 }
@@ -334,11 +408,44 @@ __host__ int tensBlck_set_presence(tensBlck_t *ctens) // Marks tensor block data
 __host__ int tensBlck_set_absence(tensBlck_t *ctens) // Unmarks tensor block data as residing on GPU
 {if(ctens != NULL){if(ctens->device_id > 0) ctens->device_id=-(ctens->device_id); return 0;}else{return 1;}}
 
-__host__ int tensBlck_hab_null(tensBlck_t *ctens) //Nullifies the HAB pointer (Host memory) in tensBlck
-{if(ctens != NULL){if(ctens->device_id > 0){ctens->elems_h=NULL; return 0;}else{return 2;}}else{return 1;}}
+__host__ int tensBlck_present(const tensBlck_t *ctens) //Check presence of the block data on Device (or Host)
+{if(ctens != NULL){if(ctens->device_id >= 0){return 1;}else{return 0;}}else{return -1;}}
+
+__host__ int tensBlck_hab_free(tensBlck_t *ctens){
+/** For tensor blocks simultaneously residing on Host and GPU, frees the Host copy.
+The data does not have to be present on GPU, in which case the tensor block
+becomes uninitialized but still usable on the GPU. **/
+ int i,dev_kind,dev_num,errc;
+
+ errc=0;
+ if(ctens != NULL){
+  dev_num=decode_device_id(ctens->device_id,&dev_kind);
+  if(dev_num >= 0){
+   if(dev_kind == DEV_NVIDIA_GPU){
+    if(ctens->elems_h != NULL){
+     if(ctens->buf_entry_host >= 0){
+      i=free_buf_entry_host(ctens->buf_entry_host); errc+=i;
+     }else{
+      i=host_mem_free_pin(ctens->elems_h); errc+=i;
+     }
+     ctens->buf_entry_host=-1; ctens->elems_h=NULL;
+    }else{
+     errc+=333;
+    }
+   }else{
+    errc+=555;
+   }
+  }else{
+   errc+=777;
+  }
+ }else{
+  errc+=999;
+ }
+ return errc;
+}
 
 __host__ size_t tensBlck_volume(const tensBlck_t *ctens) //Number of elements in a tensor block
-{size_t tsize=1; for(int i=0;i<ctens->rank;i++){tsize*=(ctens->dims_h[i]);}; return tsize;}
+{size_t tvol=1; for(int i=0;i<ctens->rank;i++){tvol*=(ctens->dims_h[i]);}; return tvol;}
 
 __host__ int cuda_task_create(cudaTask_t **cuda_task)
 /** Creates an instance of cudaTask_t **/
@@ -349,11 +456,12 @@ __host__ int cuda_task_create(cudaTask_t **cuda_task)
  return 0;
 }
 
-__host__ int cuda_task_destroy(cudaTask_t *cuda_task)
-/** Destroys an instance of cudaTask_t if the CUDA task has completed or empty. **/
+__host__ int cuda_task_clean(cudaTask_t *cuda_task)
+/** Cleans an existing cudaTask_t for reuse. **/
 {
  int i,j,cur_gpu,err_code;
  cudaError_t err;
+
  err_code=0;
  if(cuda_task != NULL){
   i=cuda_task_complete(cuda_task);
@@ -368,16 +476,61 @@ __host__ int cuda_task_destroy(cudaTask_t *cuda_task)
      err=cudaEventDestroy(cuda_task->task_start);
      err=cudaStreamDestroy(cuda_task->task_stream); if(err != cudaSuccess) err_code+=5;
     }else{
-     err_code+=7;
+     err_code+=20;
     }
     if(cuda_task->scr_entry_count <= MAX_SCR_ENTRY_COUNT){
      for(i=cuda_task->scr_entry_count-1;i>=0;i--){
-      j=free_buf_entry_gpu(cuda_task->gpu_id,cuda_task->scr_entry[i]); err_code+=j*10;
+      j=free_buf_entry_gpu(cuda_task->gpu_id,cuda_task->scr_entry[i]); err_code+=j*100;
      }
     }else{
      err_code+=10000;
     }
-    if(cur_gpu >= 0 && cur_gpu != cuda_task->gpu_id){err=cudaSetDevice(cur_gpu); if(err != cudaSuccess) err_code+=20000;}
+    if(cur_gpu >= 0 && cur_gpu != cuda_task->gpu_id){err=cudaSetDevice(cur_gpu); if(err != cudaSuccess) err_code+=30000;}
+   }else{
+    err_code+=50000;
+   }
+   cuda_task->task_error=-1; cuda_task->gpu_id=-1; cuda_task->scr_entry_count=0;
+  }else if(i == CUDA_TASK_EMPTY || i == CUDA_TASK_ERROR){ //empty task or cuda_task_complete() failed
+   cuda_task->task_error=-1; cuda_task->gpu_id=-1; cuda_task->scr_entry_count=0;
+  }else{ //task has not completed yet, thus cannot be destroyed
+   err_code+=100000;
+  }
+ }else{
+  err_code+=300000;
+ }
+ return err_code;
+}
+
+__host__ int cuda_task_destroy(cudaTask_t *cuda_task)
+/** Destroys an instance of cudaTask_t if the CUDA task has completed or empty. **/
+{
+ int i,j,cur_gpu,err_code;
+ cudaError_t err;
+
+ err_code=0;
+ if(cuda_task != NULL){
+  i=cuda_task_complete(cuda_task);
+  if(i == CUDA_TASK_COMPLETED){ //task has completed (successfully or not)
+   if(cuda_task->gpu_id >= 0 && cuda_task->gpu_id < MAX_GPUS_PER_NODE){
+    cur_gpu=-1; err=cudaGetDevice(&cur_gpu); if(err != cudaSuccess){cur_gpu=-1; err_code+=1;}
+    err=cudaSuccess; if(cur_gpu != cuda_task->gpu_id) err=cudaSetDevice(cuda_task->gpu_id);
+    if(err == cudaSuccess){
+     err=cudaEventDestroy(cuda_task->task_finish);
+     err=cudaEventDestroy(cuda_task->task_output);
+     err=cudaEventDestroy(cuda_task->task_comput);
+     err=cudaEventDestroy(cuda_task->task_start);
+     err=cudaStreamDestroy(cuda_task->task_stream); if(err != cudaSuccess) err_code+=5;
+    }else{
+     err_code+=20;
+    }
+    if(cuda_task->scr_entry_count <= MAX_SCR_ENTRY_COUNT){
+     for(i=cuda_task->scr_entry_count-1;i>=0;i--){
+      j=free_buf_entry_gpu(cuda_task->gpu_id,cuda_task->scr_entry[i]); err_code+=j*100;
+     }
+    }else{
+     err_code+=10000;
+    }
+    if(cur_gpu >= 0 && cur_gpu != cuda_task->gpu_id){err=cudaSetDevice(cur_gpu); if(err != cudaSuccess) err_code+=30000;}
    }else{
     err_code+=50000;
    }
@@ -393,13 +546,13 @@ __host__ int cuda_task_destroy(cudaTask_t *cuda_task)
  return err_code;
 }
 
-__host__ int cuda_task_finalize(cudaTask_t *cuda_task, int err_code, int gpu_num=-1)
+__host__ static int cuda_task_finalize(cudaTask_t *cuda_task, int err_code, int gpu_num=-1)
 /** Finalizes a CUDA task: gpu_num=-1: on Host; gpu_num>=0: on GPU#gpu_num. **/
 {if(cuda_task != NULL){cuda_task->task_error=err_code; cuda_task->gpu_id=gpu_num; return 0;}else{return 1;}}
 
-__host__ int cuda_task_record(cudaTask_t *cuda_task, int err_code, int gpu_num, cudaStream_t cuda_stream,
-                  cudaEvent_t cuda_start, cudaEvent_t cuda_comput, cudaEvent_t cuda_output, cudaEvent_t cuda_finish,
-                  int scr_entry_cnt, int *scr_entries)
+__host__ static int cuda_task_record(cudaTask_t *cuda_task, int err_code, int gpu_num, cudaStream_t cuda_stream,
+                     cudaEvent_t cuda_start, cudaEvent_t cuda_comput, cudaEvent_t cuda_output, cudaEvent_t cuda_finish,
+                     int scr_entry_cnt, int *scr_entries)
 /** Registers a CUDA task: Launch-error-free tasks are recorded with .task_error=-1 (in normal progress). **/
 {
  int i;
@@ -435,7 +588,7 @@ __host__ int cuda_task_gpu_id(const cudaTask_t *cuda_task){return cuda_task->gpu
 
 __host__ int cuda_task_status(cudaTask_t *cuda_task)
 /** Checks the status of a CUDA task. Possible status values are listed in
-tensor_algebra_gpu_nvidia.h and tensor_algebra_gpu_nvidia.inc: Keep them consistent! **/
+tensor_algebra.h and tensor_algebra.inc: Keep them consistent! **/
 {
  int task_stat,cur_gpu;
  cudaError_t err;
@@ -508,8 +661,49 @@ Other possible outputs: CUDA_TASK_EMPTY, CUDA_TASK_SCHEDULED, CUDA_TASK_COMPLETE
 }
 
 __host__ int cuda_task_wait(cudaTask_t *cuda_task)
-/** Waits on accomplishment of a CUDA task: Returns the output of cuda_task_complete(). **/
-{int i=CUDA_TASK_SCHEDULED; while(i == CUDA_TASK_SCHEDULED){i=cuda_task_complete(cuda_task);}; return i;}
+/** Waits on accomplishment of a CUDA task: Returns the output of cuda_task_complete().
+Possible values are CUDA_TASK_COMPLETED, CUDA_TASK_ERROR, CUDA_TASK_EMPTY. **/
+{
+ int i,j;
+ i=CUDA_TASK_SCHEDULED; j=1;
+ while(j>0){
+  i=cuda_task_complete(cuda_task);
+  if(i == CUDA_TASK_COMPLETED || i == CUDA_TASK_ERROR || i == CUDA_TASK_EMPTY) j--;
+ }
+ return i;
+}
+
+__host__ int cuda_tasks_wait(int num_tasks, cudaTask_t **cuda_tasks, int* task_stats)
+/** Waits upon completion of a series of CUDA tasks. Returns 0 on success. **/
+{
+ int i,j,n;
+ if(num_tasks >= 0){
+  if(num_tasks > 0){
+   if(cuda_tasks != NULL && task_stats != NULL){
+    for(i=0;i<num_tasks;i++){task_stats[i]=CUDA_TASK_SCHEDULED;}
+    n=num_tasks;
+    while(n>0){
+     for(i=0;i<num_tasks;i++){
+      j=task_stats[i];
+      if(j != CUDA_TASK_COMPLETED && j != CUDA_TASK_ERROR && j != CUDA_TASK_EMPTY){
+       if(cuda_tasks[i] != NULL){
+        j=cuda_task_complete(cuda_tasks[i]); task_stats[i]=j;
+        if(j == CUDA_TASK_COMPLETED || j == CUDA_TASK_ERROR || j == CUDA_TASK_EMPTY) n--;
+       }else{
+        return 1;
+       }
+      }
+     }
+    }
+   }else{
+    return 2;
+   }
+  }
+ }else{
+  return 3;
+ }
+ return 0;
+}
 
 __host__ float cuda_task_time(const cudaTask_t *cuda_task, float *in_copy, float *out_copy, float *comp)
 /** Returns the time (in seconds) the CUDA task took to complete (only when EVENT_RECORD != 0).
@@ -540,7 +734,7 @@ Also, in_copy is input copying time, out_copy is output copying time, and comp i
  }
 }
 
-__host__ void limit_cuda_blocks2d(int max_blocks, int *bx, int *by)
+__host__ static void limit_cuda_blocks2d(int max_blocks, int *bx, int *by)
 {
  double rdc = (double)max_blocks/((double)((*bx)*(*by)));
  if(rdc < 1.0){
@@ -884,17 +1078,20 @@ Executed on the currently set GPU device. **/
    gpu_array_2norm2_r4__<<<bx,THRDS_ARRAY_NORM2,THRDS_ARRAY_NORM2*sizeof(float)>>>(sz,&arr[l],bnorm2);
    err=cudaDeviceSynchronize();
    if(err != cudaSuccess){
-    err_msg=cudaGetErrorString(err); printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_array_2norm2_r4): Kernel sync error: %s\n",err_msg);
+    err_msg=cudaGetErrorString(err);
+    if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_array_2norm2_r4): Kernel sync error: %s\n",err_msg);
     return 2;
    }
    err=cudaGetLastError();
    if(err != cudaSuccess){
-    err_msg=cudaGetErrorString(err); printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_array_2norm2_r4): Kernel error: %s\n",err_msg);
+    err_msg=cudaGetErrorString(err);
+    if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_array_2norm2_r4): Kernel error: %s\n",err_msg);
     return 3;
    }
    err=cudaMemcpyFromSymbol((void*)blck_norms2_r4,gpu_blck_norms2_r4,bx*sizeof(float),0,cudaMemcpyDeviceToHost);
    if(err != cudaSuccess){
-    err_msg=cudaGetErrorString(err); printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_array_2norm2_r4): Copy error: %s\n",err_msg);
+    err_msg=cudaGetErrorString(err);
+    if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_array_2norm2_r4): Copy error: %s\n",err_msg);
     return 4;
    }
    for(i=0;i<bx;i++) *norm2+=blck_norms2_r4[i];
@@ -925,17 +1122,20 @@ Executed on the currently set GPU device. **/
    gpu_array_2norm2_r8__<<<bx,THRDS_ARRAY_NORM2,THRDS_ARRAY_NORM2*sizeof(double)>>>(sz,&arr[l],bnorm2);
    err=cudaDeviceSynchronize();
    if(err != cudaSuccess){
-    err_msg=cudaGetErrorString(err); printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_array_2norm2_r8): Kernel sync error: %s\n",err_msg);
+    err_msg=cudaGetErrorString(err);
+    if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_array_2norm2_r8): Kernel sync error: %s\n",err_msg);
     return 2;
    }
    err=cudaGetLastError();
    if(err != cudaSuccess){
-    err_msg=cudaGetErrorString(err); printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_array_2norm2_r8): Kernel error: %s\n",err_msg);
+    err_msg=cudaGetErrorString(err);
+    if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_array_2norm2_r8): Kernel error: %s\n",err_msg);
     return 3;
    }
    err=cudaMemcpyFromSymbol((void*)blck_norms2_r8,gpu_blck_norms2_r8,bx*sizeof(double),0,cudaMemcpyDeviceToHost);
    if(err != cudaSuccess){
-    err_msg=cudaGetErrorString(err); printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_array_2norm2_r8): Copy error: %s\n",err_msg);
+    err_msg=cudaGetErrorString(err);
+    if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_array_2norm2_r8): Copy error: %s\n",err_msg);
     return 4;
    }
    for(i=0;i<bx;i++) *norm2+=blck_norms2_r8[i];
@@ -960,9 +1160,9 @@ All matrices are in Host memory. Executed on the currently set GPU device. **/
  if(lc > 0 && ll > 0 && lr > 0 && lmat != NULL && rmat != NULL && dmat != NULL){
   err=cudaGetLastError(); err=cudaSuccess;
   dsize=ll*lr*sizeof(float); lsize=lc*ll*sizeof(float); rsize=lc*lr*sizeof(float);
-  err_code=get_gpu_ptr((void**)&dptr,dsize); if(err_code != 0) return 1;
-  err_code=get_gpu_ptr((void**)&lptr,lsize); if(err_code != 0) return 2;
-  err_code=get_gpu_ptr((void**)&rptr,rsize); if(err_code != 0) return 3;
+  err_code=gpu_mem_alloc((void**)&dptr,dsize); if(err_code != 0) return 1;
+  err_code=gpu_mem_alloc((void**)&lptr,lsize); if(err_code != 0) return 2;
+  err_code=gpu_mem_alloc((void**)&rptr,rsize); if(err_code != 0) return 3;
   err=cudaMemcpy((void*)dptr,(void*)dmat,dsize,cudaMemcpyHostToDevice); if(err != cudaSuccess) return 4;
   err=cudaMemcpy((void*)lptr,(void*)lmat,lsize,cudaMemcpyHostToDevice); if(err != cudaSuccess) return 5;
   err=cudaMemcpy((void*)rptr,(void*)rmat,rsize,cudaMemcpyHostToDevice); if(err != cudaSuccess) return 6;
@@ -972,14 +1172,19 @@ All matrices are in Host memory. Executed on the currently set GPU device. **/
 //printf("\n#DEBUG(tensor_algebra_gpu_nvidia:gpu_matrix_multiply_tn_r4): Running GPU kernel ..."); //debug
   gpu_matrix_multiply_tn_r4__<<<blcks,thrds>>>(ll,lr,lc,lptr,rptr,dptr);
   err=cudaDeviceSynchronize(); if(err != cudaSuccess) return 7;
-  err=cudaGetLastError(); if(err!=cudaSuccess){err_msg=cudaGetErrorString(err); printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_matrix_multiply_tn_r4): Kernel error: %s\n",err_msg); return 8;}
+  err=cudaGetLastError();
+  if(err!=cudaSuccess){
+   err_msg=cudaGetErrorString(err);
+   if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_matrix_multiply_tn_r4): Kernel error: %s\n",err_msg);
+   return 8;
+  }
   if(gpu_get_error_count() > err_code) return 9;
 //printf("Done: %d",err); //debug
   err=cudaMemcpy((void*)dmat,(void*)dptr,dsize,cudaMemcpyDeviceToHost); if(err != cudaSuccess) return 10;
   err=cudaDeviceSynchronize(); if(err != cudaSuccess) return 11;
-  err_code=free_gpu_ptr((void*)rptr); if(err_code != 0) return 12;
-  err_code=free_gpu_ptr((void*)lptr); if(err_code != 0) return 13;
-  err_code=free_gpu_ptr((void*)dptr); if(err_code != 0) return 14;
+  err_code=gpu_mem_free((void*)rptr); if(err_code != 0) return 12;
+  err_code=gpu_mem_free((void*)lptr); if(err_code != 0) return 13;
+  err_code=gpu_mem_free((void*)dptr); if(err_code != 0) return 14;
   err=cudaDeviceSynchronize(); if(err != cudaSuccess) return 15;
  }else{
   return 16;
@@ -1001,9 +1206,9 @@ All matrices are in Host memory. Executed on the currently set GPU device. **/
  if(lc > 0 && ll > 0 && lr > 0 && lmat != NULL && rmat != NULL && dmat != NULL){
   err=cudaGetLastError(); err=cudaSuccess;
   dsize=ll*lr*sizeof(double); lsize=lc*ll*sizeof(double); rsize=lc*lr*sizeof(double);
-  err_code=get_gpu_ptr((void**)&dptr,dsize); if(err_code != 0) return 1;
-  err_code=get_gpu_ptr((void**)&lptr,lsize); if(err_code != 0) return 2;
-  err_code=get_gpu_ptr((void**)&rptr,rsize); if(err_code != 0) return 3;
+  err_code=gpu_mem_alloc((void**)&dptr,dsize); if(err_code != 0) return 1;
+  err_code=gpu_mem_alloc((void**)&lptr,lsize); if(err_code != 0) return 2;
+  err_code=gpu_mem_alloc((void**)&rptr,rsize); if(err_code != 0) return 3;
   err=cudaMemcpy((void*)dptr,(void*)dmat,dsize,cudaMemcpyHostToDevice); if(err != cudaSuccess) return 4;
   err=cudaMemcpy((void*)lptr,(void*)lmat,lsize,cudaMemcpyHostToDevice); if(err != cudaSuccess) return 5;
   err=cudaMemcpy((void*)rptr,(void*)rmat,rsize,cudaMemcpyHostToDevice); if(err != cudaSuccess) return 6;
@@ -1013,14 +1218,19 @@ All matrices are in Host memory. Executed on the currently set GPU device. **/
 //printf("\n#DEBUG(tensor_algebra_gpu_nvidia:gpu_matrix_multiply_tn_r8): Running GPU kernel ..."); //debug
   gpu_matrix_multiply_tn_r8__<<<blcks,thrds>>>(ll,lr,lc,lptr,rptr,dptr);
   err=cudaDeviceSynchronize(); if(err != cudaSuccess) return 7;
-  err=cudaGetLastError(); if(err!=cudaSuccess){err_msg=cudaGetErrorString(err); printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_matrix_multiply_tn_r8): Kernel error: %s\n",err_msg); return 8;}
+  err=cudaGetLastError();
+  if(err!=cudaSuccess){
+   err_msg=cudaGetErrorString(err);
+   if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_matrix_multiply_tn_r8): Kernel error: %s\n",err_msg);
+   return 8;
+  }
   if(gpu_get_error_count() > err_code) return 9;
 //printf("Done: %d",err); //debug
   err=cudaMemcpy((void*)dmat,(void*)dptr,dsize,cudaMemcpyDeviceToHost); if(err != cudaSuccess) return 10;
   err=cudaDeviceSynchronize(); if(err != cudaSuccess) return 11;
-  err_code=free_gpu_ptr((void*)rptr); if(err_code != 0) return 12;
-  err_code=free_gpu_ptr((void*)lptr); if(err_code != 0) return 13;
-  err_code=free_gpu_ptr((void*)dptr); if(err_code != 0) return 14;
+  err_code=gpu_mem_free((void*)rptr); if(err_code != 0) return 12;
+  err_code=gpu_mem_free((void*)lptr); if(err_code != 0) return 13;
+  err_code=gpu_mem_free((void*)dptr); if(err_code != 0) return 14;
   err=cudaDeviceSynchronize(); if(err != cudaSuccess) return 15;
  }else{
   return 16;
@@ -1454,11 +1664,23 @@ NOTES:
      }
     }
     if(EVENT_RECORD != 0){err=cudaEventRecord(time_end); if(err!=cudaSuccess){err_msg=cudaGetErrorString(err); err=cudaSetDevice(gpu_num); return 22;}}
-    err=cudaDeviceSynchronize(); if(err!=cudaSuccess){err_msg=cudaGetErrorString(err); printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_copy_dlf): Sync error: %s\n",err_msg); err=cudaSetDevice(gpu_num); return 23;}
+    err=cudaDeviceSynchronize();
+    if(err!=cudaSuccess){
+     err_msg=cudaGetErrorString(err);
+     if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_copy_dlf): Sync error: %s\n",err_msg);
+     err=cudaSetDevice(gpu_num);
+     return 23;
+    }
     if(EVENT_RECORD != 0){err=cudaEventElapsedTime(&time_ms,time_beg,time_end); if(err!=cudaSuccess){err_msg=cudaGetErrorString(err); err=cudaSetDevice(gpu_num); return 24;}}
-    err=cudaGetLastError(); if(err!=cudaSuccess){err_msg=cudaGetErrorString(err); printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_copy_dlf): Kernel error: %s\n",err_msg); err=cudaSetDevice(gpu_num); return 25;}
+    err=cudaGetLastError();
+    if(err!=cudaSuccess){
+     err_msg=cudaGetErrorString(err);
+     if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_copy_dlf): Kernel error: %s\n",err_msg);
+     err=cudaSetDevice(gpu_num);
+     return 25;
+    }
     if(gpu_get_error_count() > j){err=cudaSetDevice(gpu_num); return 26;}
-    if(PRINT_TIME != 0) printf("#DEBUG(tensor_algebra_gpu_nvidia:gpu_tensor_block_copy_dlf): Kernel (%d): Time %f: KT/s=%f \n",TRANS_SHMEM,time_ms/1000.0f,((float)(tsize*2))/time_ms);
+    if(PRINT_TIMING) printf("#DEBUG(tensor_algebra_gpu_nvidia:gpu_tensor_block_copy_dlf): Kernel (%d): Time %f: KT/s=%f \n",TRANS_SHMEM,time_ms/1000.0f,((float)(tsize*2))/time_ms);
     i=tensBlck_set_presence(tens_out);
 // Copy the output tensor block back into the Host argument buffer:
 //  printf("\n#DEBUG(tensor_algebra_gpu_nvidia:gpu_tensor_block_copy_dlf): DeviceToHost copy: %p %p %d\n",tens_out->elems_h,tens_out->elems_d,tsize); //debug
@@ -1472,7 +1694,12 @@ NOTES:
      default:
       err=cudaSetDevice(gpu_num); return 27;
     }
-    if(err!=cudaSuccess){err_msg=cudaGetErrorString(err); printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_copy_dlf): Copy back: %s\n",err_msg); err=cudaSetDevice(gpu_num); return 28;}
+    if(err!=cudaSuccess){
+     err_msg=cudaGetErrorString(err);
+     if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_copy_dlf): Copy back: %s\n",err_msg);
+     err=cudaSetDevice(gpu_num);
+     return 28;
+    }
     err=cudaDeviceSynchronize(); if(err!=cudaSuccess){err_msg=cudaGetErrorString(err); err=cudaSetDevice(gpu_num); return 29;}
     if(EVENT_RECORD != 0){err=cudaEventDestroy(time_beg); err=cudaEventDestroy(time_end);} //destroy CUDA events
     err=cudaSetDevice(gpu_num); if(err!=cudaSuccess){err_msg=cudaGetErrorString(err); return 30;} //restore old GPU
@@ -1748,7 +1975,8 @@ NOTES:
        err=cudaSetDevice(gpu_num); return 42;
      }
      if(err != cudaSuccess){
-      err_msg=cudaGetErrorString(err); printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_copy_dlf_): Copy back: %s\n",err_msg);
+      err_msg=cudaGetErrorString(err);
+      if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_copy_dlf_): Copy back: %s\n",err_msg);
       i=cuda_task_record(cuda_task,43,dev_in,cuda_stream,time_beg,time_comput,time_output,time_end,0,NULL);
       err=cudaSetDevice(gpu_num); return 43;
      }
@@ -1923,7 +2151,7 @@ NOTES:
      err=cudaEventRecord(cuda_start,cuda_stream); if(err != cudaSuccess){
       i=cuda_task_record(cuda_task,31,dev_num,cuda_stream,cuda_start,cuda_comput,cuda_output,cuda_finish,scr_entry_cnt,scr_entries);
       err_msg=cudaGetErrorString(err);
-      printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_contract_dlf_): Unable to record the start event: %s\n",err_msg);
+      if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_contract_dlf_): Unable to record the start event: %s\n",err_msg);
       err=cudaSetDevice(gpu_num); return 31;
      }
     }
@@ -2472,7 +2700,7 @@ __global__ void gpu_array_dot_product_r4__(size_t tsize, const float *arr1, cons
  if(threadIdx.x == 0){
   i=1; while(i == 1){i=atomicMax(&dot_product_wr_lock,1);} //waiting for a lock to unlock, then lock
   *dprod+=dprs_r4[0];
-  __thread_fence();
+  __threadfence();
   i=atomicExch(&dot_product_wr_lock,0); //unlock
  }
  __syncthreads();
@@ -2494,7 +2722,7 @@ __global__ void gpu_array_dot_product_r8__(size_t tsize, const double *arr1, con
  if(threadIdx.x == 0){
   i=1; while(i == 1){i=atomicMax(&dot_product_wr_lock,1);} //waiting for a lock to unlock, then lock
   *dprod+=dprs_r8[0];
-  __thread_fence();
+  __threadfence();
   i=atomicExch(&dot_product_wr_lock,0); //unlock
  }
  __syncthreads();
@@ -3275,7 +3503,7 @@ OUTPUT:
   }
 #ifdef DIL_DEBUG_GPU
 //DEBUG RECORD begin:
-  if(blockIdx.x == 0 && threadIdx.x ==0){
+  if(blockIdx.x == 0 && threadIdx.x == 0){
    j=0; gpu_debug_dump[j++]=dim_num;
    for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=const_args_dims[const_args_pos][i];
    for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=const_args_prmn[const_args_pos][i];
@@ -3365,7 +3593,7 @@ OUTPUT:
   }
 #ifdef DIL_DEBUG_GPU
 //DEBUG RECORD begin:
-  if(blockIdx.x == 0 && threadIdx.x ==0){
+  if(blockIdx.x == 0 && threadIdx.x == 0){
    j=0; gpu_debug_dump[j++]=dim_num;
    for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=const_args_dims[const_args_pos][i];
    for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=const_args_prmn[const_args_pos][i];
