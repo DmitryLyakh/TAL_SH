@@ -12,11 +12,11 @@ const int first_gpu=0, last_gpu=0; //range of GPUs used
 size_t buf_size=6442450944; //desired Host argument buffer size in bytes
 
 int main(int argc, char** args){
- size_t tsize;
  tensBlck_t *tb0,*tb1,*tb2,*tb3,*tb4,*tb5; //tensor blocks
  cudaTask_t *tsk0,*tsk1,*tsk2,*tsk3,*tsks[4]; //cuda task handles
  float tm,incopy,outcopy,comput;
- int i,j,k,l,m,n,errc,max_args,tsk_stats[4];
+ int errc,max_args,tsk_stats[4];
+ double flops;
 
 //Allocate argument buffers (initializes both the Host and all GPUs):
  errc=arg_buf_allocate(&buf_size,&max_args,first_gpu,last_gpu);
@@ -25,6 +25,7 @@ int main(int argc, char** args){
 
 //Activate a specific GPU:
  errc=gpu_activate(first_gpu); if(errc){printf("#ERROR: gpu_activate failed!"); return 1;};
+ errc=gpu_set_shmem_width(R8);
  printf("Focused on GPU #%d \n",first_gpu);
 
 //Create and initialize few tensor blocks on Host:
@@ -119,6 +120,8 @@ int main(int argc, char** args){
  printf("CUDA task 0 final status is %d, time %f %f %f %f \n",tsk_stats[0],tm,incopy,outcopy,comput);
  tm=cuda_task_time(tsk1,&incopy,&outcopy,&comput);
  printf("CUDA task 1 final status is %d, time %f %f %f %f \n",tsk_stats[1],tm,incopy,outcopy,comput);
+ flops=(double)(75);
+ printf("Total GFlops/s = %f \n",(flops*flops*flops*flops*flops*flops*2.0)/(tm*1073741824.0));
 // Inspect results:
  printf("Destination element inspection [0]: %e \n",((double*)(tb0->elems_h))[13]);
  printf("Destination element inspection [3]: %e \n",((double*)(tb3->elems_h))[13]);
