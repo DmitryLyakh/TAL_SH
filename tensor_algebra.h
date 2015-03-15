@@ -1,6 +1,6 @@
 /** Parameters, derived types, and function prototypes used
     in tensor_algebra_gpu_nvidia.cu, c_proc_bufs.cu (NV-TAL).
-REVISION: 2015/02/07
+REVISION: 2015/03/15
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -19,9 +19,10 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 -------------------------------------------------------------------------------
 PREPROCESSOR OPTIONS:
- # -DNO_GPU: disables GPU usage (CPU structures only).
- # -DNO_BLAS: cuBLAS calls will be replaced by in-house routines.
- # -DDIL_DEBUG_GPU: collection of debugging information will be activated.
+ # -D CUDA_ARCH=350: target device compute capability (default is 130);
+ # -D NO_GPU: disables GPU usage (CPU structures only);
+ # -D NO_BLAS: cuBLAS calls will be replaced by in-house routines;
+ # -D DEBUG_GPU: collection of debugging information will be activated;
 NOTES:
  # GPU_ID is a unique CUDA GPU ID given to a specific NVidia GPU present on the Host node:
     0<=GPU_ID<MAX_GPUS_PER_NODE; GPU_ID=-1 will refer to the (multi-)CPU Host.
@@ -51,6 +52,11 @@ NOTES:
 #ifndef TENSOR_ALGEBRA_H
 #define TENSOR_ALGEBRA_H
 
+//DEVICE COMPUTE CAPABILITY:
+#ifndef CUDA_ARCH
+#define CUDA_ARCH 130
+#endif
+
 //GLOBAL PARAMETERS:
 #define MAX_TENSOR_RANK 32         //max allowed tensor rank: Must be multiple of 4
 #define MAX_GPU_ARGS 128           //max allowed number of tensor arguments simultaneously residing on a GPU: Must be multiple of 8
@@ -69,19 +75,24 @@ NOTES:
 //KERNEL PARAMETERS:
 #define GPU_CACHE_LINE_LEN 128     //cache line length in bytes
 #define MAX_CUDA_BLOCKS 1024       //max number of CUDA thread blocks per kernel
-#if __CUDA_ARCH__ >= 300
+#if CUDA_ARCH >= 300
 #define TENS_TRANSP_BUF_SIZE 2560  //buffer size (elements) for <gpu_tensor_block_copy_dlf_XX__>
 #else
 #define TENS_TRANSP_BUF_SIZE 1536  //buffer size (elements) for <gpu_tensor_block_copy_dlf_XX__>
 #endif
 #define TENS_TRANSP_TAB_SIZE 69    //look up table size (integers) for <gpu_tensor_block_copy_dlf_XX__>
-#define MAT_MULT_TILE_DIM 16       //tile dimension size for <gpu_matrix_multiply_tn_XX__>
+#define MAT_MULT_TILE_DIMY 16      //Y tile dimension size for <gpu_matrix_multiply_tn_XX__>
+#if CUDA_ARCH >= 200
+#define MAT_MULT_TILE_DIMX 32      //X tile dimension size for <gpu_matrix_multiply_tn_XX__>: Must be multiple of MAT_MULT_TILE_DIMY
+#else
+#define MAT_MULT_TILE_DIMX 16      //X tile dimension size for <gpu_matrix_multiply_tn_XX__>: Must be multiple of MAT_MULT_TILE_DIMY
+#endif
 #define THRDS_ARRAY_PRODUCT 256    //threads per block for <gpu_array_product_XX__>
 #define THRDS_ARRAY_NORM2 256      //threads per block for <gpu_array_2norm2_XX__>
 #define THRDS_ARRAY_INIT 256       //threads per block for <gpu_array_init_XX__>
 #define THRDS_ARRAY_SCALE 256      //threads per block for <gpu_array_scale_XX__> and <gpu_array_dot_product_XX__>
 #define THRDS_ARRAY_ADD 256        //threads per block for <gpu_array_add_XX__>
-#if __CUDA_ARCH__ >= 200
+#if CUDA_ARCH >= 200
 #define THRDS_TENSOR_COPY 256      //threads per block for <gpu_tensor_block_copy_dlf_XX__>
 #else
 #define THRDS_TENSOR_COPY 192      //threads per block for <gpu_tensor_block_copy_dlf_XX__>
@@ -178,6 +189,7 @@ extern "C"{
  int gpu_mem_free(void *dev_ptr);
  int gpu_get_error_count();
  int gpu_get_debug_dump(int *dump);
+ int gpu_set_shmem_width(int width);
  void gpu_set_event_policy(int alg);
  void gpu_set_transpose_algorithm(int alg);
  void gpu_set_matmult_algorithm(int alg);

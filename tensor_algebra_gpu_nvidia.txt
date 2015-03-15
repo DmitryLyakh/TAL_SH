@@ -1,9 +1,9 @@
-Document: Tensor Algebra Module for NVidia GPU.
+Document: Tensor Algebra Module for NVidia GPU: NV-TAL
 Author: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
 Organization: National Center for Computational Sciences,
               Oak Ridge National Laboratory,
               Oak Ridge, TN 37831, USA
-Revision: 2014-12-09 (started 2013-12-16).
+Revision: 2015-01-30 (started 2013-12-16).
 Language: At least CUDA 5.0 C and C99.
 Libraries: BLAS and CUDA 5.0 BLAS v.2.
 
@@ -22,7 +22,8 @@ Thus, the distributed tensors operated on can in general be
 block-sparse, stored as a collection of non-zero tensor blocks.
 By a tensor, we generally understand a multi-dimensional array.
 A tensor block is a slice of this multi-dimensional array
-in the sense of the Fortran-95 standard.
+(in the sense of the Fortran-95 standard) stored in a contiguous
+segment of memory.
 
 There are two main source files:
  (1) tensor_algebra_gpu_nvidia.cu: Tensor algebra API and CUDA kernels;
@@ -96,7 +97,7 @@ later be used for querying the task completion and timings.
      tensBlck_t **ctens: OUT: An empty tensor block;
     ): returns an error code.
 
-(6) Destroy an empty tensor block:
+(6) Destroy a tensor block:
     int tensBlck_destroy(
      tensBlck_t *ctens: INOUT: NULL;
     ): returns an error code.
