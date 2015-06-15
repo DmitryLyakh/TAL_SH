@@ -6,7 +6,7 @@ LICENSE: GPL v2 **/
 #include <time.h>
 #include "tensor_algebra.h"
 
-#define DIM_EXT 75 //tensor dimension extent
+#define DIM_EXT 40 //tensor dimension extent
 
 const int first_gpu=0, last_gpu=0; //range of GPUs used
 size_t buf_size=6442450944; //desired Host argument buffer size in bytes
@@ -120,7 +120,7 @@ int main(int argc, char** args){
  printf("CUDA task 0 final status is %d, time %f %f %f %f \n",tsk_stats[0],tm,incopy,outcopy,comput);
  tm=cuda_task_time(tsk1,&incopy,&outcopy,&comput);
  printf("CUDA task 1 final status is %d, time %f %f %f %f \n",tsk_stats[1],tm,incopy,outcopy,comput);
- flops=(double)(75);
+ flops=(double)(DIM_EXT);
  printf("Total GFlops/s = %f \n",(flops*flops*flops*flops*flops*flops*2.0)/(tm*1073741824.0));
 // Inspect results:
  printf("Destination element inspection [0]: %e \n",((double*)(tb0->elems_h))[13]);
