@@ -83,8 +83,8 @@ int main(int argc, char** args){
 //Tensor initializations (four concurrent tasks are executed on GPU asynchronously w.r.t. Host):
  errc=gpu_tensor_block_init_(tb1,0.01,COPY_BACK,tsk0); if(errc){printf("#ERROR: gpu_tensor_block_init_ [0] failed!"); return 1;};
  errc=gpu_tensor_block_init_(tb2,0.001,COPY_BACK,tsk1); if(errc){printf("#ERROR: gpu_tensor_block_init_ [1] failed!"); return 1;};
- errc=gpu_tensor_block_init_(tb4,0.01,COPY_BACK,tsk2); if(errc){printf("#ERROR: gpu_tensor_block_init_ [2] failed!"); return 1;};
- errc=gpu_tensor_block_init_(tb5,0.001,COPY_BACK,tsk3); if(errc){printf("#ERROR: gpu_tensor_block_init_ [3] failed!"); return 1;};
+ errc=gpu_tensor_block_init_(tb4,0.0,COPY_BACK,tsk2); if(errc){printf("#ERROR: gpu_tensor_block_init_ [2] failed!"); return 1;};
+ errc=gpu_tensor_block_init_(tb5,0.0,COPY_BACK,tsk3); if(errc){printf("#ERROR: gpu_tensor_block_init_ [3] failed!"); return 1;};
 // Wait on completion (or do something on Host):
  tsks[0]=tsk0; tsks[1]=tsk1; tsks[2]=tsk2; tsks[3]=tsk3; errc=cuda_tasks_wait(4,tsks,tsk_stats);
  if(errc){printf("#ERROR: cuda_tasks_wait [0,1,2,3] failed!"); return 1;};
@@ -97,16 +97,27 @@ int main(int argc, char** args){
  printf("CUDA task 2 final status is %d, time %f %f %f %f \n",tsk_stats[2],tm,incopy,outcopy,comput);
  tm=cuda_task_time(tsk3,&incopy,&outcopy,&comput);
  printf("CUDA task 3 final status is %d, time %f %f %f %f \n",tsk_stats[3],tm,incopy,outcopy,comput);
-// Mark tensor blocks as absent on GPU:
- errc=tensBlck_set_absence(tb1);
- errc=tensBlck_set_absence(tb2);
- errc=tensBlck_set_absence(tb4);
- errc=tensBlck_set_absence(tb5);
+// Mark tensor blocks as present on GPU:
+ errc=tensBlck_set_presence(tb1);
+ errc=tensBlck_set_presence(tb2);
+ errc=tensBlck_set_presence(tb4);
+ errc=tensBlck_set_presence(tb5);
 // Clean CUDA tasks for reuse:
  errc=cuda_task_clean(tsk0); if(errc){printf("#ERROR: cuda_task_clean [0] failed!"); return 1;};
  errc=cuda_task_clean(tsk1); if(errc){printf("#ERROR: cuda_task_clean [1] failed!"); return 1;};
  errc=cuda_task_clean(tsk2); if(errc){printf("#ERROR: cuda_task_clean [2] failed!"); return 1;};
  errc=cuda_task_clean(tsk3); if(errc){printf("#ERROR: cuda_task_clean [3] failed!"); return 1;};
+
+//Tensor copy (for bandwidth measure only):
+ int prmn0[]={1, 1,2,3,4}; //trivial permutation
+ errc=gpu_tensor_block_copy_dlf(prmn0,tb1,tb4); if(errc){printf("#ERROR: gpu_tensor_block_copy [1] failed!"); return 1;};
+ int prmn1[]={1, 4,3,2,1}; //reverse permutation
+ errc=gpu_tensor_block_copy_dlf(prmn1,tb2,tb5); if(errc){printf("#ERROR: gpu_tensor_block_copy [2] failed!"); return 1;};
+// Mark tensor blocks as absent on GPU:
+ errc=tensBlck_set_absence(tb1);
+ errc=tensBlck_set_absence(tb2);
+ errc=tensBlck_set_absence(tb4);
+ errc=tensBlck_set_absence(tb5);
 
 //Tensor contractions (two concurrent tasks are executed on GPU asynchronously w.r.t. Host):
  int cptrn[8]={3,-3,1,-1,-4,4,-2,2}; //D(a,b,c,d)+=L(c,k,a,l)*R(l,d,k,b)

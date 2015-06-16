@@ -1,6 +1,6 @@
 /** Parameters, derived types, and function prototypes used
     in tensor_algebra_gpu_nvidia.cu, c_proc_bufs.cu (NV-TAL).
-REVISION: 2015/03/15
+REVISION: 2015/05/05
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -100,9 +100,10 @@ NOTES:
 #define THRDS_TENSOR_COPY_SCAT 256 //threads per block for <gpu_tensor_block_copy_scatter_dlf_XX__>
 
 //DATA KINDS:
-#define R4 4     //float data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
-#define R8 8     //double data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
-#define C8 16    //double complex data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
+#define NO_TYPE 0 //null type
+#define R4 4      //float data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
+#define R8 8      //double data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
+#define C8 16     //double complex data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
 
 //CUDA TASK STATUS:
 #define CUDA_TASK_ERROR -1

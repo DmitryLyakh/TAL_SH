@@ -1,5 +1,5 @@
 /** Tensor Algebra Library for NVidia GPUs (CUDA).
-REVISION: 2015/03/15
+REVISION: 2015/06/15
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -247,7 +247,7 @@ __host__ int tensBlck_create(tensBlck_t **ctens)
 
 __host__ int tensBlck_destroy(tensBlck_t *ctens)
 /** Destroy an instance of tensBlck_t **/
-{if(ctens != NULL){free(ctens); return 0;}else{return 1;}}
+{if(ctens != NULL){free(ctens); ctens=NULL; return 0;}else{return 1;}}
 
 __host__ int tensBlck_construct(tensBlck_t *ctens, int dev_kind, int dev_num, int data_kind, int trank,
                                 const int *dims, const int *divs, const int *grps, const int *prmn,
@@ -549,9 +549,9 @@ __host__ int cuda_task_destroy(cudaTask_t *cuda_task)
    }else{
     err_code+=50000;
    }
-   free(cuda_task);
+   free(cuda_task); cuda_task=NULL;
   }else if(i == CUDA_TASK_EMPTY || i == CUDA_TASK_ERROR){ //empty task or cuda_task_complete() failed
-   free(cuda_task);
+   free(cuda_task); cuda_task=NULL;
   }else{ //task has not completed yet, thus cannot be destroyed
    err_code+=100000;
   }
