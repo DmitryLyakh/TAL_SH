@@ -1,6 +1,6 @@
 /** Explicit memory management for the GPU-enabled
 implementation of the tensor algebra library (NV-TAL).
-REVISION: 2015/02/06
+REVISION: 2015/06/15
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -29,14 +29,14 @@ OPTIONS:
 #include <cuda_runtime.h>
 #include "tensor_algebra.h"
 
-#define GPU_MEM_PART_USED 90    //percentage of free GPU global memory to be actually allocated for GPU argument buffers
-#define MEM_ALIGN 16            //memory alignment (in bytes) for argument buffers (>=16)
-#define BLCK_BUF_DEPTH_HOST 4   //number of distinct tensor block buffer levels on Host
-#define BLCK_BUF_TOP_HOST 3     //number of argument buffer entries of the largest size (level 0) on Host: multiple of 3
-#define BLCK_BUF_BRANCH_HOST 3  //branching factor for each subsequent buffer level on Host
-#define BLCK_BUF_DEPTH_GPU 3    //number of distinct tensor block buffer levels on GPU
-#define BLCK_BUF_TOP_GPU 3      //number of argument buffer entries of the largest size (level 0) on GPU: multiple of 3
-#define BLCK_BUF_BRANCH_GPU 2   //branching factor for each subsequent buffer level on GPU
+#define GPU_MEM_PART_USED 90         //percentage of free GPU global memory to be actually allocated for GPU argument buffers
+#define MEM_ALIGN GPU_CACHE_LINE_LEN //memory alignment (in bytes) for argument buffers (>=16)
+#define BLCK_BUF_DEPTH_HOST 4        //number of distinct tensor block buffer levels on Host
+#define BLCK_BUF_TOP_HOST 3          //number of argument buffer entries of the largest size (level 0) on Host: multiple of 3
+#define BLCK_BUF_BRANCH_HOST 3       //branching factor for each subsequent buffer level on Host
+#define BLCK_BUF_DEPTH_GPU 3         //number of distinct tensor block buffer levels on GPU
+#define BLCK_BUF_TOP_GPU 3           //number of argument buffer entries of the largest size (level 0) on GPU: multiple of 3
+#define BLCK_BUF_BRANCH_GPU 2        //branching factor for each subsequent buffer level on GPU
 
 static int VERBOSE=1; //verbosity (for errors)
 static int DEBUG=0;   //debugging
@@ -262,8 +262,10 @@ int arg_buf_deallocate(int gpu_beg, int gpu_end)
  cudaError_t err=cudaSuccess;
 #endif
  err_code=0;
- if(abh_occ != NULL) free(abh_occ); abh_occ_size=0; max_args_host=0;
- for(i=0;i<MAX_GPUS_PER_NODE;i++){if(abg_occ[i] != NULL) free(abg_occ[i]); abg_occ_size[i]=0; max_args_gpu[i]=0;}
+ if(abh_occ != NULL) free(abh_occ); abh_occ=NULL; abh_occ_size=0; max_args_host=0;
+ for(i=0;i<MAX_GPUS_PER_NODE;i++){
+  if(abg_occ[i] != NULL) free(abg_occ[i]); abg_occ[i]=NULL; abg_occ_size[i]=0; max_args_gpu[i]=0;
+ }
  arg_buf_host_size=0;
 #ifndef NO_GPU
  err=cudaFreeHost(arg_buf_host);
@@ -294,7 +296,7 @@ int arg_buf_deallocate(int gpu_beg, int gpu_end)
   i=free_gpus(gpu_beg,gpu_end); if(i != 0) err_code+=1000;
  }
 #else
- free(arg_buf_host);
+ free(arg_buf_host); arg_buf_host=NULL;
 #endif
  return err_code;
 }

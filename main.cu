@@ -16,7 +16,8 @@ int main(int argc, char** args){
  cudaTask_t *tsk0,*tsk1,*tsk2,*tsk3,*tsks[4]; //cuda task handles
  float tm,incopy,outcopy,comput;
  int errc,max_args,tsk_stats[4];
- double flops;
+ double flops,tmm;
+ clock_t tms,tme;
 
 //Allocate argument buffers (initializes both the Host and all GPUs):
  errc=arg_buf_allocate(&buf_size,&max_args,first_gpu,last_gpu);
@@ -25,7 +26,7 @@ int main(int argc, char** args){
 
 //Activate a specific GPU:
  errc=gpu_activate(first_gpu); if(errc){printf("#ERROR: gpu_activate failed!"); return 1;};
- errc=gpu_set_shmem_width(R8);
+ errc=gpu_set_shmem_width(R8); //set Shared Memory width to 8-byte (double)
  printf("Focused on GPU #%d \n",first_gpu);
 
 //Create and initialize few tensor blocks on Host:
@@ -110,9 +111,16 @@ int main(int argc, char** args){
 
 //Tensor copy (for bandwidth measure only):
  int prmn0[]={1, 1,2,3,4}; //trivial permutation
- errc=gpu_tensor_block_copy_dlf(prmn0,tb1,tb4); if(errc){printf("#ERROR: gpu_tensor_block_copy [1] failed!"); return 1;};
- int prmn1[]={1, 4,3,2,1}; //reverse permutation
- errc=gpu_tensor_block_copy_dlf(prmn1,tb2,tb5); if(errc){printf("#ERROR: gpu_tensor_block_copy [2] failed!"); return 1;};
+ int prmn1[]={1, 4,3,2,1}; //reverse permutation (scatter)
+ gpu_set_transpose_algorithm(EFF_TRN_OFF);
+ printf("GPU RAM copy addresses: %p --> %p\n",(void*)(tb2->elems_d),(void*)(tb5->elems_d));
+ errc=gpu_tensor_block_copy_dlf(prmn1,tb2,tb5); if(errc){printf("#ERROR: gpu_tensor_block_copy [1] failed!"); return 1;};
+ printf("GPU RAM copy addresses: %p --> %p\n",(void*)(tb1->elems_d),(void*)(tb4->elems_d));
+ errc=gpu_tensor_block_copy_dlf(prmn0,tb1,tb4); if(errc){printf("#ERROR: gpu_tensor_block_copy [2] failed!"); return 1;};
+ gpu_set_transpose_algorithm(EFF_TRN_ON);
+ printf("GPU RAM copy addresses: %p --> %p\n",(void*)(tb2->elems_d),(void*)(tb5->elems_d));
+ errc=gpu_tensor_block_copy_dlf(prmn1,tb2,tb5); if(errc){printf("#ERROR: gpu_tensor_block_copy [3] failed!"); return 1;};
+
 // Mark tensor blocks as absent on GPU:
  errc=tensBlck_set_absence(tb1);
  errc=tensBlck_set_absence(tb2);
@@ -121,21 +129,23 @@ int main(int argc, char** args){
 
 //Tensor contractions (two concurrent tasks are executed on GPU asynchronously w.r.t. Host):
  int cptrn[8]={3,-3,1,-1,-4,4,-2,2}; //D(a,b,c,d)+=L(c,k,a,l)*R(l,d,k,b)
+ tms=clock();
  errc=gpu_tensor_block_contract_dlf_(cptrn,tb1,tb2,tb0,COPY_BACK,tsk0); if(errc){printf("#ERROR: gpu_tensor_block_contract_ [0] failed!"); return 1;};
  errc=gpu_tensor_block_contract_dlf_(cptrn,tb4,tb5,tb3,COPY_BACK,tsk1); if(errc){printf("#ERROR: gpu_tensor_block_contract_ [1] failed!"); return 1;};
 // Wait on completion:
 // ...Do something on Host
  tsks[0]=tsk0; tsks[1]=tsk1; errc=cuda_tasks_wait(2,tsks,tsk_stats);
+ tme=clock(); tmm=((double)(tme-tms))/CLOCKS_PER_SEC;
  if(errc){printf("#ERROR: cuda_tasks_wait [0,1] failed!"); return 1;};
 // Print timings:
  tm=cuda_task_time(tsk0,&incopy,&outcopy,&comput);
  printf("CUDA task 0 final status is %d, time %f %f %f %f \n",tsk_stats[0],tm,incopy,outcopy,comput);
  tm=cuda_task_time(tsk1,&incopy,&outcopy,&comput);
  printf("CUDA task 1 final status is %d, time %f %f %f %f \n",tsk_stats[1],tm,incopy,outcopy,comput);
- flops=(double)(DIM_EXT); flops=flops*flops*flops*flops*flops*flops*2.0; //multiplications and additions
- printf("Total GFlop/s  = %f \n",flops/(tm*1073741824.0));
- printf("Comput GFlop/s = %f \n",flops/(comput*1073741824.0));
- printf("Efficiency     = %f \n",comput/tm);
+ flops=(double)(DIM_EXT); flops=flops*flops*flops*flops*flops*flops*2.0*2.0; //multiplications and additions (two contractions)
+ printf("Total GFlop/s  = %f \n",flops/(tmm*1073741824.0));
+// printf("Comput GFlop/s = %f \n",flops/(comput*1073741824.0));
+// printf("Efficiency     = %f \n",comput/tm);
 // Inspect results:
  printf("Destination element inspection [0]: %e \n",((double*)(tb0->elems_h))[13]);
  printf("Destination element inspection [3]: %e \n",((double*)(tb3->elems_h))[13]);
