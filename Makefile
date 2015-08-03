@@ -1,10 +1,12 @@
 NAME = nvtal_test.x
-#Cross-compiling wrappers: [YES|NO]:
+#Cray cross-compiling wrappers: [YES|NO]:
 WRAP = NO
 #Compiler: [GNU|PGI|INTEL|CRAY]:
 TOOLKIT = GNU
 #Optimization: [DEV|OPT]:
 TYPE = OPT
+#MPI [MPICH|OPENMPI|NONE]:
+MPILIB = NONE
 #DONE.
 #-----------------------------------------------
 FC_GNU = gfortran
@@ -28,11 +30,13 @@ CPP = $(CPP_$(WRAP))
 CUDA_C = nvcc
 MPI_INC_MPICH = -I/usr/lib/mpich/include
 MPI_INC_OPENMPI = -I/usr/local/include
+MPI_INC_NONE = -I.
 MPI_INC_YES = -I.
 MPI_INC_NO = $(MPI_INC_$(MPILIB))
 MPI_INC = $(MPI_INC_$(WRAP))
 MPI_LINK_MPICH = -L/usr/lib
 MPI_LINK_OPENMPI = -L/usr/local/lib
+MPI_LINK_NONE = -L.
 MPI_LINK_YES = -L.
 MPI_LINK_NO = $(MPI_LINK_$(MPILIB))
 MPI_LINK = $(MPI_LINK_$(WRAP))
@@ -43,9 +47,9 @@ CUDA_LINK_YES = -L. -lcudart -lcublas
 CUDA_LINK_NO = -L/usr/local/cuda/lib64 -lcudart -lcublas
 CUDA_LINK = $(CUDA_LINK_$(WRAP))
 
-CUDA_FLAGS_DEV = --compile -arch=sm_35 -D CUDA_ARCH=350 -g -G -D DEBUG_GPU
-CUDA_FLAGS_OPT = --compile -arch=sm_35 -D CUDA_ARCH=350 -O3
-CUDA_FLAGS = $(CUDA_FLAGS_$(TYPE))
+CUDA_FLAGS_DEV = --compile -arch=sm_35 -g -G -D DEBUG_GPU
+CUDA_FLAGS_OPT = --compile -arch=sm_35 -O3
+CUDA_FLAGS = $(CUDA_FLAGS_$(TYPE)) -D CUDA_ARCH=350
 LA_LINK_MKL = -lmkl_core -lmkl_intel_thread -lmkl_intel_lp64 -lmkl_blas95_lp64 -lmkl_lapack95_lp64 -lrt
 LA_LINK_ACML = -lacml_mp -L/opt/acml/5.3.1/gfortran64_fma4_mp/lib
 LA_LINK_DEFAULT_YES = -L.
@@ -61,13 +65,13 @@ CFLAGS_OPT = -c -D CUDA_ARCH=350 -O3
 CFLAGS = $(CFLAGS_$(TYPE))
 FFLAGS_INTEL_DEV = -c -g -fpp -vec-threshold4 -openmp
 FFLAGS_INTEL_OPT = -c -O3 -fpp -vec-threshold4 -openmp
-FFLAGS_CRAY_DEV = -c -D CUDA_ARCH=350 -g
-FFLAGS_CRAY_OPT = -c -D CUDA_ARCH=350 -O3
+FFLAGS_CRAY_DEV = -c -g
+FFLAGS_CRAY_OPT = -c -O3
 FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -pg
 FFLAGS_GNU_OPT = -c -fopenmp -O3
 FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -pg
 FFLAGS_PGI_OPT = -c -mp -Mcache_align -Mstandard -O3
-FFLAGS = $(FFLAGS_$(TOOLKIT)_$(TYPE)) -D NO_PHI -D NO_AMD
+FFLAGS = $(FFLAGS_$(TOOLKIT)_$(TYPE)) -D CUDA_ARCH=350 -D NO_PHI -D NO_AMD
 LTHREAD_INTEL = -liomp5
 LTHREAD_CRAY  = -L.
 LTHREAD_GNU   = -lgomp
