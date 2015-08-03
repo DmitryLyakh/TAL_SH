@@ -6,8 +6,8 @@ LICENSE: GPL v2 **/
 #include <time.h>
 #include "tensor_algebra.h"
 
-#define U_DIM_EXT 51 //uncontracted tensor dimension extent
-#define C_DIM_EXT 51 //contracted tensor dimension extent
+#define U_DIM_EXT 81 //uncontracted tensor dimension extent
+#define C_DIM_EXT 81 //contracted tensor dimension extent
 
 const int first_gpu=0, last_gpu=0; //range of GPUs used
 size_t buf_size=1000000; //desired argument buffer size in bytes (Host pinned RAM)
@@ -131,8 +131,28 @@ int main(int argc, char** args){
  errc=tensBlck_set_absence(tb4);
  errc=tensBlck_set_absence(tb5);
 
-//Tensor contractions (two concurrent tasks are executed on GPU asynchronously w.r.t. Host):
+//A single tensor contraction:
  int cptrn[8]={4,-3,3,-1,-4,2,-2,1}; //D(a,b,c,d)+=L(d,k,c,l)*R(l,b,k,a)
+ tms=clock();
+ errc=gpu_tensor_block_contract_dlf_(cptrn,tb1,tb2,tb0,COPY_BACK,tsk0); if(errc){printf("#ERROR: gpu_tensor_block_contract_ [0] failed!"); return 1;};
+ tsks[0]=tsk0; errc=cuda_tasks_wait(1,tsks,tsk_stats);
+ tme=clock(); tmm=((double)(tme-tms))/CLOCKS_PER_SEC;
+ if(errc){printf("#ERROR: cuda_tasks_wait [0] failed!"); return 1;};
+ tm=cuda_task_time(tsk0,&incopy,&outcopy,&comput);
+ printf("CUDA task 0 final status is %d, time %f %f %f %f \n",tsk_stats[0],tm,incopy,outcopy,comput);
+ u_ext=(double)(U_DIM_EXT); c_ext=(double)(C_DIM_EXT);
+ flops=u_ext*u_ext*u_ext*u_ext*c_ext*c_ext*2.0; //multiplications and additions
+ printf("Effective GFlop/s  = %f \n",flops/(tmm*1073741824.0)); //single tensor contractions
+ printf("On-GPU GFlop/s     = %f \n",flops/(comput*1073741824.0));
+ printf("Destination element inspection [0]: %e \n",((double*)(tb0->elems_h))[13]);
+ printf("Should be  %e \n",c_ext*c_ext*init_val*init_val);
+ errc=cuda_task_clean(tsk0); if(errc){printf("#ERROR: cuda_task_clean [0] failed!"); return 1;};
+ errc=tensBlck_set_absence(tb0);
+ errc=tensBlck_set_absence(tb1);
+ errc=tensBlck_set_absence(tb2);
+
+//Tensor contractions (two concurrent tasks are executed on GPU asynchronously w.r.t. Host):
+// int cptrn[8]={4,-3,3,-1,-4,2,-2,1}; //D(a,b,c,d)+=L(d,k,c,l)*R(l,b,k,a)
  tms=clock();
  errc=gpu_tensor_block_contract_dlf_(cptrn,tb1,tb2,tb0,COPY_BACK,tsk0); if(errc){printf("#ERROR: gpu_tensor_block_contract_ [0] failed!"); return 1;};
  errc=gpu_tensor_block_contract_dlf_(cptrn,tb4,tb5,tb3,COPY_BACK,tsk1); if(errc){printf("#ERROR: gpu_tensor_block_contract_ [1] failed!"); return 1;};
@@ -149,11 +169,10 @@ int main(int argc, char** args){
  u_ext=(double)(U_DIM_EXT); c_ext=(double)(C_DIM_EXT);
  flops=u_ext*u_ext*u_ext*u_ext*c_ext*c_ext*2.0; //multiplications and additions
  printf("Effective GFlop/s  = %f \n",2.0*flops/(tmm*1073741824.0)); //two tensor contractions
- printf("On-GPU GFlop/s     = %f \n",flops/(comput*1073741824.0)); //meaningless with pipelining
 // Inspect results:
  printf("Destination element inspection [0]: %e \n",((double*)(tb0->elems_h))[13]);
  printf("Destination element inspection [3]: %e \n",((double*)(tb3->elems_h))[13]);
- printf("Should be  %e \n",c_ext*c_ext*init_val*init_val);
+ printf("Should be  %e %e \n",c_ext*c_ext*init_val*init_val*2.0,c_ext*c_ext*init_val*init_val);
 //---------------------------------------------------------------------------------
 
  printf("Cleaning ... ");
