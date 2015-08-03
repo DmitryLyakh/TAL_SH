@@ -1,6 +1,8 @@
-/** Explicit memory management for the GPU-enabled
-implementation of the tensor algebra library (NV-TAL).
-REVISION: 2015/06/15
+/** Explicit memory management for the accelerator-enabled
+implementation of the tensor algebra library TAL-SH:
+CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
+XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
+REVISION: 2015/07/20
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -30,7 +32,7 @@ OPTIONS:
 #include "tensor_algebra.h"
 
 #define GPU_MEM_PART_USED 90         //percentage of free GPU global memory to be actually allocated for GPU argument buffers
-#define MEM_ALIGN GPU_CACHE_LINE_LEN //memory alignment (in bytes) for argument buffers (>=16)
+#define MEM_ALIGN GPU_CACHE_LINE_LEN //memory alignment (in bytes) for argument buffers
 #define BLCK_BUF_DEPTH_HOST 4        //number of distinct tensor block buffer levels on Host
 #define BLCK_BUF_TOP_HOST 3          //number of argument buffer entries of the largest size (level 0) on Host: multiple of 3
 #define BLCK_BUF_BRANCH_HOST 3       //branching factor for each subsequent buffer level on Host
@@ -60,7 +62,7 @@ static size_t blck_sizes_host[BLCK_BUF_DEPTH_HOST]; //distinct tensor block buff
 static size_t blck_sizes_gpu[MAX_GPUS_PER_NODE][BLCK_BUF_DEPTH_GPU]; //distinct tensor block buffered sizes (in bytes) on GPUs
 static int const_args_link[MAX_GPUS_PER_NODE][MAX_GPU_ARGS]; //linked list of free entries in constant memory banks for each GPU
 static int const_args_ffe[MAX_GPUS_PER_NODE]; //FFE of the const_args_link[] for each GPU
-static size_t *abh_occ=NULL; //occupitation status for each buffer entry in Host argument buffer (*arg_buf_host)
+static size_t *abh_occ=NULL; //occupation status for each buffer entry in Host argument buffer (*arg_buf_host)
 static size_t *abg_occ[MAX_GPUS_PER_NODE]; //occupation status for each buffer entry in GPU argument buffers(*arg_buf_gpu)
 static size_t abh_occ_size=0; //total number of entries in the multi-level Host argument buffer occupancy table
 static size_t abg_occ_size[MAX_GPUS_PER_NODE]; //total numbers of entries in the multi-level GPUs argument buffer occupancy tables
@@ -380,7 +382,7 @@ static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, siz
    ab_occ[m]+=k;
   }
  }else{
-  return 5;
+  return 5; //no appropriate entry found: not an error
  }
  return 0;
 }

@@ -3,7 +3,7 @@ Author: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
 Organization: National Center for Computational Sciences,
               Oak Ridge National Laboratory,
               Oak Ridge, TN 37831, USA
-Revision: 2015-01-30 (started 2013-12-16).
+Revision: 2015-07-20 (started 2013-12-16).
 Language: At least CUDA 5.0 C and C99.
 Libraries: BLAS and CUDA 5.0 BLAS v.2.
 
@@ -16,59 +16,60 @@ on NVidia GPU accelerators, asynchronously with resect to
 the Host. Tensor operations are performed on tensor blocks,
 that is, tensor slices stored in local CPU/GPU RAM (on a node).
 This module can also be used in any parallel software that
-requires basic tensor algebra operations, in which
-tensors are stored distributively in terms of tensor blocks.
+requires basic tensor algebra. In this case, tensors must
+be stored distributively in terms of tensor blocks.
 Thus, the distributed tensors operated on can in general be
 block-sparse, stored as a collection of non-zero tensor blocks.
 By a tensor, we generally understand a multi-dimensional array.
 A tensor block is a slice of this multi-dimensional array
 (in the sense of the Fortran-95 standard) stored in a contiguous
-segment of memory.
+segment of memory on some node.
 
 There are two main source files:
  (1) tensor_algebra_gpu_nvidia.cu: Tensor algebra API and CUDA kernels;
- (2) c_proc_bufs.cu: CPU/GPU memory management.
+ (2) c_proc_bufs.cu: CPU/GPU memory management and library context initialization.
 
 
 *** II. Data types ***
+
 Two main derived data types are used:
  (1) Tensor block specification:
      typedef struct{
-      int device_id;        //device on which the tensor block already resides (+) or will reside (-) (device_id=0 means Host)
-      int data_kind;        //tensor element size in bytes: float (4), double (8), or double complex (16)
+      int device_id;        //GPU device on which the tensor block already resides (+) or will reside (-) (device_id=0 means Host)
+      int data_kind;        //tensor element size in bytes: float (R4), double (R8), or double complex (C8)
       int rank;             //tensor block rank (>=0)
-      int *dims_h;          //tensor block dimension extents (0th index is the most minor one): HOST memory
-      int *divs_h;          //tensor block dimension dividers: HOST memory (Reserved)
-      int *grps_h;          //tensor block dimension groups: HOST memory (Reserved)
-      int *prmn_h;          //tensor block dimension permutation (not to be set by user!): HOST memory
-      void *elems_h;        //tensor block elements (dlf): HOST memory (only one element for scalars)
-      void *elems_d;        //tensor block elements (dlf): DEVICE global memory (only one element for scalars)
-      int buf_entry_gpu;    //GPU argument buffer entry pointed to by *elems_d: GPU global memory
-      int const_args_entry; //entry number in const_args[]: GPU constant memory (dims[] and prmn[] arrays are stored there)
+      int *dims_h;          //tensor block dimension extents (0th index is the most minor one): HOST pinned memory
+      int *divs_h;          //tensor block dimension dividers: HOST pinned memory (Reserved)
+      int *grps_h;          //tensor block dimension groups: HOST pinned memory (Reserved)
+      int *prmn_h;          //tensor block dimension permutation (never to be set by user!): HOST pinned memory
+      void *elems_h;        //tensor block elements: HOST pinned memory (only one element for scalars)
+      void *elems_d;        //tensor block elements: DEVICE global memory (only one element for scalars)
+      int buf_entry_gpu;    //GPU argument buffer entry pointed to by *elems_d
+      int const_args_entry; //entry number in const_args[] in GPU constant memory (dims[] and prmn[] arrays are stored there)
      } tensBlck_t;
  (2) CUDA task:
      typedef struct{
       int task_error;                     //error code (<0: Task is either empty or in progress; 0: Success; >0: Launch error code)
-      int gpu_id;                         //Nvidia GPU ID on which the task was scheduled (-1 means CPU Host)
+      int gpu_id;                         //NVidia GPU ID on which the task was scheduled (-1 means CPU Host)
       cudaStream_t task_stream;           //CUDA stream the task went into
       cudaEvent_t task_start;             //CUDA event recorded at the beginning of the task
       cudaEvent_t task_comput;            //CUDA event recorded before the computing kernels start (all input data is on Device)
-      cudaEvent_t task_output;            //CUDA event recorded when the computing kernels finish (before output to the Host)
+      cudaEvent_t task_output;            //CUDA event recorded when the computing kernels finish (before the output sent to the Host)
       cudaEvent_t task_finish;            //CUDA event recorded at the end of the task (full completion)
       int scr_entry_count;                //number of additional GPU argument-buffer entries allocated by the task
       int scr_entry[MAX_SCR_ENTRY_COUNT]; //additional GPU argument-buffer entries allocated by the task
      } cudaTask_t;
 
 The first derived data type <tensBlck_t> serves for specifying
-an argument (tensor block) of a tensor operation (contraction,
-addition, rescaling, etc.). It needs to be specified by a user.
-The second derived data type is returned by asynchronous
-GPU functions implementing a particular tensor operation on
-NVidia GPU. This return handle is opaque to the user. It can
-later be used for querying the task completion and timings.
+an argument (tensor block) for a tensor operation (contraction, addition,
+rescaling, etc.) to be performed on NVidia GPU: It is specified by a user.
+The second derived data type (task handle) is returned by
+asynchronous functions which implement a particular tensor
+operation on NVidia GPU. This return handle is opaque to the user.
+It can later be used for querying the task completion and timings.
 
 
-*** III. Tensor algebra API functions ***
+*** III. NV-TAL API functions ***
 
 (1) Initialize a range of NVidia GPU accelerators:
     int init_gpus(
@@ -76,47 +77,47 @@ later be used for querying the task completion and timings.
      int gpu_end: IN: last GPU in the range;
     ): returns an error code.
 
-(2) Free GPU resources:
+(2) Free all GPU resources:
     int free_gpus(
      int gpu_beg: IN: first GPU in the range;
      int gpu_end: IN: last GPU in the range;
     ): returns an error code.
 
-(3) Check whether a specific NVidia GPU belongs to me:
+(3) Check whether a specific NVidia GPU has been initialized:
     int gpu_is_mine(
      int gpu_num: IN: GPU number;
     ): returns positive if mine.
 
-(4) Activates a specific Nvidia GPU:
+(4) Activate a specific NVidia GPU (must have been initialized):
     int gpu_activate(
      int gpu_num: IN: GPU number;
     ): returns an error code.
 
-(5) Create an empty tensor block:
+(5) Create an empty tensor block for the use on GPU:
     int tensBlck_create(
      tensBlck_t **ctens: OUT: An empty tensor block;
     ): returns an error code.
 
-(6) Destroy a tensor block:
+(6) Destroy an empty tensor block:
     int tensBlck_destroy(
-     tensBlck_t *ctens: INOUT: NULL;
+     tensBlck_t *ctens: IN: An empty tensor block: OUT: NULL;
     ): returns an error code.
 
-(7) Construct a tensor block:
+(7) Construct a tensor block for the use on GPU:
     int tensBlck_construct(
-     tensBlck_t *ctens: INOUT: Constructed tensor block;
-     int dev_kind: IN: Device kind where the block will be processed;
-     int dev_num: IN: Specific device number with its kind;
-     int data_kind: IN: Data kind (float, double, double complex);
+     tensBlck_t *ctens: IN: Empty tensor block: OUT: Constructed tensor block;
+     int dev_kind: IN: Device kind where the tensor block will be processed;
+     int dev_num: IN: Specific device number within its kind;
+     int data_kind: IN: Data kind (float: R4, double: R8, double complex: C8);
      int trank: IN: Tensor rank;
      int *dims: IN: Tensor dimension extents;
      int *divs: IN: Reserved;
      int *grps: IN: Reserved;
      int *prmn: IN: Reserved;
-     void *addr_host: IN: Address in the Host RAM;
-     void *addr_gpu: IN: Address in the GPU RAM;
+     void *addr_host: IN: Address in the (pinned) Host RAM;
+     void *addr_gpu: IN: Address in the GPU global RAM;
      int entry_gpu: IN: Buffer entry number in the GPU global RAM;
-     int entry_const: IN: Constant entry number on GPU.
+     int entry_const: IN: Constant entry number in the GPU constant memory.
     ): returns an error code.
 
 (8) Number of elements in a tensor block (tensor block volume):
@@ -129,12 +130,12 @@ later be used for querying the task completion and timings.
      cudaTask_t **cuda_task: OUT: An empty CUDA task;
     ): returns an error code.
 
-(10) Destroy an empty CUDA task:
+(10) Destroy a CUDA task:
      int cuda_task_destroy(
-      cudaTask_t *cuda_task: INOUT: NULL;
+      cudaTask_t *cuda_task: IN: CUDA task: OUT: NULL;
      ): returns an error code.
 
-(11) Check a CUDA task status:
+(11) Check the CUDA task status:
      int cuda_task_status(
       cudaTask_t *cuda_task: IN: CUDA task;
      ): returns CUDA task status.
