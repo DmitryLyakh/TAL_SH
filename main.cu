@@ -141,7 +141,7 @@ int main(int argc, char** args){
  print_task_timings(k,tsks,tsk_stats); //print timings for all tasks
 //Print the cumulative GFlop/s (all contractions on all GPUs):
  flops=0.0; for(i=0;i<8;i++){flops+=cflops[i];} //total number of Flops
- printf("Cumulative GFlop/s = %f \n",flops/(tmm*1073741824.0));
+ printf("Cumulative GFlop/s = %f; total time = %f sec\n",flops/(tmm*1073741824.0),tmm);
 
 //Inspect the results:
  for(i=0;i<24;i+=3){printf("Destination element inspection %d: %e \n",i,((double*)(tb[i]->elems_h))[13]);};
