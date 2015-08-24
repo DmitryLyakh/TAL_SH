@@ -46,14 +46,14 @@ int main(int argc, char** args){
  int i,j,k,my_gpu,errc,max_args,tsk_stats[MAX_TASKS];
  int rank[24]={4,4,4,4,4,4, 6,4,4,6,4,4, 2,4,4,2,4,4, 4,2,4,4,2,4}; //tensor block ranks
  int dims[24][6]={ //Tensor block dimension extents:
-  DM4,DM4,DM4,DM4,0,0,     DM4,DM4,DM4,DM4,0,0,  DM4,DM4,DM4,DM4,0,0,  //Contraction 1: D(a,b,i,j)+=L(k,l,a,b)*R(k,l,i,j)
-  DM4,DM4,DM4,DM4,0,0,     DM4,DM4,DM4,DM4,0,0,  DM4,DM4,DM4,DM4,0,0,  //Contraction 2: D(a,b,i,j)+=L(j,k,i,l)*R(l,b,k,a)
-  DM1,DM4,DM4,DM4,DM4,DM1, DM4,DM1,DM4,DM4,0,0,  DM4,DM4,DM4,DM1,0,0,  //Contraction 3: D(a,b,c,i,j,k)+=L(d,a,b,c)*R(d,i,j,k)
-  DM1,DM4,DM4,DM4,DM4,DM1, DM4,DM1,DM4,DM4,0,0,  DM4,DM4,DM1,DM4,0,0,  //Contraction 4: D(a,b,c,i,j,k)+=L(d,k,j,i)*R(c,b,a,d)
-  DM4,DM4,0,0,0,0,         DM4,DM4,DM4,DM4,0,0,  DM4,DM4,DM4,DM4,0,0,  //Contraction 5: D(a,i)+=L(k,l,m,a)*R(k,l,m,i)
-  DM4,DM4,0,0,0,0,         DM4,DM4,DM4,DM4,0,0,  DM4,DM4,DM4,DM4,0,0,  //Contraction 6: D(a,i)+=L(k,l,m,i)*R(a,m,l,k)
-  DM4,DM4,DM4,DM4,0,0,     DM4,DM4,0,0,0,0,      DM4,DM4,DM4,DM4,0,0,  //Contraction 7: D(a,b,i,j)+=L(c,a)*R(c,b,i,j)
-  DM4,DM4,DM4,DM4,0,0,     DM4,DM4,0,0,0,0,      DM4,DM4,DM4,DM4,0,0   //Contraction 8: D(a,b,i,j)+=L(c,j)*R(i,b,a,c)
+  DM2,DM2,DM2,DM2,0,0,     DM2,DM2,DM2,DM2,0,0,  DM2,DM2,DM2,DM2,0,0,  //Contraction 1: D(a,b,i,j)+=L(k,l,a,b)*R(k,l,i,j)
+  DM2,DM2,DM2,DM2,0,0,     DM2,DM2,DM2,DM2,0,0,  DM2,DM2,DM2,DM2,0,0,  //Contraction 2: D(a,b,i,j)+=L(j,k,i,l)*R(l,b,k,a)
+  DM1,DM2,DM2,DM2,DM2,DM1, DM2,DM1,DM2,DM2,0,0,  DM2,DM2,DM2,DM1,0,0,  //Contraction 3: D(a,b,c,i,j,k)+=L(d,a,b,c)*R(d,i,j,k)
+  DM1,DM2,DM2,DM2,DM2,DM1, DM2,DM1,DM2,DM2,0,0,  DM2,DM2,DM1,DM2,0,0,  //Contraction 4: D(a,b,c,i,j,k)+=L(d,k,j,i)*R(c,b,a,d)
+  DM2,DM2,0,0,0,0,         DM2,DM2,DM2,DM2,0,0,  DM2,DM2,DM2,DM2,0,0,  //Contraction 5: D(a,i)+=L(k,l,m,a)*R(k,l,m,i)
+  DM2,DM2,0,0,0,0,         DM2,DM2,DM2,DM2,0,0,  DM2,DM2,DM2,DM2,0,0,  //Contraction 6: D(a,i)+=L(k,l,m,i)*R(a,m,l,k)
+  DM2,DM2,DM2,DM2,0,0,     DM2,DM2,0,0,0,0,      DM2,DM2,DM2,DM2,0,0,  //Contraction 7: D(a,b,i,j)+=L(c,a)*R(c,b,i,j)
+  DM2,DM2,DM2,DM2,0,0,     DM2,DM2,0,0,0,0,      DM2,DM2,DM2,DM2,0,0   //Contraction 8: D(a,b,i,j)+=L(c,j)*R(i,b,a,c)
  };
  int cptrn[8][8]={ //Tensor contraction patterns:
   -1,-2, 1, 2,-1,-2, 3, 4, //Contraction pattern 1
