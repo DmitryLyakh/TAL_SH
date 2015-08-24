@@ -68,14 +68,14 @@ int main(int argc, char** args){
  double cflops[8];
 
 //Set the number of Flops for each tensor contraction:
- cflops[0]=dims[0][0]*dims[0][1]*dims[0][2]*dims[0][3]*dims[1][0]*dims[1][1];            //Flops for tensor contraction 1
- cflops[1]=cflops[0];                                                                    //Flops for tensor contraction 2
- cflops[2]=dims[6][0]*dims[6][1]*dims[6][2]*dims[6][3]*dims[6][4]*dims[6][5]*dims[7][0]; //Flops for tensor contraction 3
- cflops[3]=cflops[2];                                                                    //Flops for tensor contraction 4
- cflops[4]=dims[12][0]*dims[12][1]*dims[13][0]*dims[13][1]*dims[13][2];                  //Flops for tensor contraction 5
- cflops[5]=cflops[4];                                                                    //Flops for tensor contraction 6
- cflops[6]=dims[18][0]*dims[18][1]*dims[18][2]*dims[18][3]*dims[19][0];                  //Flops for tensor contraction 7
- cflops[7]=cflops[6];                                                                    //Flops for tensor contraction 8
+ cflops[0]=2*dims[0][0]*dims[0][1]*dims[0][2]*dims[0][3]*dims[1][0]*dims[1][1];            //Flops for tensor contraction 1
+ cflops[1]=cflops[0];                                                                      //Flops for tensor contraction 2
+ cflops[2]=2*dims[6][0]*dims[6][1]*dims[6][2]*dims[6][3]*dims[6][4]*dims[6][5]*dims[7][0]; //Flops for tensor contraction 3
+ cflops[3]=cflops[2];                                                                      //Flops for tensor contraction 4
+ cflops[4]=2*dims[12][0]*dims[12][1]*dims[13][0]*dims[13][1]*dims[13][2];                  //Flops for tensor contraction 5
+ cflops[5]=cflops[4];                                                                      //Flops for tensor contraction 6
+ cflops[6]=2*dims[18][0]*dims[18][1]*dims[18][2]*dims[18][3]*dims[19][0];                  //Flops for tensor contraction 7
+ cflops[7]=cflops[6];                                                                      //Flops for tensor contraction 8
 
 //Allocate argument buffers (initializes both the Host and all GPUs):
  errc=arg_buf_allocate(&buf_size,&max_args,first_gpu,last_gpu); //if you don't want to use Host buffer, set buf_size to a small value
@@ -125,8 +125,8 @@ int main(int argc, char** args){
  for(i=0;i<24;i++){errc=tensBlck_set_absence(tb[i]);};
 
 //Choose the tensor transpose and matrix multiplication algorithms:
- gpu_set_transpose_algorithm(EFF_TRN_OFF); //turn off the efficient tensor transpose (slow)
- gpu_set_matmult_algorithm(BLAS_OFF); //switch to custom BLAS kernels (slow)
+ gpu_set_transpose_algorithm(EFF_TRN_ON); //turn off the efficient tensor transpose (slow)
+ gpu_set_matmult_algorithm(BLAS_ON); //switch to custom BLAS kernels (slow)
 
 //Execute tensor contractions (concurrent tasks are executed on GPUs asynchronously w.r.t. Host):
  tms=clock(); k=0;
