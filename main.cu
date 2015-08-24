@@ -48,8 +48,8 @@ int main(int argc, char** args){
  int dims[24][6]={ //Tensor block dimension extents:
   DM3,DM3,DM3,DM3,0,0,     DM3,DM3,DM3,DM3,0,0,  DM3,DM3,DM3,DM3,0,0,  //Contraction 1: D(a,b,i,j)+=L(k,l,a,b)*R(k,l,i,j)
   DM3,DM3,DM3,DM3,0,0,     DM3,DM3,DM3,DM3,0,0,  DM3,DM3,DM3,DM3,0,0,  //Contraction 2: D(a,b,i,j)+=L(j,k,i,l)*R(l,b,k,a)
-  DM1,DM3,DM3,DM3,DM3,DM1, DM3,DM1,DM3,DM3,0,0,  DM3,DM3,DM3,DM1,0,0,  //Contraction 3: D(a,b,c,i,j,k)+=L(d,a,b,c)*R(d,i,j,k)
-  DM1,DM3,DM3,DM3,DM3,DM1, DM3,DM1,DM3,DM3,0,0,  DM3,DM3,DM1,DM3,0,0,  //Contraction 4: D(a,b,c,i,j,k)+=L(d,k,j,i)*R(c,b,a,d)
+  DM0,DM3,DM3,DM3,DM3,DM0, DM3,DM0,DM3,DM3,0,0,  DM3,DM3,DM3,DM0,0,0,  //Contraction 3: D(a,b,c,i,j,k)+=L(d,a,b,c)*R(d,i,j,k)
+  DM0,DM3,DM3,DM3,DM3,DM0, DM3,DM0,DM3,DM3,0,0,  DM3,DM3,DM0,DM3,0,0,  //Contraction 4: D(a,b,c,i,j,k)+=L(d,k,j,i)*R(c,b,a,d)
   DM3,DM3,0,0,0,0,         DM3,DM3,DM3,DM3,0,0,  DM3,DM3,DM3,DM3,0,0,  //Contraction 5: D(a,i)+=L(k,l,m,a)*R(k,l,m,i)
   DM3,DM3,0,0,0,0,         DM3,DM3,DM3,DM3,0,0,  DM3,DM3,DM3,DM3,0,0,  //Contraction 6: D(a,i)+=L(k,l,m,i)*R(a,m,l,k)
   DM3,DM3,DM3,DM3,0,0,     DM3,DM3,0,0,0,0,      DM3,DM3,DM3,DM3,0,0,  //Contraction 7: D(a,b,i,j)+=L(c,a)*R(c,b,i,j)
