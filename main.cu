@@ -96,7 +96,7 @@ int main(int argc, char** args){
    if(errc){printf("#ERROR: tensBlck_create %d failed!",i); return 1;};
    errc=tensBlck_alloc(tb[i],my_gpu,R8,rank[i],&(dims[i][0])); //allocate memory on Host (pinned) and GPU (buffer), init to zero on Host
    if(errc){printf("#ERROR: tensBlck_alloc %d failed!",i); return 1;};
-   printf("Allocated tensor block %d \n",i);
+   printf("Allocated tensor block %d: CPU/GPU address: %p / %p\n",i,tb[i]->elems_h,tb[i]->elems_d);
   };
  };
 
@@ -144,7 +144,9 @@ int main(int argc, char** args){
  printf("Cumulative GFlop/s = %f; total time = %f sec\n",flops/(tmm*1073741824.0),tmm);
 
 //Inspect the results:
- for(i=0;i<24;i+=3){printf("Destination element inspection %d: %e \n",i,((double*)(tb[i]->elems_h))[13]);};
+ for(i=0;i<24;i+=3){
+  printf("Destination element inspection %d: %e %e\n",i,((double*)(tb[i]->elems_h))[13],((double*)(tb[i]->elems_h))[133]);
+ };
 //---------------------------------------------------------------------------------------------------------
 
 //Done. Release resources:
