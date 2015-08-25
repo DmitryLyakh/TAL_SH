@@ -1,5 +1,5 @@
 /** Tensor Algebra Library for NVidia GPUs NV-TAL (CUDA based).
-REVISION: 2015/08/12
+REVISION: 2015/08/25
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -129,7 +129,7 @@ static int CUDAEventFFE[MAX_GPUS_PER_NODE]; //number of free handles left in CUD
 __device__ int gpu_error_count=0; //total number of CUDA errors registered on device till the current moment
 __device__ int gpu_debug_dump[GPU_DEBUG_DUMP_SIZE];
 // Global CUDA event recording policy (for timing only):
-static int EVENT_RECORD=1; //non-zero value enables cudaEventRecord() timing calls
+static int EVENT_RECORD=1; //non-zero value enables CUDA event recording
 static int PRINT_TIMING=1; //non-zero value enables time printing statements
 // Infrastructure for function <gpu_tensor_block_copy_dlf> (blocking and non-blocking):
 static int TRANS_SHMEM=1; //switch between shared-memory tensor transpose (1) and scatter tensor transpose (0)
@@ -139,6 +139,7 @@ static int DISABLE_BLAS=0; //non-zero value will disable cuBLAS usage (if it had
 #else
 static int DISABLE_BLAS=1; //non-zero value will disable cuBLAS usage (if it had been cuBLAS compiled/linked)
 #endif
+static cudaTask_t * LastTask[MAX_GPUS_PER_NODE]; //last CUDA task successfully scheduled on each GPU
 __device__ __constant__ float sgemm_alpha=1.0f; //alpha constant for SGEMM
 __device__ __constant__ float sgemm_beta=1.0f;  //beta constant SGEMM
 __device__ __constant__ double dgemm_alpha=1.0; //alpha constant for DGEMM
@@ -541,6 +542,11 @@ __host__ int cuda_task_destroy(cudaTask_t *cuda_task)
 
  err_code=0;
  if(cuda_task != NULL){
+  if(EVENT_RECORD != 0){ //`This should be done atomically for thread safety
+   if(cuda_task->gpu_id >= 0 && cuda_task->gpu_id < MAX_GPUS_PER_NODE){
+    if(LastTask[cuda_task->gpu_id] == cuda_task) LastTask[cuda_task->gpu_id]=NULL;
+   }
+  }
   i=cuda_task_complete(cuda_task);
   if(i == CUDA_TASK_COMPLETED){ //task has completed (successfully or not)
    if(cuda_task->gpu_id >= 0 && cuda_task->gpu_id < MAX_GPUS_PER_NODE){
@@ -931,6 +937,8 @@ The first enabled GPU will be left active at the end. **/
       err=cudaEventCreate(&(CUDAEventBank[i][j])); if(err != cudaSuccess){gpu_up[i]=NOPE; break;};
      }
     }
+//Last task:
+    LastTask[i]=NULL;
     if(gpu_up[i] > NOPE) n++;
    }
   }
@@ -968,6 +976,8 @@ A positive value returned is the number of failed GPUs; a negative one is an err
       for(j=0;j<MAX_CUDA_EVENTS;j++) CUDAEventFreeHandle[i][j]=j; CUDAEventFFE[i]=MAX_CUDA_EVENTS;
       for(j=0;j<MAX_CUDA_EVENTS;j++){err=cudaEventDestroy(CUDAEventBank[i][j]); if(err != cudaSuccess) failure++;}
      }
+//Last task:
+     LastTask[i]=NULL;
      n--; err=cudaDeviceReset();
     }
     gpu_up[i]=NOPE; //GPU is taken out of use regardless of its status!
@@ -2299,7 +2309,7 @@ NOTES:
   if(lsize > 0 && rsize > 0 && dsize > 0 && dsize%ll == 0){
    lr=dsize/ll;
    if(rsize%lr == 0 && rsize/lr == lc){
-/*/DEBUG begin:
+/*DEBUG begin:
     printf(" Const args (d,l,r) : %d %d %d\n",dtens->const_args_entry,ltens->const_args_entry,rtens->const_args_entry); //debug
     printf(" Block sizes (d,l,r): %d %d %d\n",dsize,lsize,rsize); //debug
     printf(" Block ranks (d,l,r): %d %d %d\n",dtens->rank,ltens->rank,rtens->rank); //debug
@@ -2316,6 +2326,15 @@ NOTES:
       err_msg=cudaGetErrorString(err);
       if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_contract_dlf_): Unable to record the start event: %s\n",err_msg);
       err=cudaSetDevice(gpu_num); return 31;
+     }
+     if(LastTask[dev_num] != NULL){ //`This should be done atomically for thread safety
+      err=cudaStreamWaitEvent(cuda_stream,(LastTask[dev_num])->task_comput,0); //input transfers should only begin after the previous task input transfers have completed
+      if(err != cudaSuccess){
+       i=cuda_task_record(cuda_task,76,dev_num,cuda_stream,cuda_start,cuda_comput,cuda_output,cuda_finish,scr_entry_cnt,scr_entries);
+       err_msg=cudaGetErrorString(err);
+       if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_contract_dlf_): Unable to create a task dependency: %s\n",err_msg);
+       err=cudaSetDevice(gpu_num); return 76;
+      }
      }
     }
 // Copy the arguments into GPU memory, unless they are already there:
@@ -2732,6 +2751,7 @@ NOTES:
 //Register the CUDA task:
  i=cuda_task_record(cuda_task,0,dev_num,cuda_stream,cuda_start,cuda_comput,cuda_output,cuda_finish,scr_entry_cnt,scr_entries);
  if(i!=0){i=cuda_task_finalize(cuda_task,74,dev_num); err=cudaSetDevice(gpu_num); return 74;}
+ if(EVENT_RECORD != 0) LastTask[dev_num]=cuda_task; //record the last task for each GPU
  if(dev_num != gpu_num){err=cudaSetDevice(gpu_num); if(err!=cudaSuccess){err_msg=cudaGetErrorString(err); i=cuda_task_finalize(cuda_task,75,dev_num); return 75;}}
 //printf("\n#DEBUG(tensor_algebra_gpu_nvidia:gpu_tensor_block_contract_dlf_): Scheduled Successfully.\n"); //debug
  return 0;
