@@ -46,14 +46,14 @@ int main(int argc, char** args){
  int i,j,k,my_gpu,errc,max_args,tsk_stats[MAX_TASKS];
  int rank[24]={4,4,4,4,4,4, 6,4,4,6,4,4, 2,4,4,2,4,4, 4,2,4,4,2,4}; //tensor block ranks
  int dims[24][6]={ //Tensor block dimension extents:
-  DM3,DM3,DM3,DM3,0,0,     DM3,DM3,DM3,DM3,0,0,  DM3,DM3,DM3,DM3,0,0,  //Contraction 1: D(a,b,i,j)+=L(k,l,a,b)*R(k,l,i,j)
-  DM3,DM3,DM3,DM3,0,0,     DM3,DM3,DM3,DM3,0,0,  DM3,DM3,DM3,DM3,0,0,  //Contraction 2: D(a,b,i,j)+=L(j,k,i,l)*R(l,b,k,a)
-  DM0,DM3,DM3,DM3,DM3,DM0, DM3,DM0,DM3,DM3,0,0,  DM3,DM3,DM3,DM0,0,0,  //Contraction 3: D(a,b,c,i,j,k)+=L(d,a,b,c)*R(d,i,j,k)
-  DM0,DM3,DM3,DM3,DM3,DM0, DM3,DM0,DM3,DM3,0,0,  DM3,DM3,DM0,DM3,0,0,  //Contraction 4: D(a,b,c,i,j,k)+=L(d,k,j,i)*R(c,b,a,d)
-  DM3,DM3,0,0,0,0,         DM3,DM3,DM3,DM3,0,0,  DM3,DM3,DM3,DM3,0,0,  //Contraction 5: D(a,i)+=L(k,l,m,a)*R(k,l,m,i)
-  DM3,DM3,0,0,0,0,         DM3,DM3,DM3,DM3,0,0,  DM3,DM3,DM3,DM3,0,0,  //Contraction 6: D(a,i)+=L(k,l,m,i)*R(a,m,l,k)
-  DM3,DM3,DM3,DM3,0,0,     DM3,DM3,0,0,0,0,      DM3,DM3,DM3,DM3,0,0,  //Contraction 7: D(a,b,i,j)+=L(c,a)*R(c,b,i,j)
-  DM3,DM3,DM3,DM3,0,0,     DM3,DM3,0,0,0,0,      DM3,DM3,DM3,DM3,0,0   //Contraction 8: D(a,b,i,j)+=L(c,j)*R(i,b,a,c)
+  DM4,DM4,DM4,DM4,0,0,     DM4,DM4,DM4,DM4,0,0,  DM4,DM4,DM4,DM4,0,0,  //Contraction 1: D(a,b,i,j)+=L(k,l,a,b)*R(k,l,i,j)
+  DM4,DM4,DM4,DM4,0,0,     DM4,DM4,DM4,DM4,0,0,  DM4,DM4,DM4,DM4,0,0,  //Contraction 2: D(a,b,i,j)+=L(j,k,i,l)*R(l,b,k,a)
+  DM1,DM2,DM2,DM2,DM2,DM1, DM1,DM1,DM2,DM2,0,0,  DM1,DM2,DM2,DM1,0,0,  //Contraction 3: D(a,b,c,i,j,k)+=L(d,a,b,c)*R(d,i,j,k)
+  DM1,DM2,DM2,DM2,DM2,DM1, DM1,DM1,DM2,DM2,0,0,  DM2,DM2,DM1,DM1,0,0,  //Contraction 4: D(a,b,c,i,j,k)+=L(d,k,j,i)*R(c,b,a,d)
+  DM5,DM5,0,0,0,0,         DM5,DM5,DM5,DM5,0,0,  DM5,DM5,DM5,DM5,0,0,  //Contraction 5: D(a,i)+=L(k,l,m,a)*R(k,l,m,i)
+  DM5,DM5,0,0,0,0,         DM5,DM5,DM5,DM5,0,0,  DM5,DM5,DM5,DM5,0,0,  //Contraction 6: D(a,i)+=L(k,l,m,i)*R(a,m,l,k)
+  DM5,DM5,DM5,DM5,0,0,     DM5,DM5,0,0,0,0,      DM5,DM5,DM5,DM5,0,0,  //Contraction 7: D(a,b,i,j)+=L(c,a)*R(c,b,i,j)
+  DM5,DM5,DM5,DM5,0,0,     DM5,DM5,0,0,0,0,      DM5,DM5,DM5,DM5,0,0   //Contraction 8: D(a,b,i,j)+=L(c,j)*R(i,b,a,c)
  };
  int cptrn[8][8]={ //Tensor contraction patterns:
   -1,-2, 1, 2,-1,-2, 3, 4, //Contraction pattern 1
@@ -68,14 +68,14 @@ int main(int argc, char** args){
  double cflops[8];
 
 //Set the number of Flops for each tensor contraction:
- cflops[0]=2*dims[0][0]*dims[0][1]*dims[0][2]*dims[0][3]*dims[1][0]*dims[1][1];            //Flops for tensor contraction 1
- cflops[1]=cflops[0];                                                                      //Flops for tensor contraction 2
- cflops[2]=2*dims[6][0]*dims[6][1]*dims[6][2]*dims[6][3]*dims[6][4]*dims[6][5]*dims[7][0]; //Flops for tensor contraction 3
- cflops[3]=cflops[2];                                                                      //Flops for tensor contraction 4
- cflops[4]=2*dims[12][0]*dims[12][1]*dims[13][0]*dims[13][1]*dims[13][2];                  //Flops for tensor contraction 5
- cflops[5]=cflops[4];                                                                      //Flops for tensor contraction 6
- cflops[6]=2*dims[18][0]*dims[18][1]*dims[18][2]*dims[18][3]*dims[19][0];                  //Flops for tensor contraction 7
- cflops[7]=cflops[6];                                                                      //Flops for tensor contraction 8
+ cflops[0]=2.0*double(dims[0][0])*double(dims[0][1])*double(dims[0][2])*double(dims[0][3])*double(dims[1][0])*double(dims[1][1]);                    //Flops for tensor contraction 1
+ cflops[1]=cflops[0];                                                                                                                                //Flops for tensor contraction 2
+ cflops[2]=2.0*double(dims[6][0])*double(dims[6][1])*double(dims[6][2])*double(dims[6][3])*double(dims[6][4])*double(dims[6][5])*double(dims[7][0]); //Flops for tensor contraction 3
+ cflops[3]=cflops[2];                                                                                                                                //Flops for tensor contraction 4
+ cflops[4]=2.0*double(dims[12][0])*double(dims[12][1])*double(dims[13][0])*double(dims[13][1])*double(dims[13][2]);                                  //Flops for tensor contraction 5
+ cflops[5]=cflops[4];                                                                                                                                //Flops for tensor contraction 6
+ cflops[6]=2.0*double(dims[18][0])*double(dims[18][1])*double(dims[18][2])*double(dims[18][3])*double(dims[19][0]);                                  //Flops for tensor contraction 7
+ cflops[7]=cflops[6];                                                                                                                                //Flops for tensor contraction 8
 
 //Allocate argument buffers (initializes both the Host and all GPUs):
  errc=arg_buf_allocate(&buf_size,&max_args,first_gpu,last_gpu); //if you don't want to use Host buffer, set buf_size to a small value
