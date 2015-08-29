@@ -1,5 +1,5 @@
 /** Tensor Algebra Library for NVidia GPUs NV-TAL (CUDA based).
-REVISION: 2015/08/25
+REVISION: 2015/08/29
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -44,7 +44,7 @@ NOTES:
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
+//#include <time.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include "tensor_algebra.h"
@@ -939,11 +939,22 @@ The first enabled GPU will be left active at the end. **/
     }
 //Last task:
     LastTask[i]=NULL;
+//Clear GPU statistics:
+    gpu_stats[i].tasks_submitted=0;
+    gpu_stats[i].tasks_completed=0;
+    gpu_stats[i].tasks_deferred=0;
+    gpu_stats[i].tasks_failed=0;
+    gpu_stats[i].flops=0.0;
+    gpu_stats[i].traffic_in=0.0;
+    gpu_stats[i].traffic_out=0.0;
+    gpu_stats[i].time_active=0.0;
+    gpu_stats[i].time_start=clock();
+//Accept GPU as ready (active):
     if(gpu_up[i] > NOPE) n++;
    }
   }
  }
- return n;
+ return n; //number of initialized GPU's
 }
 
 __host__ int free_gpus(int gpu_beg, int gpu_end)

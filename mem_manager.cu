@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2015/08/25
+REVISION: 2015/08/29
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -27,15 +27,19 @@ OPTIONS:
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+
+#ifndef NO_GPU
 #include <cuda.h>
 #include <cuda_runtime.h>
+#endif
+
 #include "tensor_algebra.h"
 
 #define GPU_MEM_PART_USED 90         //percentage of free GPU global memory to be actually allocated for GPU argument buffers
 #define MEM_ALIGN GPU_CACHE_LINE_LEN //memory alignment (in bytes) for argument buffers
-#define BLCK_BUF_DEPTH_HOST 4        //number of distinct tensor block buffer levels on Host
+#define BLCK_BUF_DEPTH_HOST 7        //number of distinct tensor block buffer levels on Host
 #define BLCK_BUF_TOP_HOST 3          //number of argument buffer entries of the largest size (level 0) on Host: multiple of 3
-#define BLCK_BUF_BRANCH_HOST 3       //branching factor for each subsequent buffer level on Host
+#define BLCK_BUF_BRANCH_HOST 2       //branching factor for each subsequent buffer level on Host
 #define BLCK_BUF_DEPTH_GPU 3         //number of distinct tensor block buffer levels on GPU
 #define BLCK_BUF_TOP_GPU 3           //number of argument buffer entries of the largest size (level 0) on GPU: multiple of 3
 #define BLCK_BUF_BRANCH_GPU 2        //branching factor for each subsequent buffer level on GPU
@@ -52,6 +56,8 @@ typedef struct{
 } ab_conf_t;
 
 //MODULE DATA:
+// Memory management:
+static int bufs_ready=0; //status of the Host and GPU argument buffers
 static void *arg_buf_host; //base address of the argument buffer in Host memory (page-locked)
 static void *arg_buf_gpu[MAX_GPUS_PER_NODE]; //base addresses of argument buffers in GPUs Global memories
 static size_t arg_buf_host_size=0; //total size of the Host argument buffer in bytes
@@ -66,6 +72,13 @@ static size_t *abh_occ=NULL; //occupation status for each buffer entry in Host a
 static size_t *abg_occ[MAX_GPUS_PER_NODE]; //occupation status for each buffer entry in GPU argument buffers(*arg_buf_gpu)
 static size_t abh_occ_size=0; //total number of entries in the multi-level Host argument buffer occupancy table
 static size_t abg_occ_size[MAX_GPUS_PER_NODE]; //total numbers of entries in the multi-level GPUs argument buffer occupancy tables
+// Memory statistics:
+static int num_args_host=0; //number of occupied entries in the Host argument buffer
+static int num_args_gpu[MAX_GPUS_PER_NODE]; //number of occupied entries in each GPU argument buffer
+static size_t occ_size_host=0; //total size (bytes) of all occupied entries in the Host argument buffer
+static size_t occ_size_gpu[MAX_GPUS_PER_NODE]; //total size (bytes) of all occupied entries in each GPU buffer
+static size_t args_size_host=0; //total size (bytes) of all arguments in the Host argument buffer !`Not used now
+static size_t args_size_gpu[MAX_GPUS_PER_NODE]; //total size (bytes) of all arguments in each GPU buffer !`Not used now
 
 //LOCAL (PRIVATE) FUNCTION PROTOTYPES:
 static int const_args_link_init(int gpu_beg, int gpu_end);
@@ -165,6 +178,7 @@ OUTPUT:
  cudaError_t err=cudaSuccess;
 #endif
 
+ if(bufs_ready != 0) return 1; //buffers are already allocated
  *arg_max=0; abh_occ=NULL; abh_occ_size=0; max_args_host=0; arg_buf_host_size=0;
  for(i=0;i<MAX_GPUS_PER_NODE;i++){abg_occ[i]=NULL; abg_occ_size[i]=0; max_args_gpu[i]=0; arg_buf_gpu_size[i]=0;}
 //Allocate the Host argument buffer:
@@ -199,24 +213,25 @@ OUTPUT:
    hsize+=max_args_host;
   }
   *arg_max=max_args_host;
-//Initialize the Host argument buffer occupancy table:
-  abh_occ=(size_t*)malloc(hsize*sizeof(size_t)); if(abh_occ == NULL) return 1; //Host buffer occupancy table
+//Initialize the Host argument buffer occupancy tables:
+  abh_occ=(size_t*)malloc(hsize*sizeof(size_t)); if(abh_occ == NULL) return 2; //Host buffer occupancy table
   abh_occ_size=hsize;
   for(hsize=0;hsize<abh_occ_size;hsize++){abh_occ[hsize]=0;} //initialize zero occupancy for each buffer entry
+  num_args_host=0; occ_size_host=0; args_size_host=0; //clear Host memory statistics
 #ifndef NO_GPU
 //Allocate GPUs buffers, if needed:
   if(gpu_beg >= 0 && gpu_end >= gpu_beg){ //GPU exist for this MPI process
-   err=cudaGetDeviceCount(&i); if(err != cudaSuccess) return 2;
+   err=cudaGetDeviceCount(&i); if(err != cudaSuccess) return 3;
    if(gpu_end < MAX_GPUS_PER_NODE && gpu_end < i){
-    err_code=init_gpus(gpu_beg,gpu_end); if(err_code < 0) return 9;
+    err_code=init_gpus(gpu_beg,gpu_end); if(err_code < 0) return 4;
 // Constant memory banks for all GPUs:
-    err_code=const_args_link_init(gpu_beg,gpu_end); if(err_code != 0) return 3;
+    err_code=const_args_link_init(gpu_beg,gpu_end); if(err_code != 0) return 5;
 // Global memory banks for each GPU:
     mem_alloc_dec=MEM_ALIGN*BLCK_BUF_TOP_GPU; for(i=1;i<BLCK_BUF_DEPTH_GPU;i++) mem_alloc_dec*=BLCK_BUF_BRANCH_GPU;
     for(i=gpu_beg;i<=gpu_end;i++){
      if(gpu_is_mine(i) != 0){ //Initialize only my GPUs
-      err=cudaSetDevice(i); if(err != cudaSuccess) return 4;
-      err=cudaMemGetInfo(&hsize,&total); if(err != cudaSuccess) return 5;
+      err=cudaSetDevice(i); if(err != cudaSuccess) return 6;
+      err=cudaMemGetInfo(&hsize,&total); if(err != cudaSuccess) return 7;
       hsize=(size_t)(float(hsize)/100.0f*float(GPU_MEM_PART_USED)); hsize-=hsize%mem_alloc_dec; err_code=1;
       while(hsize > mem_alloc_dec){
        err=cudaMalloc(&arg_buf_gpu[i],hsize);
@@ -235,24 +250,26 @@ OUTPUT:
         blck_sizes_gpu[i][j]=blck_sizes_gpu[i][j-1]/BLCK_BUF_BRANCH_GPU; max_args_gpu[i]*=BLCK_BUF_BRANCH_GPU;
         hsize+=max_args_gpu[i];
        }
-       if(max_args_gpu[i] > MAX_GPU_ARGS) return 6; //Increase MAX_GPU_ARGS and recompile
-// Initialize each GPU argument buffer occupancy table:
-       abg_occ[i]=(size_t*)malloc(hsize*sizeof(size_t)); if(abg_occ[i] == NULL) return 7; //GPU#i buffer occupancy table
+       if(max_args_gpu[i] > MAX_GPU_ARGS) return 8; //Increase MAX_GPU_ARGS and recompile
+// Initialize each GPU argument buffer occupancy tables:
+       abg_occ[i]=(size_t*)malloc(hsize*sizeof(size_t)); if(abg_occ[i] == NULL) return 9; //GPU#i buffer occupancy table
        abg_occ_size[i]=hsize;
        for(hsize=0;hsize<abg_occ_size[i];hsize++){abg_occ[i][hsize]=0;} //initialize each buffer entry to zero occupancy
+       num_args_gpu[i]=0; occ_size_gpu[i]=0; args_size_gpu[i]=0; //clear GPU memory statistics
       }else{
-       return 8;
+       return 10;
       }
      }
     }
    }else{
-    return 10;
+    return 11;
    }
   }
 #endif
  }else{
-  return 11;
+  return 12;
  }
+ bufs_ready=1; //mark the Host and GPU argument buffers as ready
  return 0;
 }
 
@@ -263,12 +280,14 @@ int arg_buf_deallocate(int gpu_beg, int gpu_end)
 #ifndef NO_GPU
  cudaError_t err=cudaSuccess;
 #endif
+
+ if(bufs_ready == 0) return -1; //buffers are not allocated
  err_code=0;
  if(abh_occ != NULL) free(abh_occ); abh_occ=NULL; abh_occ_size=0; max_args_host=0;
  for(i=0;i<MAX_GPUS_PER_NODE;i++){
   if(abg_occ[i] != NULL) free(abg_occ[i]); abg_occ[i]=NULL; abg_occ_size[i]=0; max_args_gpu[i]=0;
  }
- arg_buf_host_size=0;
+ arg_buf_host_size=0; num_args_host=0; occ_size_host=0; args_size_host=0; //clear Host memory statistics
 #ifndef NO_GPU
  err=cudaFreeHost(arg_buf_host);
  if(err != cudaSuccess){
@@ -280,7 +299,7 @@ int arg_buf_deallocate(int gpu_beg, int gpu_end)
    if(i < MAX_GPUS_PER_NODE){
     if(gpu_is_mine(i) != 0){
      err=cudaSetDevice(i); if(err == cudaSuccess){
-      arg_buf_gpu_size[i]=0;
+      arg_buf_gpu_size[i]=0; num_args_gpu[i]=0; occ_size_gpu[i]=0; args_size_gpu[i]=0; //clear GPU memory statistics
       err=cudaFree(arg_buf_gpu[i]);
       if(err != cudaSuccess){
        if(VERBOSE) printf("\n#ERROR(c_proc_bufs.cu:arg_buf_deallocate): GPU# %d argument buffer deallocation failed!",i);
@@ -300,39 +319,62 @@ int arg_buf_deallocate(int gpu_beg, int gpu_end)
 #else
  free(arg_buf_host); arg_buf_host=NULL;
 #endif
+ bufs_ready=0;
  return err_code;
 }
 
 int arg_buf_clean_host()
-/** Returns zero if all entries of the Host argument buffer are free. **/
+/** Returns zero if all entries of the Host argument buffer are free.
+The first buffer entry, which is not free, will cause positive return status.
+Negative return status means that an error occurred. **/
 {
+ if(bufs_ready == 0) return -1; //memory buffers are not initialized
  for(size_t i=0;i<abh_occ_size;i++){if(abh_occ[i] != 0) return (int)(i+1);}
  return 0;
 }
 
 int arg_buf_clean_gpu(int gpu_num)
-/** Returns zero if all entries of the GPU#gpu_num argument buffer are free. **/
+/** Returns zero if all entries of the GPU#gpu_num argument buffer are free.
+The first buffer entry, which is not free, will cause positive return status.
+Negative return status means that an error occurred. **/
 {
+ if(bufs_ready == 0) return -1; //memory buffers are not initialized
  if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
-  for(size_t i=0;i<abg_occ_size[gpu_num];i++){if(abg_occ[gpu_num][i] != 0) return (int)(i+1);}
+  if(gpu_is_mine(gpu_num) != 0){
+   for(size_t i=0;i<abg_occ_size[gpu_num];i++){if(abg_occ[gpu_num][i] != 0) return (int)(i+1);}
+  }else{
+   return -2;
+  }
  }else{
-  return -1;
+  return -3; //invalid GPU number
  }
  return 0;
 }
 
 int get_blck_buf_sizes_host(size_t *blck_sizes)
-/** This function returns the registered block (buffered) sizes for each level of the Host argument buffer **/
+/** This function returns the registered block (buffered) sizes for each level of the Host argument buffer.
+Negative return status means that an error occurred. **/
 {
+ if(bufs_ready == 0) return -1;
  for(int i=0;i<BLCK_BUF_DEPTH_HOST;i++){blck_sizes[i]=blck_sizes_host[i];}
- return BLCK_BUF_DEPTH_HOST;
+ return BLCK_BUF_DEPTH_HOST; //depth of the argument buffer
 }
 
 int get_blck_buf_sizes_gpu(int gpu_num, size_t *blck_sizes)
-/** This function returns the registered block (buffered) sizes for each level of the GPU#gpu_num argument buffer **/
+/** This function returns the registered block (buffered) sizes for each level of the GPU#gpu_num argument buffer.
+Negative return status means that an error occurred. **/
 {
- for(int i=0;i<BLCK_BUF_DEPTH_GPU;i++){blck_sizes[i]=blck_sizes_gpu[gpu_num][i];}
- return BLCK_BUF_DEPTH_GPU;
+ if(bufs_ready == 0) return -1;
+ if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
+  if(gpu_is_mine(gpu_num) != 0){
+   for(int i=0;i<BLCK_BUF_DEPTH_GPU;i++){blck_sizes[i]=blck_sizes_gpu[gpu_num][i];}
+  }else{
+   return -2;
+  }
+ }else{
+  return -3;
+ }
+ return BLCK_BUF_DEPTH_GPU; //depth of the argument buffer
 }
 
 static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, size_t *ab_occ, size_t ab_occ_size,
@@ -381,8 +423,12 @@ static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, siz
    l=ab_get_parent(ab_conf,i,l); i--; m=ab_get_1d_pos(ab_conf,i,l); if(m < 0 || m >= ab_occ_size) return 4;
    ab_occ[m]+=k;
   }
- }else{
-  return 5; //no appropriate entry found: not an error
+ }else{ //no appropriate entry found: not an error
+  if(bsize > blck_sizes[0]){
+   return DEVICE_UNABLE; //device memory buffer can never provide such a big chunk
+  }else{
+   return TRY_LATER; //device memory buffer currently cannot provide the requested memory chunk due to occupation
+  }
  }
  return 0;
 }
@@ -410,14 +456,26 @@ INPUT:
  # bsize - requested size of a tensor block (in bytes);
 OUTPUT:
  # entry_ptr - pointer to a free space in the argument buffer where the tensor block or packet can be put;
- # entry_num - entry number corresponding to the free space assigned to the tensor block or packet.
+ # entry_num - entry number corresponding to the free space assigned to the tensor block or packet;
+RETURN STATUS:
+ # 0 - success (*entry_num>=0, *entry_ptr!=NULL);
+ # TRY_LATER - the argument buffer currently does not have enough space left;
+ # DEVICE_UNABLE - the argument buffer can never satisfy this request;
+ # Other - an error occurred.
 **/
 {
- int err_code=0;
+ int i,j,err_code;
  ab_conf_t ab_conf;
+
+ if(bufs_ready == 0) return -1;
+ err_code=0;
  ab_conf.buf_top=BLCK_BUF_TOP_HOST; ab_conf.buf_depth=BLCK_BUF_DEPTH_HOST; ab_conf.buf_branch=BLCK_BUF_BRANCH_HOST;
  err_code=get_buf_entry(ab_conf,bsize,arg_buf_host,abh_occ,abh_occ_size,blck_sizes_host,entry_ptr,entry_num);
 // if(err_code == 0 && DEBUG != 0) printf("\n#DEBUG(c_proc_bufs.cu:get_buf_entry_host): Entry allocated: %d %p\n",*entry_num,*entry_ptr); //debug
+ if(err_code == 0){
+  err_code=ab_get_2d_pos(ab_conf,*entry_num,&i,&j);
+  if(err_code == 0){num_args_host++; occ_size_host+=blck_sizes_host[i];}
+ }
  return err_code;
 }
 
@@ -427,11 +485,18 @@ INPUT:
  # entry_num - argument buffer entry number.
 **/
 {
- int err_code=0;
+ int i,j,err_code;
  ab_conf_t ab_conf;
+
+ if(bufs_ready == 0) return -1;
+ err_code=0;
  ab_conf.buf_top=BLCK_BUF_TOP_HOST; ab_conf.buf_depth=BLCK_BUF_DEPTH_HOST; ab_conf.buf_branch=BLCK_BUF_BRANCH_HOST;
  err_code=free_buf_entry(ab_conf,abh_occ,abh_occ_size,blck_sizes_host,entry_num);
 // if(err_code == 0 && DEBUG != 0) printf("\n#DEBUG(c_proc_bufs.cu:free_buf_entry_host): Entry deallocated: %d\n",entry_num); //debug
+ if(err_code == 0){
+  err_code=ab_get_2d_pos(ab_conf,entry_num,&i,&j);
+  if(err_code == 0){num_args_host--; occ_size_host-=blck_sizes_host[i];}
+ }
  return err_code;
 }
 
@@ -443,13 +508,33 @@ INPUT:
 OUTPUT:
  # entry_ptr - pointer to a free space in the argument buffer where the tensor block elements can be put;
  # entry_num - entry number corresponding to the free space assigned to the tensor block elements.
+RETURN STATUS:
+ # 0 - success (*entry_num>=0, *entry_ptr!=NULL);
+ # TRY_LATER - the argument buffer currently does not have enough space left;
+ # DEVICE_UNABLE - the argument buffer can never satisfy this request;
+ # Other - an error occurred.
 **/
 {
- int err_code=0;
+ int i,j,err_code;
  ab_conf_t ab_conf;
- ab_conf.buf_top=BLCK_BUF_TOP_GPU; ab_conf.buf_depth=BLCK_BUF_DEPTH_GPU; ab_conf.buf_branch=BLCK_BUF_BRANCH_GPU;
- err_code=get_buf_entry(ab_conf,bsize,arg_buf_gpu[gpu_num],abg_occ[gpu_num],abg_occ_size[gpu_num],&blck_sizes_gpu[gpu_num][0],entry_ptr,entry_num);
+
+ if(bufs_ready == 0) return -1;
+ err_code=0;
+ if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
+  if(gpu_is_mine(gpu_num) != 0){
+   ab_conf.buf_top=BLCK_BUF_TOP_GPU; ab_conf.buf_depth=BLCK_BUF_DEPTH_GPU; ab_conf.buf_branch=BLCK_BUF_BRANCH_GPU;
+   err_code=get_buf_entry(ab_conf,bsize,arg_buf_gpu[gpu_num],abg_occ[gpu_num],abg_occ_size[gpu_num],&blck_sizes_gpu[gpu_num][0],entry_ptr,entry_num);
 // if(err_code == 0 && DEBUG != 0) printf("\n#DEBUG(c_proc_bufs.cu:get_buf_entry_gpu): Entry allocated: %d %d %p\n",gpu_num,*entry_num,*entry_ptr); //debug
+   if(err_code == 0){
+    err_code=ab_get_2d_pos(ab_conf,*entry_num,&i,&j);
+    if(err_code == 0){num_args_gpu[gpu_num]++; occ_size_gpu[gpu_num]+=blck_sizes_gpu[gpu_num][i];}
+   }
+  }else{
+   err_code=-2;
+  }
+ }else{
+  err_code=-3;
+ }
  return err_code;
 }
 
@@ -460,11 +545,26 @@ INPUT:
  # entry_num - argument buffer entry number.
 **/
 {
- int err_code=0;
+ int i,j,err_code;
  ab_conf_t ab_conf;
- ab_conf.buf_top=BLCK_BUF_TOP_GPU; ab_conf.buf_depth=BLCK_BUF_DEPTH_GPU; ab_conf.buf_branch=BLCK_BUF_BRANCH_GPU;
- err_code=free_buf_entry(ab_conf,abg_occ[gpu_num],abg_occ_size[gpu_num],&blck_sizes_gpu[gpu_num][0],entry_num);
+
+ if(bufs_ready == 0) return -1;
+ err_code=0;
+ if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
+  if(gpu_is_mine(gpu_num) != 0){
+   ab_conf.buf_top=BLCK_BUF_TOP_GPU; ab_conf.buf_depth=BLCK_BUF_DEPTH_GPU; ab_conf.buf_branch=BLCK_BUF_BRANCH_GPU;
+   err_code=free_buf_entry(ab_conf,abg_occ[gpu_num],abg_occ_size[gpu_num],&blck_sizes_gpu[gpu_num][0],entry_num);
 // if(err_code == 0 && DEBUG != 0) printf("\n#DEBUG(c_proc_bufs.cu:free_buf_entry_gpu): Entry deallocated: %d %d\n",gpu_num,entry_num); //debug
+   if(err_code == 0){
+    err_code=ab_get_2d_pos(ab_conf,entry_num,&i,&j);
+    if(err_code == 0){num_args_gpu[gpu_num]--; occ_size_gpu[gpu_num]-=blck_sizes_gpu[gpu_num][i];}
+   }
+  }else{
+   err_code=-2;
+  }
+ }else{
+  err_code=-3;
+ }
  return err_code;
 }
 
@@ -486,29 +586,48 @@ for GPU constant memory buffers (for each GPU in the range [gpu_beg..gpu_end]) *
 }
 
 int const_args_entry_get(int gpu_num, int *entry_num)
-/** This function returns the number of a free const_args[] entry for GPU#gpu_num **/
+/** This function returns the number of a free const_args[] entry for GPU#gpu_num.
+TRY_LATER return status means that currently all entries are busy. **/
 {
- if(const_args_ffe[gpu_num] >= 0 && const_args_ffe[gpu_num] < MAX_GPU_ARGS){ //free entry exists
-  *entry_num=const_args_ffe[gpu_num];
-   const_args_ffe[gpu_num]=const_args_link[gpu_num][const_args_ffe[gpu_num]];
-  return 0;
- }else{ //no free entry found
-  return 1;
+ *entry_num=-1; if(bufs_ready == 0) return -1;
+ if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
+  if(gpu_is_mine(gpu_num) != 0){
+   if(const_args_ffe[gpu_num] >= 0 && const_args_ffe[gpu_num] < MAX_GPU_ARGS){ //free entry exists
+    *entry_num=const_args_ffe[gpu_num];
+    const_args_ffe[gpu_num]=const_args_link[gpu_num][const_args_ffe[gpu_num]];
+   }else{ //no free entry is currently available
+    return TRY_LATER;
+   }
+  }else{
+   return -2;
+  }
+ }else{
+  return -3;
  }
+ return 0;
 }
 
 int const_args_entry_free(int gpu_num, int entry_num)
 /** This function frees an entry of const_args[] for GPU#gpu_num **/
 {
- if(entry_num >= 0 && entry_num < MAX_GPU_ARGS){ //valid entry number
-  if(const_args_ffe[gpu_num] < MAX_GPU_ARGS && const_args_ffe[gpu_num] >= 0){
-   const_args_link[gpu_num][entry_num]=const_args_ffe[gpu_num];
+ if(bufs_ready == 0) return -1;
+ if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
+  if(gpu_is_mine(gpu_num) != 0){
+   if(entry_num >= 0 && entry_num < MAX_GPU_ARGS){ //valid entry number
+    if(const_args_ffe[gpu_num] < MAX_GPU_ARGS && const_args_ffe[gpu_num] >= 0){
+     const_args_link[gpu_num][entry_num]=const_args_ffe[gpu_num];
+    }
+    const_args_ffe[gpu_num]=entry_num;
+   }else{ //invalid entry number
+    return 1;
+   }
+  }else{
+   return -2;
   }
-  const_args_ffe[gpu_num]=entry_num;
-  return 0;
- }else{ //invalid entry number
-  return 1;
+ }else{
+  return -3;
  }
+ return 0;
 }
 
 #ifndef NO_GPU
@@ -536,13 +655,13 @@ __host__ int host_mem_unregister(void *host_ptr){
  return 0;
 }
 
-__host__ int gpu_mem_alloc(void **dev_ptr, size_t tsize)
+__host__ int gpu_mem_alloc(void **dev_ptr, size_t tsize) //`Add gpu_num
 {
  cudaError_t err=cudaMalloc(dev_ptr,tsize); if(err != cudaSuccess) return 1;
  return 0;
 }
 
-__host__ int gpu_mem_free(void *dev_ptr)
+__host__ int gpu_mem_free(void *dev_ptr) //`Add gpu_num
 {
  cudaError_t err=cudaFree(dev_ptr); if(err != cudaSuccess) return 1;
  return 0;

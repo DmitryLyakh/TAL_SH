@@ -79,7 +79,7 @@ LTHREAD_PGI   = -lpthread
 LTHREAD = $(LTHREAD_$(TOOLKIT))
 LFLAGS = $(LTHREAD) $(MPI_LINK) $(LA_LINK) $(CUDA_LINK) -o
 
-OBJS =  special.o c_proc_bufs.o tensor_algebra_gpu_nvidia.o main.o
+OBJS =  special.o mem_manager.o tensor_algebra_gpu_nvidia.o main.o
 
 $(NAME): $(OBJS)
 	$(FC) $(OBJS) $(LFLAGS) $(NAME)
@@ -87,8 +87,8 @@ $(NAME): $(OBJS)
 special.o: special.F90
 	$(FC) $(MPI_INC) $(CUDA_INC) $(FFLAGS) special.F90
 
-c_proc_bufs.o: c_proc_bufs.cu tensor_algebra.h
-	$(CUDA_C) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) c_proc_bufs.cu
+mem_manager.o: mem_manager.cu tensor_algebra.h
+	$(CUDA_C) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) mem_manager.cu
 
 tensor_algebra_gpu_nvidia.o: tensor_algebra_gpu_nvidia.cu tensor_algebra.h
 	$(CUDA_C) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) tensor_algebra_gpu_nvidia.cu

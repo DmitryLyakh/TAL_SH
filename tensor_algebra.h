@@ -1,7 +1,6 @@
 /** ExaTensor::TAL-SH Header:
-    Parameters, derived types, and function prototypes used
-    in tensor_algebra_gpu_nvidia.cu, c_proc_bufs.cu (NV-TAL).
-REVISION: 2015/08/16
+    Parameters, derived types, and function prototypes used in TAL-SH.
+REVISION: 2015/08/29
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -57,6 +56,8 @@ NOTES:
 //BEGINNING OF TENSOR_ALGEBRA_H
 #ifndef TENSOR_ALGEBRA_H
 #define TENSOR_ALGEBRA_H
+
+#include <time.h>
 
 //DEVICE COMPUTE CAPABILITY:
 #ifndef CUDA_ARCH
@@ -158,8 +159,8 @@ NOTES:
 #define BLAS_OFF 1
 #define EFF_TRN_OFF 0
 #define EFF_TRN_ON 1
-#define TRY_LATER 918273645
-#define DEVICE_UNSUITABLE 546372819
+#define TRY_LATER -918273645
+#define DEVICE_UNABLE -546372819
 
 //MACRO FUNCTIONS:
 #define MIN(a,b) (((a)<(b))?(a):(b))
@@ -174,7 +175,14 @@ typedef struct{
  int * grps;    //tensor dimension groups
 } talsh_tens_shape_t;
 
-// Tensor block (C/C++):
+// Device resources (occupied by a tensor block):
+typedef struct{
+ void * gmem_p;       //global memory pointer
+ int buf_entry;       //buffer entry number (in global memory)
+ int const_mem_entry; //NVidia GPU constant memory entry number
+} talsh_dev_rsc;
+
+// Tensor block (for the use on NVidia GPU):
 typedef struct{
  int device_id;        //device on which the tensor block already resides (+) or will reside (-) (device_id=0 means Host)
  int data_kind;        //tensor element size in bytes: float (4), double (8), or double complex (16)
@@ -192,8 +200,11 @@ typedef struct{
 
 // Interoperable tensor block:
 typedef struct{
- void * tensF; //pointer to Fortran <tensor_block_t>
- void * tensC; //pointer to C tensBlck_t
+ void * tensF;            //pointer to Fortran <tensor_block_t>
+ void * tensC;            //pointer to C tensBlck_t
+ int ndev;                //number of devices the tensor block is present on
+ int * dev_list;          //list of the flat device id's which the tensor block resides on
+ talsh_dev_rsc * dev_rsc; //occupied device resource for each device
 } talsh_tens_t;
 
 // Interface for a user-defined tensor block initialization routine:
@@ -223,14 +234,15 @@ typedef struct{
 
 // Device statistics:
 typedef struct{
- double time_active;                     //time in seconds device is active
  unsigned long long int tasks_submitted; //number of TAL-SH tasks submitted to the device
  unsigned long long int tasks_completed; //number of TAL-SH tasks completed by the device
  unsigned long long int tasks_deferred;  //number of TAL-SH tasks deferred for later (TRY_LATER)
  unsigned long long int tasks_failed;    //number of TAL-SH tasks failed (except TRY_LATER)
- unsigned long long int flops;           //total number of Flops processed (successfully completed)
- unsigned long long int traffic_in;      //total number of bytes transferred in
- unsigned long long int traffic_out;     //total number of bytes transferred out
+ double flops;                           //total number of Flops processed (successfully completed)
+ double traffic_in;                      //total number of bytes transferred in
+ double traffic_out;                     //total number of bytes transferred out
+ double time_active;                     //time in seconds device is active
+ clock_t time_start;                     //time when the library was initialized (internal use only)
 } talsh_stats_t;
 
 //FUNCTION PROTOTYPES:
