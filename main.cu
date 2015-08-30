@@ -3,7 +3,7 @@ There are several drawbacks in the current implementation of NV-TAL.
 All of them will be fixed very soon with a release of the unified
 tensor algebra library TAL-SH that will combine CP-TAL (multicore CPU),
 NV-TAL (NVidia GPU), and XP-TAL (Intel Xeon Phi) under a unified
-interface with a transparent data movement runtime.
+API interface with a transparent data movement runtime.
 Anticipated date is September 2015.
 AUTHOR: Dmitry I. Lyakh: quant4me@gmail.com
 LICENSE: GPL v2 **/
@@ -110,7 +110,7 @@ int main(int argc, char** args){
  k=0;
  for(j=1;j<=8;j++){ //tensor contraction number
   i=(j-1)*3; //destination tensor block number
-//  errc=gpu_tensor_block_init_(tb[i],0.0,COPY_BACK,tsks[k++]); if(errc){printf("#ERROR: gpu_tensor_block_init_ D %d failed!\n",i); return 1;};
+  errc=gpu_tensor_block_init_(tb[i],0.0,COPY_BACK,tsks[k++]); if(errc){printf("#ERROR: gpu_tensor_block_init_ D %d failed!\n",i); return 1;};
   errc=gpu_tensor_block_init_(tb[i+1],init_val,COPY_BACK,tsks[k++]); if(errc){printf("#ERROR: gpu_tensor_block_init_ L %d failed!\n",i); return 1;};
   errc=gpu_tensor_block_init_(tb[i+2],init_val,COPY_BACK,tsks[k++]); if(errc){printf("#ERROR: gpu_tensor_block_init_ R %d failed!\n",i); return 1;};
  };
@@ -134,18 +134,18 @@ int main(int argc, char** args){
  if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",1); return 1;};
  errc=gpu_tensor_block_contract_dlf_(&(cptrn[1][0]),tb[4],tb[5],tb[3],COPY_BACK,tsks[k++]); flops+=cflops[1];
  if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",2); return 1;};
- errc=gpu_tensor_block_contract_dlf_(&(cptrn[2][0]),tb[7],tb[8],tb[6],COPY_BACK,tsks[k++]); flops+=cflops[2];
- if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",3); return 1;};
- errc=gpu_tensor_block_contract_dlf_(&(cptrn[3][0]),tb[10],tb[11],tb[9],COPY_BACK,tsks[k++]); flops+=cflops[3];
- if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",4); return 1;};
- errc=gpu_tensor_block_contract_dlf_(&(cptrn[4][0]),tb[13],tb[14],tb[12],COPY_BACK,tsks[k++]); flops+=cflops[4];
- if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",5); return 1;};
- errc=gpu_tensor_block_contract_dlf_(&(cptrn[5][0]),tb[16],tb[17],tb[15],COPY_BACK,tsks[k++]); flops+=cflops[5];
- if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",6); return 1;};
- errc=gpu_tensor_block_contract_dlf_(&(cptrn[6][0]),tb[19],tb[20],tb[18],COPY_BACK,tsks[k++]); flops+=cflops[6];
- if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",7); return 1;};
- errc=gpu_tensor_block_contract_dlf_(&(cptrn[7][0]),tb[22],tb[23],tb[21],COPY_BACK,tsks[k++]); flops+=cflops[7];
- if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",8); return 1;};
+// errc=gpu_tensor_block_contract_dlf_(&(cptrn[2][0]),tb[7],tb[8],tb[6],COPY_BACK,tsks[k++]); flops+=cflops[2];
+// if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",3); return 1;};
+// errc=gpu_tensor_block_contract_dlf_(&(cptrn[3][0]),tb[10],tb[11],tb[9],COPY_BACK,tsks[k++]); flops+=cflops[3];
+// if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",4); return 1;};
+// errc=gpu_tensor_block_contract_dlf_(&(cptrn[4][0]),tb[13],tb[14],tb[12],COPY_BACK,tsks[k++]); flops+=cflops[4];
+// if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",5); return 1;};
+// errc=gpu_tensor_block_contract_dlf_(&(cptrn[5][0]),tb[16],tb[17],tb[15],COPY_BACK,tsks[k++]); flops+=cflops[5];
+// if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",6); return 1;};
+// errc=gpu_tensor_block_contract_dlf_(&(cptrn[6][0]),tb[19],tb[20],tb[18],COPY_BACK,tsks[k++]); flops+=cflops[6];
+// if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",7); return 1;};
+// errc=gpu_tensor_block_contract_dlf_(&(cptrn[7][0]),tb[22],tb[23],tb[21],COPY_BACK,tsks[k++]); flops+=cflops[7];
+// if(errc){printf("#ERROR: gpu_tensor_block_contract_ %d failed!",8); return 1;};
  errc=cuda_tasks_wait(k,tsks,tsk_stats);
  tme=clock(); tmm=((double)(tme-tms))/CLOCKS_PER_SEC;
  if(errc){printf("#ERROR: cuda_tasks_wait for contractions failed!"); return 1;};
@@ -156,7 +156,7 @@ int main(int argc, char** args){
  for(i=0;i<24;i+=3){
   printf("Destination element inspection %d: %e %e\n",i,((double*)(tb[i]->elems_h))[13],((double*)(tb[i]->elems_h))[133]);
  };
-//---------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------
 
 //Done. Release resources:
  printf("Cleaning ... ");
