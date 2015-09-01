@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2015/08/29
+REVISION: 2015/09/01
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -20,8 +20,14 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 -------------------------------------------------------------------------------
-OPTIONS:
- # -DNO_GPU: disables GPU usage (CPU only memory management).
+OPTIONS (PREPROCESSOR):
+ # -DNO_GPU: disables GPU usage.
+ # -DNO_MIC: disables Intel MIC usage (future).
+ # -DNO_AMD: disables AMD GPU usage (future).
+FOR DEVELOPERS ONLY:
+ # So far each argument buffer entry is occupied as a whole,
+   making it impossible to track the actual amount of memory
+   requested by the application. This needs to be fixed.
 **/
 
 #include <stdio.h>
@@ -37,10 +43,12 @@ OPTIONS:
 
 #define GPU_MEM_PART_USED 90         //percentage of free GPU global memory to be actually allocated for GPU argument buffers
 #define MEM_ALIGN GPU_CACHE_LINE_LEN //memory alignment (in bytes) for argument buffers
+//Host argument buffer structure:
 #define BLCK_BUF_DEPTH_HOST 7        //number of distinct tensor block buffer levels on Host
 #define BLCK_BUF_TOP_HOST 3          //number of argument buffer entries of the largest size (level 0) on Host: multiple of 3
 #define BLCK_BUF_BRANCH_HOST 2       //branching factor for each subsequent buffer level on Host
-#define BLCK_BUF_DEPTH_GPU 3         //number of distinct tensor block buffer levels on GPU
+//GPU argument buffer structure (the total number of entries must be less of equal to MAX_GPU_ARGS):
+#define BLCK_BUF_DEPTH_GPU 4         //number of distinct tensor block buffer levels on GPU
 #define BLCK_BUF_TOP_GPU 3           //number of argument buffer entries of the largest size (level 0) on GPU: multiple of 3
 #define BLCK_BUF_BRANCH_GPU 2        //branching factor for each subsequent buffer level on GPU
 
@@ -56,7 +64,7 @@ typedef struct{
 } ab_conf_t;
 
 //MODULE DATA:
-// Memory management:
+// Buffer memory management:
 static int bufs_ready=0; //status of the Host and GPU argument buffers
 static void *arg_buf_host; //base address of the argument buffer in Host memory (page-locked)
 static void *arg_buf_gpu[MAX_GPUS_PER_NODE]; //base addresses of argument buffers in GPUs Global memories
@@ -72,13 +80,13 @@ static size_t *abh_occ=NULL; //occupation status for each buffer entry in Host a
 static size_t *abg_occ[MAX_GPUS_PER_NODE]; //occupation status for each buffer entry in GPU argument buffers(*arg_buf_gpu)
 static size_t abh_occ_size=0; //total number of entries in the multi-level Host argument buffer occupancy table
 static size_t abg_occ_size[MAX_GPUS_PER_NODE]; //total numbers of entries in the multi-level GPUs argument buffer occupancy tables
-// Memory statistics:
+// Buffer memory status:
 static int num_args_host=0; //number of occupied entries in the Host argument buffer
-static int num_args_gpu[MAX_GPUS_PER_NODE]; //number of occupied entries in each GPU argument buffer
+static int num_args_gpu[MAX_GPUS_PER_NODE]={0}; //number of occupied entries in each GPU argument buffer
 static size_t occ_size_host=0; //total size (bytes) of all occupied entries in the Host argument buffer
-static size_t occ_size_gpu[MAX_GPUS_PER_NODE]; //total size (bytes) of all occupied entries in each GPU buffer
+static size_t occ_size_gpu[MAX_GPUS_PER_NODE]={0}; //total size (bytes) of all occupied entries in each GPU buffer
 static size_t args_size_host=0; //total size (bytes) of all arguments in the Host argument buffer !`Not used now
-static size_t args_size_gpu[MAX_GPUS_PER_NODE]; //total size (bytes) of all arguments in each GPU buffer !`Not used now
+static size_t args_size_gpu[MAX_GPUS_PER_NODE]={0}; //total size (bytes) of all arguments in each GPU buffer !`Not used now
 
 //LOCAL (PRIVATE) FUNCTION PROTOTYPES:
 static int const_args_link_init(int gpu_beg, int gpu_end);
@@ -333,6 +341,7 @@ Negative return status means that an error occurred. **/
  return 0;
 }
 
+#ifndef NO_GPU
 int arg_buf_clean_gpu(int gpu_num)
 /** Returns zero if all entries of the GPU#gpu_num argument buffer are free.
 The first buffer entry, which is not free, will cause positive return status.
@@ -350,6 +359,7 @@ Negative return status means that an error occurred. **/
  }
  return 0;
 }
+#endif
 
 int get_blck_buf_sizes_host(size_t *blck_sizes)
 /** This function returns the registered block (buffered) sizes for each level of the Host argument buffer.
@@ -360,6 +370,7 @@ Negative return status means that an error occurred. **/
  return BLCK_BUF_DEPTH_HOST; //depth of the argument buffer
 }
 
+#ifndef NO_GPU
 int get_blck_buf_sizes_gpu(int gpu_num, size_t *blck_sizes)
 /** This function returns the registered block (buffered) sizes for each level of the GPU#gpu_num argument buffer.
 Negative return status means that an error occurred. **/
@@ -376,6 +387,7 @@ Negative return status means that an error occurred. **/
  }
  return BLCK_BUF_DEPTH_GPU; //depth of the argument buffer
 }
+#endif
 
 static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, size_t *ab_occ, size_t ab_occ_size,
                          const size_t *blck_sizes, char **entry_ptr, int *entry_num)
@@ -474,7 +486,7 @@ RETURN STATUS:
 // if(err_code == 0 && DEBUG != 0) printf("\n#DEBUG(c_proc_bufs.cu:get_buf_entry_host): Entry allocated: %d %p\n",*entry_num,*entry_ptr); //debug
  if(err_code == 0){
   err_code=ab_get_2d_pos(ab_conf,*entry_num,&i,&j);
-  if(err_code == 0){num_args_host++; occ_size_host+=blck_sizes_host[i];}
+  if(err_code == 0){num_args_host++; occ_size_host+=blck_sizes_host[i]; args_size_host+=bsize;}
  }
  return err_code;
 }
@@ -495,11 +507,12 @@ INPUT:
 // if(err_code == 0 && DEBUG != 0) printf("\n#DEBUG(c_proc_bufs.cu:free_buf_entry_host): Entry deallocated: %d\n",entry_num); //debug
  if(err_code == 0){
   err_code=ab_get_2d_pos(ab_conf,entry_num,&i,&j);
-  if(err_code == 0){num_args_host--; occ_size_host-=blck_sizes_host[i];}
+  if(err_code == 0){num_args_host--; occ_size_host-=blck_sizes_host[i]; args_size_host=0;} //`args_size_host is not used (ignore it)
  }
  return err_code;
 }
 
+#ifndef NO_GPU
 int get_buf_entry_gpu(int gpu_num, size_t bsize, char **entry_ptr, int *entry_num)
 /** This function returns a pointer to a free argument buffer space in the GPU#gpu_num argument buffer.
 INPUT:
@@ -527,7 +540,7 @@ RETURN STATUS:
 // if(err_code == 0 && DEBUG != 0) printf("\n#DEBUG(c_proc_bufs.cu:get_buf_entry_gpu): Entry allocated: %d %d %p\n",gpu_num,*entry_num,*entry_ptr); //debug
    if(err_code == 0){
     err_code=ab_get_2d_pos(ab_conf,*entry_num,&i,&j);
-    if(err_code == 0){num_args_gpu[gpu_num]++; occ_size_gpu[gpu_num]+=blck_sizes_gpu[gpu_num][i];}
+    if(err_code == 0){num_args_gpu[gpu_num]++; occ_size_gpu[gpu_num]+=blck_sizes_gpu[gpu_num][i]; args_size_gpu[gpu_num]+=bsize;}
    }
   }else{
    err_code=-2;
@@ -557,7 +570,7 @@ INPUT:
 // if(err_code == 0 && DEBUG != 0) printf("\n#DEBUG(c_proc_bufs.cu:free_buf_entry_gpu): Entry deallocated: %d %d\n",gpu_num,entry_num); //debug
    if(err_code == 0){
     err_code=ab_get_2d_pos(ab_conf,entry_num,&i,&j);
-    if(err_code == 0){num_args_gpu[gpu_num]--; occ_size_gpu[gpu_num]-=blck_sizes_gpu[gpu_num][i];}
+    if(err_code == 0){num_args_gpu[gpu_num]--; occ_size_gpu[gpu_num]-=blck_sizes_gpu[gpu_num][i]; args_size_gpu[gpu_num]=0;} //`args_size_gpu is not used here (ignore it)
    }
   }else{
    err_code=-2;
@@ -626,6 +639,51 @@ int const_args_entry_free(int gpu_num, int entry_num)
   }
  }else{
   return -3;
+ }
+ return 0;
+}
+#endif
+
+int mem_print_stats(int dev_id) //print memory statistics for Device <dev_id>
+{
+ int i,devk;
+ if(bufs_ready == 0) return -1;
+ i=decode_device_id(dev_id,&devk);
+ if(i >= 0){
+  switch(devk){
+   case DEV_HOST:
+    printf("\nTAL-SH: Host argument buffer usage state:\n");
+    printf(" Total buffer size (bytes)       : %lu\n",arg_buf_host_size);
+    printf(" Total number of entries         : %d\n",max_args_host);
+    printf(" Number of occupied entries      : %d\n",num_args_host);
+    printf(" Size of occupied entries (bytes): %lu\n",occ_size_host);
+//  printf(" Size of all arguments (bytes)   : %lu\n",args_size_host);
+    break;
+#ifndef NO_GPU
+   case DEV_NVIDIA_GPU:
+    if(gpu_is_mine(i) != GPU_OFF){
+     printf("\nTAL-SH: GPU #%d argument buffer usage state:\n",i);
+     printf(" Total buffer size (bytes)       : %lu\n",arg_buf_gpu_size[i]);
+     printf(" Total number of entries         : %d\n",max_args_gpu[i]);
+     printf(" Number of occupied entries      : %d\n",num_args_gpu[i]);
+     printf(" Size of occupied entries (bytes): %lu\n",occ_size_gpu[i]);
+//   printf(" Size of all arguments (bytes)   : %lu\n",args_size_gpu[i]);
+    }else{
+     printf("\nTAL-SH: GPU #%d is OFF (no memory statistics).\n",i);
+    }
+    break;
+#endif
+#ifndef NO_MIC
+   case DEV_INTEL_MIC:
+    break;
+#endif
+#ifndef NO_AMD
+   case DEV_AMD_GPU:
+    break;
+#endif
+  }
+ }else{
+  return -2; //invalid device id
  }
  return 0;
 }

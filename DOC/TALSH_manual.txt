@@ -9,6 +9,7 @@ NOTE: This is how the TAL-SH API interface will look like soon!
       Currently the source code still consists of separate pieces,
       each one specific for a particular device kind.
 
+
 0. Preambule
 
 The TAL-SH library provides API for performing basic tensor algebra

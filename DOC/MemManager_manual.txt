@@ -1,0 +1,93 @@
+*** Memory manager for Tensor Algebra Library TAL-SH ***
+AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
+Copyright (C) 2015 Dmitry I. Lyakh
+Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
+LICENSE: GPL v.2
+--------------------------------------------------------------
+
+
+0. Preambule
+
+The memory management API provide a user with an ability to quickly allocate/deallocate
+contiguous chunks of memory in the Host RAM, GPU global memory, and memories on other
+devices (in future). Underneath, the memory is allocated from a large preallocated
+buffer such that no real memory allocation calls are issued to the system. This is
+important for keeping GPU operations asynchronous, for example. The custom memory
+allocator can result in memory fragmentation (as any other allocator). The worst
+memory fragmentation is about 50%, i.e. only 50% of memory will be accesible. The
+average memory fragmentation is 25%. In the best case, there is no fragmentation.
+In practice, this custom allocator is best suited for the allocation of medium-size
+memory chunks, from tens of MBytes to a GByte. The Host memory is pinned by default.
+Both Fortran and C API interfaces are provided.
+
+
+1. Memory manager initialization/shutdown
+
+API: Initialize the memory manager:
+
+ Fortran 2003:
+  function arg_buf_allocate() result(ierr)
+
+ C/C++:
+  int arg_buf_allocate(){
+  }
+
+API: Shutdown the memory manager:
+
+ Fortran 2003:
+  function arg_buf_deallocate() result(ierr)
+
+ C/C++:
+  int arg_buf_deallocate(){
+  }
+
+
+2. Memory allocation/deallocation API
+
+API: Allocate memory in the Host buffer:
+
+ Fortran 2003:
+  function get_buf_entry_host() result(ierr)
+
+ C/C++:
+  int get_buf_entry_host(){
+  }
+
+API: Release the memory back to the Host buffer:
+
+ Fortran 2003:
+  function free_buf_entry_host() result(ierr)
+
+ C/C++:
+  int free_buf_entry_host(){
+  }
+
+API: Allocate memory in the GPU buffer:
+
+ Fortran 2003:
+  function get_buf_entry_gpu() result(ierr)
+
+ C/C++:
+  int get_buf_entry_gpu(){
+  }
+
+API: Release the memory back to the GPU buffer:
+
+ Fortran 2003:
+  function free_buf_entry_gpu() result(ierr)
+
+ C/C++:
+  int free_buf_entry_gpu(){
+  }
+
+
+3. Memory buffer query API
+
+API: Print the current status of a memory buffer:
+
+ Fortran 2003:
+  function mem_print_stats() result(ierr)
+
+ C/C++:
+  int mem_print_stats(){
+  }

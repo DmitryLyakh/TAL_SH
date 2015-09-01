@@ -1,6 +1,8 @@
-/** ExaTensor::TAL-SH Header:
-    Parameters, derived types, and function prototypes used in TAL-SH.
-REVISION: 2015/08/29
+/** ExaTensor::TAL-SH lower-level header:
+    Parameters, derived types, and function prototypes
+    used at the lower level of TAL-SH (device specific):
+    CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
+REVISION: 2015/09/01
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -42,16 +44,21 @@ NOTES:
      AMD GPU: {MAX_GPUS_PER_NODE+MAX_MICS_PER_NODE+1:MAX_GPUS_PER_NODE+MAX_MICS_PER_NODE+MAX_AMDS_PER_NODE}, etc.
     DEVICE_ID is used in tensBlck_t: If tensor elements are already on the Device it is positive, otherwise negative.
  # MAX_SCR_ENTRY_COUNT regulates the maximal amount of additional device argument-buffer entries
-    allocated per tensor operation (it is 3 for tensor contractions or other binary tensor operations).
- # MAX_GPU_ARGS regulates the maximal allowed number of argument-buffer entries on a GPU.
+   allocated per tensor operation (it is 3 because of tensor contractions).
+ # MAX_GPU_ARGS limits the maximal allowed number of argument-buffer entries on a GPU.
+   It determines the amount of static constant memory allocated on each GPU.
  # tensBlck_t is a hardware-specific specification of a tensor-block argument used with NVidia GPU.
    In tensBlck_t, the tensor shape and tensor body must always point to the pinned Host memory
    allocated either in the HAB or explicitly via <host_mem_alloc_pin>, unless the Host copy of the
    tensor block had been released (freed).
  # CUDA_TASK is considered completed successfully if the value of the .task_error field equals zero.
-    Negative .task_error means that either the CUDA task is empty or it is in progress.
-    In the former case, .gpu_id=-1 and .task_stream is undefined.
-    Positive .task_error means that an error occured during the task scheduling/execution process.
+   Negative .task_error means that either the CUDA task is empty or it is in progress. In the former case, .gpu_id=-1.
+   Positive .task_error means that an error occured during the task scheduling/execution process.
+FOR DEVELOPERS ONLY:
+ # CPU/GPU resource allocation API functions (memory, streams, events, etc.) may return a status
+   TRY_LATER or DEVICE_UNABLE, both are not errors. If this happens within a scheduling function
+   (asynchronous tensor operation), all relevant objects, which have already been allocated, must
+   be cleared and returned in their initial state (the state before the scheduling function call).
 **/
 //BEGINNING OF TENSOR_ALGEBRA_H
 #ifndef TENSOR_ALGEBRA_H
@@ -66,7 +73,7 @@ NOTES:
 
 //GLOBAL PARAMETERS:
 #define MAX_TENSOR_RANK 32         //max allowed tensor rank: Must be multiple of 4
-#define MAX_GPU_ARGS 128           //max allowed number of tensor arguments simultaneously residing on a GPU: Must be multiple of 8
+#define MAX_GPU_ARGS 128           //max allowed number of tensor arguments simultaneously residing on a GPU: Must be a multiple of 8
 #define MAX_SCR_ENTRY_COUNT 3      //max allowed number of additional GPU argument entries allocated per tensor operation
 #define MAX_CUDA_TASKS 128         //max allowed number of simultaneously active CUDA tasks per CUDA device
 #define NUM_EVENTS_PER_TASK 4      //number of CUDA events recorded per CUDA task
@@ -177,10 +184,11 @@ typedef struct{
 
 // Device resources (occupied by a tensor block):
 typedef struct{
- void * gmem_p;       //global memory pointer
- int buf_entry;       //buffer entry number (in global memory)
+ void * gmem_p;       //pointer to Host/Device global memory where the tensor body resides
+ int buf_entry;       //argument buffer entry number (in Host/Device global memory)
  int const_mem_entry; //NVidia GPU constant memory entry number
-} talsh_dev_rsc;
+} talsh_dev_rsc_t;
+//Note: Not all fields above are defined on each device (some are device specific).
 
 // Tensor block (for the use on NVidia GPU):
 typedef struct{
@@ -200,11 +208,11 @@ typedef struct{
 
 // Interoperable tensor block:
 typedef struct{
- void * tensF;            //pointer to Fortran <tensor_block_t>
- void * tensC;            //pointer to C tensBlck_t
- int ndev;                //number of devices the tensor block is present on
- int * dev_list;          //list of the flat device id's which the tensor block resides on
- talsh_dev_rsc * dev_rsc; //occupied device resource for each device
+ void * tensF;              //pointer to Fortran <tensor_block_t>
+ void * tensC;              //pointer to C tensBlck_t
+ int ndev;                  //number of devices the tensor block is present on
+ int * dev_list;            //list of the flat device id's which the tensor block resides on
+ talsh_dev_rsc_t * dev_rsc; //occupied device resource for each device
 } talsh_tens_t;
 
 // Interface for a user-defined tensor block initialization routine:
@@ -249,34 +257,45 @@ typedef struct{
 #ifdef __cplusplus
 extern "C"{
 #endif
- int arg_buf_allocate(size_t *arg_buf_size, int *arg_max, int gpu_beg, int gpu_end);
- int arg_buf_deallocate(int gpu_beg, int gpu_end);
- int arg_buf_clean_host();
- int arg_buf_clean_gpu(int gpu_num);
- int get_blck_buf_sizes_host(size_t *blck_sizes);
- int get_blck_buf_sizes_gpu(int gpu_num, size_t *blck_sizes);
- int get_buf_entry_host(size_t bsize, char **entry_ptr, int *entry_num);
- int free_buf_entry_host(int entry_num);
- int get_buf_entry_gpu(int gpu_num, size_t bsize, char **entry_ptr, int *entry_num);
- int free_buf_entry_gpu(int gpu_num, int entry_num);
- int const_args_entry_get(int gpu_num, int *entry_num);
- int const_args_entry_free(int gpu_num, int entry_num);
- char* ptr_offset(char *byte_ptr, size_t byte_offset);
+// Buffer memory management (all devices):
+ int arg_buf_allocate(size_t *arg_buf_size, int *arg_max, int gpu_beg, int gpu_end); //generic
+ int arg_buf_deallocate(int gpu_beg, int gpu_end); //generic
+ int arg_buf_clean_host(); //Host only
+ int arg_buf_clean_gpu(int gpu_num); //NVidia GPU only
+ int get_blck_buf_sizes_host(size_t *blck_sizes); //Host only
+ int get_blck_buf_sizes_gpu(int gpu_num, size_t *blck_sizes); //NVidia GPU only
+ int get_buf_entry_host(size_t bsize, char **entry_ptr, int *entry_num); //Host only
+ int free_buf_entry_host(int entry_num); //Host only
+ int get_buf_entry_gpu(int gpu_num, size_t bsize, char **entry_ptr, int *entry_num); //NVidia GPU only
+ int free_buf_entry_gpu(int gpu_num, int entry_num); //NVidia GPU only
+ int const_args_entry_get(int gpu_num, int *entry_num); //NVidia GPU only
+ int const_args_entry_free(int gpu_num, int entry_num); //NVidia GPU only
+ int mem_print_stats(int dev_id); //generic
+ char* ptr_offset(char *byte_ptr, size_t byte_offset); //generic
 #ifndef NO_GPU
- int host_mem_alloc_pin(void **host_ptr, size_t tsize);
- int host_mem_free_pin(void *host_ptr);
- int host_mem_register(void *host_ptr, size_t tsize);
- int host_mem_unregister(void *host_ptr);
- int gpu_mem_alloc(void **dev_ptr, size_t tsize);
- int gpu_mem_free(void *dev_ptr);
+ int host_mem_alloc_pin(void **host_ptr, size_t tsize); //NVidia GPU only
+ int host_mem_free_pin(void *host_ptr); //NVidia GPU only
+ int host_mem_register(void *host_ptr, size_t tsize); //NVidia GPU only
+ int host_mem_unregister(void *host_ptr); //NVidia GPU only
+ int gpu_mem_alloc(void **dev_ptr, size_t tsize); //NVidia GPU only
+ int gpu_mem_free(void *dev_ptr); //NVidia GPU only
+// NVidia GPU operations (NV-TAL):
+//  Device id conversion:
+ int encode_device_id(int dev_kind, int dev_num);
+ int decode_device_id(int dev_id, int *dev_kind);
+//  NV-TAL debugging:
  int gpu_get_error_count();
  int gpu_get_debug_dump(int *dump);
+//  NV-TAL initialization/shutdown:
+ int init_gpus(int gpu_beg, int gpu_end);
+ int free_gpus(int gpu_beg, int gpu_end);
+//  NV-TAL internal control:
  int gpu_set_shmem_width(int width);
  void gpu_set_event_policy(int alg);
  void gpu_set_transpose_algorithm(int alg);
  void gpu_set_matmult_algorithm(int alg);
- int encode_device_id(int dev_kind, int dev_num);
- int decode_device_id(int dev_id, int *dev_kind);
+ int gpu_print_stats(int gpu_num);
+//  NV-TAL tensor block API:
  int tensBlck_create(tensBlck_t **ctens);
  int tensBlck_destroy(tensBlck_t *ctens);
  int tensBlck_construct(tensBlck_t *ctens, int dev_kind, int dev_num, int data_kind, int trank,
@@ -290,6 +309,7 @@ extern "C"{
  int tensBlck_present(const tensBlck_t *ctens);
  int tensBlck_hab_free(tensBlck_t *ctens);
  size_t tensBlck_volume(const tensBlck_t *ctens);
+//  NV-TAL CUDA task API:
  int cuda_task_create(cudaTask_t **cuda_task);
  int cuda_task_clean(cudaTask_t *cuda_task);
  int cuda_task_destroy(cudaTask_t *cuda_task);
@@ -299,11 +319,11 @@ extern "C"{
  int cuda_task_wait(cudaTask_t *cuda_task);
  int cuda_tasks_wait(int num_tasks, cudaTask_t **cuda_tasks, int* task_stats);
  float cuda_task_time(const cudaTask_t *cuda_task, float *in_copy, float *out_copy, float *comp);
- int init_gpus(int gpu_beg, int gpu_end);
- int free_gpus(int gpu_beg, int gpu_end);
+//  NV-TAL query/action API:
  int gpu_is_mine(int gpu_num);
  int gpu_busy_least();
  int gpu_activate(int gpu_num);
+//  NV-TAL tensor operations:
  int gpu_put_arg(tensBlck_t *ctens);
  int gpu_get_arg(tensBlck_t *ctens);
  int gpu_put_arg_(tensBlck_t *ctens, cudaTask_t *cuda_task);
