@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2015/09/01
+REVISION: 2015/09/02
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -642,6 +642,39 @@ int const_args_entry_free(int gpu_num, int entry_num)
 }
 #endif
 
+int mem_free_left(int dev_id, size_t * free_mem) //returns free buffer space in bytes
+{
+ int i,devk;
+ *free_mem=0;
+ if(bufs_ready == 0) return -1;
+ i=decode_device_id(dev_id,&devk);
+ if(i >= 0){
+  switch(devk){
+   case DEV_HOST:
+    *free_mem=arg_buf_host_size-occ_size_host;
+    break;
+#ifndef NO_GPU
+   case DEV_NVIDIA_GPU:
+    *free_mem=arg_buf_gpu_size[i]-occ_size_gpu[i];
+    break;
+#endif
+#ifndef NO_MIC
+   case DEV_INTEL_MIC: //`Future
+    break;
+#endif
+#ifndef NO_AMD
+   case DEV_AMD_GPU: //`Future
+    break;
+#endif
+   default:
+    return -3; //unknown device kind
+  }
+ }else{
+  return -2; //invalid device id
+ }
+ return 0;
+}
+
 int mem_print_stats(int dev_id) //print memory statistics for Device <dev_id>
 {
  int i,devk;
@@ -672,13 +705,15 @@ int mem_print_stats(int dev_id) //print memory statistics for Device <dev_id>
     break;
 #endif
 #ifndef NO_MIC
-   case DEV_INTEL_MIC:
+   case DEV_INTEL_MIC: //`Future
     break;
 #endif
 #ifndef NO_AMD
-   case DEV_AMD_GPU:
+   case DEV_AMD_GPU: //`Future
     break;
 #endif
+   default:
+    return -3; //unknown device kind
   }
  }else{
   return -2; //invalid device id

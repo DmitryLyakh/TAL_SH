@@ -270,6 +270,7 @@ extern "C"{
  int free_buf_entry_gpu(int gpu_num, int entry_num); //NVidia GPU only
  int const_args_entry_get(int gpu_num, int *entry_num); //NVidia GPU only
  int const_args_entry_free(int gpu_num, int entry_num); //NVidia GPU only
+ int mem_free_left(int dev_id, size_t * free_mem); //generic
  int mem_print_stats(int dev_id); //generic
 #ifndef NO_GPU
  int host_mem_alloc_pin(void **host_ptr, size_t tsize); //NVidia GPU only
