@@ -101,8 +101,6 @@ static int free_buf_entry(ab_conf_t ab_conf, size_t *ab_occ, size_t ab_occ_size,
 //------------------------------------------------------------------------------------------------------------------------
 
 //FUNCTION DEFINITIONS:
-char* ptr_offset(char *byte_ptr, size_t byte_offset){char *addr=&byte_ptr[byte_offset]; return addr;}
-
 static int ab_get_2d_pos(ab_conf_t ab_conf, int entry_num, int *level, int *offset)
 /** Given an argument buffer entry number, this function returns the
 corresponding buffer level and offset within that level **/

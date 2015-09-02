@@ -1,5 +1,5 @@
 /** Tensor Algebra Library for NVidia GPUs NV-TAL (CUDA based).
-REVISION: 2015/08/30
+REVISION: 2015/09/02
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -1045,11 +1045,21 @@ A positive value returned is the number of failed GPUs; a negative one is an err
 __host__ int gpu_is_mine(int gpu_num) //Positive: GPU is mine; 0: GPU is not mine; -1: invalid <gpu_num>.
 {if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){return gpu_up[gpu_num];}else{return -1;}}
 
-__host__ int gpu_busy_least() //Returns the ID of the least busy GPU (non-negative) or -1 (error)
+__host__ int gpu_busy_least() //Returns the ID of the least busy GPU (non-negative) or -1 (no GPU found)
 {
- int i;
- for(i=0;i<MAX_GPUS_PER_NODE;i++){if(gpu_up[i] > NOPE) return i;}
- return -1; //no enabled GPU found
+ int i,j,m,n;
+ m=-1; n=-1;
+ for(i=0;i<MAX_GPUS_PER_NODE;i++){
+  if(gpu_up[i] != GPU_OFF){
+   j=gpu_stats[i].tasks_submitted-(gpu_stats[i].tasks_completed+gpu_stats[i].tasks_deferred+gpu_stats[i].tasks_failed);
+   if(m >= 0){
+    if(j < m){m=j; n=i;};
+   }else{
+    m=j; n=i;
+   }
+  }
+ }
+ return n;
 }
 
 __host__ int gpu_activate(int gpu_num) //If GPU is enabled (mine), does cudaSetDevice; returns non-zero otherwise (error)

@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2015/09/01
+REVISION: 2015/09/02
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -271,7 +271,6 @@ extern "C"{
  int const_args_entry_get(int gpu_num, int *entry_num); //NVidia GPU only
  int const_args_entry_free(int gpu_num, int entry_num); //NVidia GPU only
  int mem_print_stats(int dev_id); //generic
- char* ptr_offset(char *byte_ptr, size_t byte_offset); //generic
 #ifndef NO_GPU
  int host_mem_alloc_pin(void **host_ptr, size_t tsize); //NVidia GPU only
  int host_mem_free_pin(void *host_ptr); //NVidia GPU only
@@ -286,7 +285,7 @@ extern "C"{
 //  NV-TAL debugging:
  int gpu_get_error_count();
  int gpu_get_debug_dump(int *dump);
-//  NV-TAL initialization/shutdown:
+//  NV-TAL initialization/shutdown (for internal use only):
  int init_gpus(int gpu_beg, int gpu_end);
  int free_gpus(int gpu_beg, int gpu_end);
 //  NV-TAL internal control:
@@ -311,8 +310,8 @@ extern "C"{
  size_t tensBlck_volume(const tensBlck_t *ctens);
 //  NV-TAL CUDA task API:
  int cuda_task_create(cudaTask_t **cuda_task);
- int cuda_task_clean(cudaTask_t *cuda_task);
  int cuda_task_destroy(cudaTask_t *cuda_task);
+ int cuda_task_clean(cudaTask_t *cuda_task);
  int cuda_task_gpu_id(const cudaTask_t *cuda_task);
  int cuda_task_status(cudaTask_t *cuda_task);
  int cuda_task_complete(cudaTask_t *cuda_task);
