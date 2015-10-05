@@ -1,5 +1,5 @@
 /** Tensor Algebra Library for NVidia GPUs NV-TAL (CUDA based).
-REVISION: 2015/09/02
+REVISION: 2015/09/10
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -150,19 +150,21 @@ __device__ __constant__ float sgemm_alpha=1.0f; //alpha constant for SGEMM
 __device__ __constant__ float sgemm_beta=1.0f;  //beta constant SGEMM
 __device__ __constant__ double dgemm_alpha=1.0; //alpha constant for DGEMM
 __device__ __constant__ double dgemm_beta=1.0;  //beta constant DGEMM
-// Infrastructure for functions <gpu_array_2norm2_XX> (blocking):
-__device__ float gpu_blck_norms2_r4[MAX_CUDA_BLOCKS];
-__device__ double gpu_blck_norms2_r8[MAX_CUDA_BLOCKS];
-static float blck_norms2_r4[MAX_CUDA_BLOCKS];  //`Not multi-GPU safe
-static double blck_norms2_r8[MAX_CUDA_BLOCKS]; //`Not multi-GPU safe
+// Infrastructure for functions <gpu_array_2norm2_XX> (blocking)`Obsolete:
+__device__ float gpu_blck_norms2_r4[MAX_CUDA_BLOCKS]; //`Obsolete
+__device__ double gpu_blck_norms2_r8[MAX_CUDA_BLOCKS]; //`Obsolete
+static float blck_norms2_r4[MAX_CUDA_BLOCKS];  //`Obsolete `Not multi-GPU safe
+static double blck_norms2_r8[MAX_CUDA_BLOCKS]; //`Obsolete `Not multi-GPU safe
+// Infrastructure for functions <gpu_array_norm2_XX>:
+__device__ int norm2_wr_lock=0; //write lock (shared by all <gpu_array_norm2_XX> running on device)
 // Infrastructure for kernels <gpu_array_dot_product_XX__>:
-__device__ int dot_product_wr_lock=0; //write lock (shared by all running <gpu_array_dot_product_XX__>)
+__device__ int dot_product_wr_lock=0; //write lock (shared by all <gpu_array_dot_product_XX__> running on device)
 #ifndef NO_BLAS
 // Infrastructure for CUBLAS:
 static cublasHandle_t cublas_handle[MAX_GPUS_PER_NODE]; //each GPU present on a node obtains its own cuBLAS context handle
 #endif
 
-//------------------------------------------------------------------------------------------------------
+//-----------------------------------------------------
 //SERVICE FUNCTIONS:
 __host__ int gpu_get_error_count() //returns the total number of CUDA errors occured during the run-time on current GPU
 {
@@ -1298,7 +1300,7 @@ __host__ int gpu_get_arg_(tensBlck_t *ctens, cudaTask_t *cuda_task) //Non-blocki
 // SQUARED 2-NORM OF AN ARRAY (R4) RESIDING ON GPU (blocking):
 __host__ int gpu_array_2norm2_r4(size_t arr_size, const float *arr, float *norm2)
 /** This function computes the sum of squared elements of a <float>
- array arr(0:arr_size-1) which already resides on GPU.
+array arr(0:arr_size-1) which already resides on GPU.
 Executed on the currently set GPU device. **/
 {
  int i,bx;
@@ -2822,7 +2824,7 @@ NOTES:
 }
 //-------------------------------------------------------------------------------------
 //CUDA KERNELS:
-// SQUARED 2-NORM OF AN ARRAY (R4):
+// SQUARED 2-NORM OF AN ARRAY (R4):`Obsolete
 __global__ void gpu_array_2norm2_r4__(size_t arr_size, const float *arr, float *bnorm2)
 /** Computes the squared Euclidean (Frobenius) norm of an array arr(0:arr_size-1)
 INPUT:
@@ -2846,8 +2848,8 @@ OUTPUT:
  __syncthreads();
  return;
 }
-//------------------------------------------------------------------------------------
-// SQUARED 2-NORM OF AN ARRAY (R8):
+//---------------------------------------------------------------------------------------
+// SQUARED 2-NORM OF AN ARRAY (R8):`Obsolete
 __global__ void gpu_array_2norm2_r8__(size_t arr_size, const double *arr, double *bnorm2)
 /** Computes the squared Euclidean (Frobenius) norm of an array arr(0:arr_size-1)
 INPUT:
@@ -2867,6 +2869,64 @@ OUTPUT:
  __syncthreads();
  if(threadIdx.x == 0){
   bnorm2[blockIdx.x]=thread_norms2_r8[0]; for(i=1;i<blockDim.x;i++){bnorm2[blockIdx.x]+=thread_norms2_r8[i];}
+ }
+ __syncthreads();
+ return;
+}
+//------------------------------------------------------------------------------------
+// SUM OF THE SQUARES OF ALL ARRAY ELEMENTS (R4):
+__global__ void gpu_array_norm2_r8__(size_t arr_size, const float *arr, float *bnorm2)
+/** Computes the squared 2-norm of array arr(0:arr_size-1)
+INPUT:
+ # arr_size - size of the array;
+ # arr(0:arr_size-1) - array;
+OUTPUT:
+ # bnorm2 - squared 2-norm of the array (resides on device as well);
+**/
+{
+ size_t i,n;
+ float _thread_norm2;
+ extern __shared__ float thread_norms2_r4[];
+
+ n=gridDim.x*blockDim.x; _thread_norm2=0.0f;
+ for(i=blockIdx.x*blockDim.x+threadIdx.x;i<arr_size;i+=n){_thread_norm2+=arr[i]*arr[i];}
+ thread_norms2_r4[threadIdx.x]=_thread_norm2;
+ __syncthreads();
+ if(threadIdx.x == 0){
+  _thread_norm2=thread_norms2_r4[0]; for(i=1;i<blockDim.x;i++){_thread_norm2+=thread_norms2_r4[i];}
+  i=1; while(i == 1){i=atomicMax(&norm2_wr_lock,1);} //waiting for a lock to unlock, then lock
+  *bnorm2+=_thread_norm2;
+  __threadfence();
+  i=atomicExch(&norm2_wr_lock,0); //unlock
+ }
+ __syncthreads();
+ return;
+}
+//--------------------------------------------------------------------------------------
+// SUM OF THE SQUARES OF ALL ARRAY ELEMENTS (R8):
+__global__ void gpu_array_norm2_r8__(size_t arr_size, const double *arr, double *bnorm2)
+/** Computes the squared 2-norm of array arr(0:arr_size-1)
+INPUT:
+ # arr_size - size of the array;
+ # arr(0:arr_size-1) - array;
+OUTPUT:
+ # bnorm2 - squared 2-norm of the array (resides on device as well);
+**/
+{
+ size_t i,n;
+ double _thread_norm2;
+ extern __shared__ double thread_norms2_r8[];
+
+ n=gridDim.x*blockDim.x; _thread_norm2=0.0;
+ for(i=blockIdx.x*blockDim.x+threadIdx.x;i<arr_size;i+=n){_thread_norm2+=arr[i]*arr[i];}
+ thread_norms2_r8[threadIdx.x]=_thread_norm2;
+ __syncthreads();
+ if(threadIdx.x == 0){
+  _thread_norm2=thread_norms2_r8[0]; for(i=1;i<blockDim.x;i++){_thread_norm2+=thread_norms2_r8[i];}
+  i=1; while(i == 1){i=atomicMax(&norm2_wr_lock,1);} //waiting for a lock to unlock, then lock
+  *bnorm2+=_thread_norm2;
+  __threadfence();
+  i=atomicExch(&norm2_wr_lock,0); //unlock
  }
  __syncthreads();
  return;
@@ -2984,7 +3044,7 @@ __global__ void gpu_array_product_r4__(size_t tsize1, const float* __restrict__ 
  __shared__ float lbuf[THRDS_ARRAY_PRODUCT+1],rbuf[THRDS_ARRAY_PRODUCT];
  size_t _ib,_in,_jb,_jn,_tx,_jc;
  _tx=(size_t)threadIdx.x;
-// if(tsize1 >= THRDS_ARRAY_PRODUCT){ //large or medium size L 
+// if(tsize1 >= THRDS_ARRAY_PRODUCT){ //large or medium size L
   for(_jb=blockIdx.y*THRDS_ARRAY_PRODUCT;_jb<tsize2;_jb+=gridDim.y*THRDS_ARRAY_PRODUCT){
    if(_jb+THRDS_ARRAY_PRODUCT > tsize2){_jn=tsize2-_jb;}else{_jn=THRDS_ARRAY_PRODUCT;}
    if(_tx < _jn) rbuf[_tx]=arr2[_jb+_tx];
@@ -3010,7 +3070,7 @@ __global__ void gpu_array_product_r8__(size_t tsize1, const double* __restrict__
  __shared__ double lbuf[THRDS_ARRAY_PRODUCT+1],rbuf[THRDS_ARRAY_PRODUCT];
  size_t _ib,_in,_jb,_jn,_tx,_jc;
  _tx=(size_t)threadIdx.x;
-// if(tsize1 >= THRDS_ARRAY_PRODUCT){ //large or medium size L 
+// if(tsize1 >= THRDS_ARRAY_PRODUCT){ //large or medium size L
   for(_jb=blockIdx.y*THRDS_ARRAY_PRODUCT;_jb<tsize2;_jb+=gridDim.y*THRDS_ARRAY_PRODUCT){
    if(_jb+THRDS_ARRAY_PRODUCT > tsize2){_jn=tsize2-_jb;}else{_jn=THRDS_ARRAY_PRODUCT;}
    if(_tx < _jn) rbuf[_tx]=arr2[_jb+_tx];

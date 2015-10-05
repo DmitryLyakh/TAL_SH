@@ -1,8 +1,8 @@
-/** ExaTensor::TAL-SH lower-level header:
+/** ExaTensor::TAL-SH: Lower-level header:
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2015/09/02
+REVISION: 2015/09/28
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -118,13 +118,13 @@ FOR DEVELOPERS ONLY:
 #endif
 #define THRDS_TENSOR_COPY_SCAT 256 //threads per block for <gpu_tensor_block_copy_scatter_dlf_XX__>
 
-//DATA KINDS:
+//DATA KINDS (keep consistent with tensor_algebra.F90):
 #define NO_TYPE 0 //null type
 #define R4 4      //float data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
 #define R8 8      //double data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
 #define C8 16     //double complex data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
 
-//CUDA TASK STATUS:
+//CUDA TASK STATUS (keep consistent with tensor_algebra.F90):
 #define CUDA_TASK_ERROR -1
 #define CUDA_TASK_EMPTY 0
 #define CUDA_TASK_SCHEDULED 1
@@ -136,6 +136,14 @@ FOR DEVELOPERS ONLY:
 //ALIASES (keep consistent with tensor_algebra.F90):
 #define TALSH_SUCCESS 0
 #define TALSH_FAILURE -666
+#define EVENTS_OFF 0
+#define EVENTS_ON 1
+#define BLAS_ON 0
+#define BLAS_OFF 1
+#define EFF_TRN_OFF 0
+#define EFF_TRN_ON 1
+#define TRY_LATER -918273645
+#define DEVICE_UNABLE -546372819
 #define NOPE 0
 #define YEP 1
 #define DEV_OFF 0
@@ -146,6 +154,13 @@ FOR DEVELOPERS ONLY:
 #define GPU_MINE_CUBLAS 2
 #define NO_COPY_BACK 0
 #define COPY_BACK 1
+/*
+#define COPY_F 0
+#define COPY_K 1
+#define COPY_FF 0
+#define COPY_FK 1
+#define COPY_KF 2
+#define COPY_KK 3
 #define COPY_FFF 0
 #define COPY_FFK 1
 #define COPY_FKF 2
@@ -154,26 +169,97 @@ FOR DEVELOPERS ONLY:
 #define COPY_KFK 5
 #define COPY_KKF 6
 #define COPY_KKK 7
-#define COPY_FF 0
-#define COPY_FK 1
-#define COPY_KF 2
-#define COPY_KK 3
-#define COPY_F 0
-#define COPY_K 1
-#define EVENTS_OFF 0
-#define EVENTS_ON 1
-#define BLAS_ON 0
-#define BLAS_OFF 1
-#define EFF_TRN_OFF 0
-#define EFF_TRN_ON 1
-#define TRY_LATER -918273645
-#define DEVICE_UNABLE -546372819
+*/
+#define COPY_D 0
+#define COPY_M 1
+#define COPY_T 2
+#define COPY_K 3
+#define COPY_DD 0
+#define COPY_DM 1
+#define COPY_DT 2
+#define COPY_DK 3
+#define COPY_MD 4
+#define COPY_MM 5
+#define COPY_MT 6
+#define COPY_MK 7
+#define COPY_TD 8
+#define COPY_TM 9
+#define COPY_TT 10
+#define COPY_TK 11
+#define COPY_KD 12
+#define COPY_KM 13
+#define COPY_KT 14
+#define COPY_KK 15
+#define COPY_DDD 0
+#define COPY_DDM 1
+#define COPY_DDT 2
+#define COPY_DDK 3
+#define COPY_DMD 4
+#define COPY_DMM 5
+#define COPY_DMT 6
+#define COPY_DMK 7
+#define COPY_DTD 8
+#define COPY_DTM 9
+#define COPY_DTT 10
+#define COPY_DTK 11
+#define COPY_DKD 12
+#define COPY_DKM 13
+#define COPY_DKT 14
+#define COPY_DKK 15
+#define COPY_MDD 16
+#define COPY_MDM 17
+#define COPY_MDT 18
+#define COPY_MDK 19
+#define COPY_MMD 20
+#define COPY_MMM 21
+#define COPY_MMT 22
+#define COPY_MMK 23
+#define COPY_MTD 24
+#define COPY_MTM 25
+#define COPY_MTT 26
+#define COPY_MTK 27
+#define COPY_MKD 28
+#define COPY_MKM 29
+#define COPY_MKT 30
+#define COPY_MKK 31
+#define COPY_TDD 32
+#define COPY_TDM 33
+#define COPY_TDT 34
+#define COPY_TDK 35
+#define COPY_TMD 36
+#define COPY_TMM 37
+#define COPY_TMT 38
+#define COPY_TMK 39
+#define COPY_TTD 40
+#define COPY_TTM 41
+#define COPY_TTT 42
+#define COPY_TTK 43
+#define COPY_TKD 44
+#define COPY_TKM 45
+#define COPY_TKT 46
+#define COPY_TKK 47
+#define COPY_KDD 48
+#define COPY_KDM 49
+#define COPY_KDT 50
+#define COPY_KDK 51
+#define COPY_KMD 52
+#define COPY_KMM 53
+#define COPY_KMT 54
+#define COPY_KMK 55
+#define COPY_KTD 56
+#define COPY_KTM 57
+#define COPY_KTT 58
+#define COPY_KTK 59
+#define COPY_KKD 60
+#define COPY_KKM 61
+#define COPY_KKT 62
+#define COPY_KKK 63
 
 //MACRO FUNCTIONS:
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
-//DERIVED TYPES:
+//DERIVED TYPES (keep consistent with tensor_algebra.F90):
 // Tensor shape:
 typedef struct{
  int num_dim;   //tensor rank (number of dimensions)
@@ -181,15 +267,13 @@ typedef struct{
  int * divs;    //tensor dimension dividers
  int * grps;    //tensor dimension groups
 } talsh_tens_shape_t;
-
-// Device resources (occupied by a tensor block):
+// Device resource (occupied by a tensor block):
 typedef struct{
  void * gmem_p;       //pointer to Host/Device global memory where the tensor body resides
  int buf_entry;       //argument buffer entry number (in Host/Device global memory)
  int const_mem_entry; //NVidia GPU constant memory entry number
 } talsh_dev_rsc_t;
 //Note: Not all fields above are defined on each device (some are device specific).
-
 // Tensor block (for the use on NVidia GPU):
 typedef struct{
  int device_id;        //device on which the tensor block already resides (+) or will reside (-) (device_id=0 means Host)
@@ -205,15 +289,20 @@ typedef struct{
  int buf_entry_gpu;    //GPU argument buffer entry pointed to by *elems_d: GPU global memory
  int const_args_entry; //entry number in const_args[]: GPU constant memory (dims[] and prmn[] arrays are stored there)
 } tensBlck_t;
-
 // Interoperable tensor block:
 typedef struct{
- void * tensF;              //pointer to Fortran <tensor_block_t>
- void * tensC;              //pointer to C tensBlck_t
- int ndev;                  //number of devices the tensor block is present on
+ int ndev;                  //number of devices the tensor block resides on
+ int last_write;            //flat device id where the last write happened, -1 means coherence on all devices where the tensor block resides
  int * dev_list;            //list of the flat device id's which the tensor block resides on
- talsh_dev_rsc_t * dev_rsc; //occupied device resource for each device
+ talsh_dev_rsc_t * dev_rsc; //list of the device resources occupied by the tensor block on each device
+ void * tensF;              //pointer to Fortran <tensor_block_t>
+ void * tensC;              //pointer to C <tensBlck_t>
 } talsh_tens_t;
+// Interoperable TAL-SH task handle:
+typedef struct{
+ int dev_kind;  //device kind
+ void * task_p; //pointer to the corresponding task object
+} talsh_task_t;
 
 // Interface for a user-defined tensor block initialization routine:
 typedef void (*talsh_tens_init_i)(void * tens_ptr, int data_type, int tens_rank, int tens_dims[], int * ierr);
@@ -233,12 +322,6 @@ typedef struct{
  int scr_entry[MAX_SCR_ENTRY_COUNT]; //additional GPU argument-buffer entries allocated by the task
 } cudaTask_t;
 #endif
-
-// Interoperable TAL-SH task:
-typedef struct{
- int dev_kind;  //device kind
- void * task_p; //pointer to the corresponding task object
-} talsh_task_t;
 
 // Device statistics:
 typedef struct{

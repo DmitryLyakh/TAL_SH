@@ -8,7 +8,7 @@ LICENSE: GPL v.2
 
 0. Preambule
 
-The memory management API provide a user with an ability to quickly allocate/deallocate
+The memory management API provides a user with the ability to quickly allocate/deallocate
 contiguous chunks of memory in the Host RAM, GPU global memory, and memories on other
 devices (in future). Underneath, the memory is allocated from a large preallocated
 buffer such that no real memory allocation calls are issued to the system. This is

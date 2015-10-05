@@ -1,5 +1,6 @@
 *** TAL-SH: Tensor Algebra Library for Shared Memory Computers ***
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
+REVISION: 2015/09/28
 Copyright (C) 2015 Dmitry I. Lyakh
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 LICENSE: GPL v.2
@@ -331,9 +332,9 @@ API: Query the presence of a tensor block on device(s):
 
 4. TAL-SH task API
 
-A TAL-SH task handle is returned by every asynchronous tensor operation.
-It is associated with that specific operation and can be used for checking
-the completion of the operation and obtaining the timing information.
+A TAL-SH task handle <talsh_task_t> is returned by every asynchronous tensor
+operation. It is associated with that specific operation and can be used for
+checking the completion of the operation and obtaining the timing information.
 
 API: Clean a TAL-SH task for reuse:
 
@@ -482,8 +483,8 @@ with the following options:
 
 If a task cannot be scheduled at this point due to the lack of resources (memory, etc.),
 a return status TRY_LATER will indicate that. If a task cannot be scheduled
-in principle on a particular device, a return status DEVICE_UNSUITABLE will
-indicate that. Note that both TRY_LATER and DEVICE_UNSUITABLE are not errors.
+in principle on a particular device, a return status DEVICE_UNABLE will
+indicate that. Note that both TRY_LATER and DEVICE_UNABLE are not errors.
 A successful scheduling will be indicated by a return status TALSH_SUCCESS (0).
 A successful scheduling does not guarantee a successful execution, in general.
 
