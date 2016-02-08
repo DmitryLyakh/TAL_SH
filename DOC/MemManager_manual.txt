@@ -1,0 +1,175 @@
+*** Memory manager for Tensor Algebra Library TAL-SH ***
+AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
+Copyright (C) 2015 Dmitry I. Lyakh
+Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
+LICENSE: GPL v.2
+--------------------------------------------------------------
+
+
+0. Preamble
+
+The memory management API provides a user with the ability to quickly allocate/deallocate
+contiguous chunks of memory in the Host memory, GPU global memory, and memories on other
+devices (in future). Underneath, the memory is allocated from a large preallocated
+buffer such that no real memory allocation calls are issued to the system. This is
+important for keeping GPU operations asynchronous, in particular. The custom memory
+allocator can lead to memory fragmentation (as any other allocator). The worst
+memory fragmentation case is about 50%, i.e. only 50% of memory will be accesible.
+The average memory fragmentation is 25%. In the best case, there is no fragmentation.
+In practice, this custom allocator is best suited for the allocation of medium-size
+memory chunks, from tens of MBytes to a GByte. The Host memory is pinned by default.
+Both Fortran and C API interfaces are provided.
+
+
+1. Memory manager initialization/shutdown
+
+API: Initialize the memory manager:
+
+ Fortran 2003:
+  function arg_buf_allocate(host_mem,arg_max,gpu_beg,gpu_end) result(ierr)
+   integer(C_INT), intent(out):: ierr          !out: error code (0:success)
+   integer(C_SIZE_T), intent(inout):: host_mem !in: desired size of the Host memory buffer in bytes; out: actual size
+   integer(C_INT), intent(out):: arg_max       !out: max number of active memory allocations allowed
+   integer(C_INT), value, intent(in):: gpu_beg !in: first GPU of the used GPU range
+   integer(C_INT), value, intent(in):: gpu_end !in: last GPU of the used GPU range
+
+ C/C++:
+  int arg_buf_allocate(   //out: error code (0:success)
+   size_t * arg_buf_size, //in: desired size of the Host memory buffer in bytes; out: actual size
+   int * arg_max,         //out: max number of active memory allocations allowed
+   int gpu_beg,           //in: first GPU of the used GPU range
+   int gpu_end            //in: last GPU of the used GPU range
+  )
+
+ Description: This function preallocates a pinned memory buffer of a desired size on Host.
+              Subsequently, this memory buffer can provide chunks of memory to the application.
+              If GPU's are present on the node, it will also preallocate memory buffers
+              in global GPU memory in the same manner (for the selected range of GPU's).
+              The amount of GPU memory to be preallocated is currently regulated by the
+              internal parameter GPU_MEM_PART_USED located in <mem_manager.cu>. If one
+              does not want to preallocate memory buffers on any GPU, a gpu_beg > gpu_end
+              argument pair needs to be supplied.
+
+API: Shutdown the memory manager:
+
+ Fortran 2003:
+  function arg_buf_deallocate(gpu_beg,gpu_end) result(ierr)
+   integer(C_INT), intent(out):: ierr          !out: error code (0:success)
+   integer(C_INT), value, intent(in):: gpu_beg !in: first GPU of the used GPU range
+   integer(C_INT), value, intent(in):: gpu_end !in: last GPU of the used GPU range
+
+ C/C++:
+  int arg_buf_deallocate( //out: error code (0:success)
+   int gpu_beg,           //in: first GPU of the used GPU range
+   int gpu_end            //in: last GPU of the used GPU range
+  )
+
+
+2. Memory allocation/deallocation API
+
+API: Allocate memory in the Host buffer:
+
+ Fortran 2003:
+  function get_buf_entry_host(bsize,entry_ptr,entry_num) result(ierr)
+   integer(C_INT), intent(out):: ierr           !out: error code (0:success; TRY_LATER,DEVICE_UNABLE; otherwise error)
+   integer(C_SIZE_T), value, intent(in):: bsize !in: number of bytes requested
+   type(C_PTR), intent(out):: entry_ptr         !out: C pointer to allocated memory (input to C_F_POINTER)
+   integer(C_INT), intent(out):: entry_num      !out: memory handle (used for releasing the memory later)
+
+ C/C++:
+  int get_buf_entry_host( //out: error code (0:success; TRY_LATER,DEVICE_UNABLE; otherwise error)
+   size_t bsize,          //in: number of bytes requested
+   char ** entry_ptr,     //out: C pointer to allocated memory
+   int * entry_num        //out: memory handle (used for releasing the memory later)
+  )
+
+  Note: The base address of the allocated memory space will be aligned. The alignment
+        is regulated by the internal parameter MEM_ALIGN in <mem_manager.cu>.
+        If TRY_LATER is returned, it means that the allocation request cannot be
+        satisfied at this moment because not enough free space left in the buffer.
+        If DEVICE_UNABLE is returned, it means that the allocation request can
+        never be satisfied within the existing buffer.
+
+API: Release the memory back to the Host buffer:
+
+ Fortran 2003:
+  function free_buf_entry_host(entry_num) result(ierr)
+   integer(C_INT), intent(out):: ierr            !out: error code (0:success)
+   integer(C_INT), value, intent(in):: entry_num !in: memory handle
+
+ C/C++:
+  int free_buf_entry_host( //out: error code (0:success)
+   int entry_num           //in: memory handle
+  )
+
+API: Allocate memory in the GPU buffer:
+
+ Fortran 2003:
+  function get_buf_entry_gpu(gpu_num,bsize,entry_ptr,entry_num) result(ierr)
+   integer(C_INT), intent(out):: ierr           !out: error code (0:success; TRY_LATER,DEVICE_UNABLE; otherwise error)
+   integer(C_INT), value, intent(in):: gpu_num  !in: target GPU
+   integer(C_SIZE_T), value, intent(in):: bsize !in: number of bytes requested
+   type(C_PTR), intent(out):: entry_ptr         !out: C pointer to allocated GPU global memory
+   integer(C_INT), intent(out):: entry_num      !out: memory handle (used for releasing the memory later)
+
+ C/C++:
+  int get_buf_entry_gpu( //out: error code (0:success; TRY_LATER,DEVICE_UNABLE; otherwise error)
+   int gpu_num,          //in: target GPU
+   size_t bsize,         //in: number of bytes requested
+   char ** entry_ptr,    //out: C pointer to allocated GPU global memory
+   int * entry_num       //out: memory handle (used for releasing the memory later)
+  )
+
+  Note: The base address of the allocated memory space will be aligned. The alignment
+        is regulated by the internal parameter MEM_ALIGN in <mem_manager.cu>.
+        If TRY_LATER is returned, it means that the allocation request cannot be
+        satisfied at this moment because not enough free space left in the buffer.
+        If DEVICE_UNABLE is returned, it means that the allocation request can
+        never be satisfied within the existing buffer.
+
+API: Release the memory back to the GPU buffer:
+
+ Fortran 2003:
+  function free_buf_entry_gpu(gpu_num,entry_num) result(ierr)
+   integer(C_INT), intent(out):: ierr            !out: error code (0:success)
+   integer(C_INT), value, intent(in):: gpu_num   !in: target GPU
+   integer(C_INT), value, intent(in):: entry_num !in: memory handle
+
+ C/C++:
+  int free_buf_entry_gpu( //out: error code (0:success)
+   int gpu_num,           //in: target GPU
+   int entry_num          //in: memory handle
+  )
+
+
+3. Memory buffer query API
+
+API: Query the free memory space on a given device:
+
+ Fortran 2003:
+  function mem_free_left(dev_id,free_mem) result(ierr)
+   integer(C_INT), intent(out):: ierr         !out: error code (0:success)
+   integer(C_INT), value, intent(in):: dev_id !in: target device id (0:Host; 1..MAX_GPU_PER_NODE: NVidia GPUs)
+   integer(C_SIZE_T), intent(out):: free_mem  !out: free memory in bytes
+
+ C/C++:
+  int mem_free_left( //out: error code (0:success)
+   int dev_id,       //in: target device id (0:Host; 1..MAX_GPU_PER_NODE: NVidia GPUs)
+   size_t * free_mem //out: free memory in bytes
+  )
+
+ Note: The returned amount of free memory does not necessarily mean that all that
+       memory can be allocated. The actual amount of usable memory will depend on
+       the allocation pattern.
+
+API: Print the current status of a memory buffer on a given device:
+
+ Fortran 2003:
+  function mem_print_stats(dev_id) result(ierr)
+   integer(C_INT), intent(out):: ierr         !out: error code (0:success)
+   integer(C_INT), value, intent(in):: dev_id !in: target device id (0:Host; 1..MAX_GPU_PER_NODE: NVidia GPUs)
+
+ C/C++:
+  int mem_print_stats( //out: error code (0:success)
+   int dev_id          //in: target device id (0:Host; 1..MAX_GPU_PER_NODE: NVidia GPUs)
+  )
