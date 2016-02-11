@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API header.
-REVISION: 2016/02/08
+REVISION: 2016/02/11
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -24,7 +24,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "tensor_algebra.h"
 
+//PARAMETERS:
 #define TALSH_MAX_ACTIVE_TASKS 4096 //max number of active tasks on all devices on a node
+
+//ERROR CODES:
+#define TALSH_NOT_INITIALIZED 1
+#define TALSH_ALREADY_INITIALIZED 2
+#define TALSH_INVALID_ARGS 3
 
 //Exported functions:
 #ifdef __cplusplus

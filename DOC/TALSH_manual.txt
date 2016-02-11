@@ -1,7 +1,7 @@
 *** TAL-SH: Tensor Algebra Library for Shared Memory Computers ***
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2016/02/08
-Copyright (C) 2015 Dmitry I. Lyakh
+REVISION: 2016/02/11
+Copyright (C) 2015 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 LICENSE: GPL v.2
 --------------------------------------------------------------
