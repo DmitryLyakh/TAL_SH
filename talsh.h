@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API header.
-REVISION: 2016/02/11
+REVISION: 2016/02/12
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -28,6 +28,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define TALSH_MAX_ACTIVE_TASKS 4096 //max number of active tasks on all devices on a node
 
 //ERROR CODES:
+#define TALSH_SUCCESS 0
+#define TALSH_FAILURE -666
 #define TALSH_NOT_INITIALIZED 1
 #define TALSH_ALREADY_INITIALIZED 2
 #define TALSH_INVALID_ARGS 3
@@ -43,7 +45,10 @@ extern "C"{
                                                            int namds, int amd_list[]);
 //  Shutdown TAL-SH:
  int talshShutdown();
-
+//  Get the flat device Id:
+ int talshFlatDevId(int dev_kind, int dev_num);
+//  Get the kind-specific device Id:
+ int talshKindDevId(int dev_id, int * dev_kind);
 
 #ifdef __cplusplus
 }

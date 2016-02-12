@@ -17,7 +17,7 @@ GPU_CUDA ?= CUDA
 # MPI:
 PATH_MPICH ?= /usr/local/mpich3.2
 PATH_OPENMPI ?= /usr/local/openmpi1.10.1
-# BLAS:
+# BLAS LIB:
 PATH_BLAS_ATLAS ?= /usr/lib
 PATH_BLAS_INTEL ?= /usr/lib
 PATH_BLAS_ACML ?= /usr/lib

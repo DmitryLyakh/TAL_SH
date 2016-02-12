@@ -35,10 +35,12 @@ static int talsh_amds[MAX_AMDS_PER_NODE]; //current AMD status
 static talsh_task_t talsh_tasks[TALSH_MAX_ACTIVE_TASKS]; //reusable TAL-SH tasks
 
 //Exported functions:
-// TAL-SH control:
-int talshInit(size_t * host_buf_size, int * host_arg_max, int ngpus, int gpu_list[],
-                                                          int nmics, int mic_list[],
-                                                          int namds, int amd_list[])
+// TAL-SH device control:
+int talshInit(size_t * host_buf_size,    //inout: Host Argument Buffer size in bytes (in: suggested; out: actual)
+              int * host_arg_max,        //out: Max number of arguments that can fit into the Host Argument Buffer
+              int ngpus, int gpu_list[], //in: number of Nvidia GPU(s) to use and the list of Nvidia GPU(s) to use
+              int nmics, int mic_list[], //in: number of Intel Xeon Phi(s) to use and the list of Intel Xeon Phi(s) to use
+              int namds, int amd_list[]) //in: number of AMD GPU(s) to use and the list of AMD GPU(s) to use
 /** Initializes the TAL-SH runtime. **/
 {
  int i,gpu_beg,gpu_end,errc;
@@ -82,7 +84,24 @@ int talshShutdown()
  int errc;
 
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
- errc=arg_buf_deallocate(talsh_gpu_beg,talsh_gpu_end); if(errc) return TALSH_FAILURE;
+ errc=arg_buf_deallocate(talsh_gpu_beg,talsh_gpu_end);
  talsh_gpu_beg=0; talsh_gpu_end=-1; talsh_on=0;
+ if(errc) return TALSH_FAILURE;
  return TALSH_SUCCESS;
+}
+
+int talshFlatDevId(int dev_kind, //in: device kind
+                   int dev_num)  //in: device Id within its kind (0..MAX)
+/** Converts a kind-specific device Id into the flat device Id.
+    DEV_MAX return status indicates invalidity of the arguments. **/
+{
+ return encode_device_id(dev_kind,dev_num); //Success:[0..DEV_MAX-1]; Failure: DEV_MAX
+}
+
+int talshKindDevId(int dev_id,     //in: flat device Id: [0:DEV_MAX-1]
+                   int * dev_kind) //out: device kind
+/** Converts a flat device Id into the kind specific device Id.
+    A negative return value indicates an invalid flat device Id. **/
+{
+ return decode_device_id(dev_id,dev_kind);
 }

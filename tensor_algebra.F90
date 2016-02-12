@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h"!
-!REVISION: 2016/02/08
+!REVISION: 2016/02/12
         module tensor_algebra
         use dil_basic !contains ISO_C_BINDING: basic parameters
         implicit none
@@ -25,8 +25,6 @@
         integer(C_INT), parameter, public:: DEV_MAX=1+MAX_GPUS_PER_NODE+MAX_MICS_PER_NODE+MAX_AMDS_PER_NODE
 
 !ALIASES (keep consistent with tensor_algebra.h):
-        integer(C_INT), parameter, public:: TALSH_SUCCESS=0             !success
-        integer(C_INT), parameter, public:: TALSH_FAILURE=-666          !failure
         integer(C_INT), parameter, public:: BLAS_ON=0                   !enables BLAS
         integer(C_INT), parameter, public:: BLAS_OFF=1                  !disables BLAS
         integer(C_INT), parameter, public:: EFF_TRN_OFF=0               !disables efficient tensor transpose algorithm
@@ -46,9 +44,9 @@
         integer(C_INT), parameter, public:: NO_COPY_BACK=0              !keeps the tensor-result on Accelerator without updating Host
         integer(C_INT), parameter, public:: COPY_BACK=1                 !tensor-result will be copied back from Accelerator to Host (default)
 #ifndef NO_PHI
-!DIR$ ATTRIBUTES OFFLOAD:mic:: TALSH_SUCCESS,TALSH_FAILURE,BLAS_ON,BLAS_OFF,EFF_TRN_OFF,EFF_TRN_ON,DEVICE_UNABLE,TRY_LATER,NOT_CLEAN
+!DIR$ ATTRIBUTES OFFLOAD:mic:: BLAS_ON,BLAS_OFF,EFF_TRN_OFF,EFF_TRN_ON,DEVICE_UNABLE,TRY_LATER,NOT_CLEAN
 !DIR$ ATTRIBUTES OFFLOAD:mic:: NOPE,YEP,EVERYTHING,SOURCE,DESTINATION,TEMPORARY,DEV_OFF,DEV_ON,DEV_ON_BLAS,NO_COPY_BACK,COPY_BACK
-!DIR$ ATTRIBUTES ALIGN:128:: TALSH_SUCCESS,TALSH_FAILURE,BLAS_ON,BLAS_OFF,EFF_TRN_OFF,EFF_TRN_ON,DEVICE_UNABLE,TRY_LATER,NOT_CLEAN
+!DIR$ ATTRIBUTES ALIGN:128:: BLAS_ON,BLAS_OFF,EFF_TRN_OFF,EFF_TRN_ON,DEVICE_UNABLE,TRY_LATER,NOT_CLEAN
 !DIR$ ATTRIBUTES ALIGN:128:: NOPE,YEP,EVERYTHING,SOURCE,DESTINATION,TEMPORARY,DEV_OFF,DEV_ON,DEV_ON_BLAS,NO_COPY_BACK,COPY_BACK
 #endif
         integer(C_INT), parameter, public:: COPY_D=0
