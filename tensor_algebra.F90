@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h"!
-!REVISION: 2016/02/12
+!REVISION: 2016/02/15
         module tensor_algebra
         use dil_basic !contains ISO_C_BINDING: basic parameters
         implicit none
@@ -16,12 +16,12 @@
 !DEVICE KINDS (keep consistent with tensor_algebra.h):
         integer(C_INT), parameter, public:: MAX_GPUS_PER_NODE=8   !max number of NVidia GPUs on a node
         integer(C_INT), parameter, public:: MAX_MICS_PER_NODE=8   !max number of Intel MICs on a node
-        integer(C_INT), parameter, public:: MAX_AMDS_PER_NODE=8   !max number of AMD APUs on a node
+        integer(C_INT), parameter, public:: MAX_AMDS_PER_NODE=8   !max number of AMD GPUs on a node
         integer(C_INT), parameter, public:: DEV_NULL=-1           !abstract null device
         integer(C_INT), parameter, public:: DEV_HOST=0            !multicore CPU Host (includes all self-hosted systems)
         integer(C_INT), parameter, public:: DEV_NVIDIA_GPU=1      !NVidia GPU
         integer(C_INT), parameter, public:: DEV_INTEL_MIC=2       !Intel Xeon Phi
-        integer(C_INT), parameter, public:: DEV_AMD_GPU=3         !AMD APU
+        integer(C_INT), parameter, public:: DEV_AMD_GPU=3         !AMD GPU
         integer(C_INT), parameter, public:: DEV_MAX=1+MAX_GPUS_PER_NODE+MAX_MICS_PER_NODE+MAX_AMDS_PER_NODE
 
 !ALIASES (keep consistent with tensor_algebra.h):
@@ -161,27 +161,37 @@
 #endif
 
 !INTEROPERABLE TYPES (keep consistent with tensor_algebra.h):
+ !TAL-SH tensor shape:
+        type, bind(C):: talsh_tens_shape_t
+         integer(C_INT):: num_dim !tensor rank (number of dimensions): >=0; -1:empty
+         type(C_PTR):: dims       !tensor dimension extents
+         type(C_PTR):: divs       !tensor dimension dividers
+         type(C_PTR):: grps       !tensor dimension groups
+        end type talsh_tens_shape_t
  !TAL-SH tensor block:
         type, bind(C):: talsh_tens_t
+         type(C_PTR):: shape_p       !shape of the tensor block
          integer(C_INT):: ndev       !number of devices the tensor block resides on
          integer(C_INT):: last_write !flat device id where the last write happened, -1 means coherence on all devices where the tensor block resides
          type(C_PTR):: dev_rsc       !list of device resources occupied by the tensor block on each device
-         type(C_PTR):: tensF         !pointer to Fortran <tensor_block_t>
-         type(C_PTR):: tensC         !pointer to C/C++ <tensBlck_t>
+         type(C_PTR):: tensF         !pointer to Fortran <tensor_block_t> (CPU,Phi)
+         type(C_PTR):: tensC         !pointer to C/C++ <tensBlck_t> (Nvidia GPU)
         end type talsh_tens_t
  !TAL-SH task handle:
         type, bind(C):: talsh_task_t
-         integer(C_INT):: dev_kind   !device kind
-         type(C_PTR):: task_p        !pointer to the corresponding task object
+         type(C_PTR):: task_p       !pointer to the corresponding task object
+         integer(C_INT):: dev_kind  !device kind (DEV_NULL: uninitialized)
+         real(C_DOUBLE):: flops     !number of floating point operations
+         real(C_DOUBLE):: exec_time !execution time in seconds
         end type talsh_task_t
 
 !EXTERNAL INTERFACES (keep consistent with tensor_algebra.h):
  !User-defined tensor block initialization:
         abstract interface
-         subroutine talsh_tens_init_i(tens_ptr,data_type,tens_rank,tens_dims,ierr)
+         subroutine talsh_tens_init_i(tens_body_p,data_type,tens_rank,tens_dims,ierr)
           import
-          type(C_PTR), value:: tens_ptr                !in: pointer to the tensor elements storage
-          integer(C_INT), value:: data_type            !in: data type: {R4,R8,C8}
+          type(C_PTR), value:: tens_body_p             !in: pointer to the tensor elements storage
+          integer(C_INT), value:: data_type            !in: data type: {R4,R8,C4,C8}
           integer(C_INT), value:: tens_rank            !in: tensor block rank
           integer(C_INT), intent(in):: tens_dims(1:*)  !in: tensor block dimension extents
           integer(C_INT), intent(out):: ierr           !out: error code (0:success)

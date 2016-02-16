@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2016/02/08
+REVISION: 2016/02/15
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -141,8 +141,6 @@ FOR DEVELOPERS ONLY:
 //ALIASES (keep consistent with tensor_algebra.F90):
 #define NOPE 0
 #define YEP 1
-#define TALSH_SUCCESS 0
-#define TALSH_FAILURE -666
 #define BLAS_ON 0
 #define BLAS_OFF 1
 #define EFF_TRN_OFF 0
@@ -150,6 +148,8 @@ FOR DEVELOPERS ONLY:
 #define DEVICE_UNABLE -546372819
 #define TRY_LATER -918273645
 #define NOT_CLEAN -192837465
+#define NVTAL_SUCCESS 0
+#define NVTAL_FAILURE -666
 
 #define EVERYTHING 0
 #define SOURCE 1
@@ -257,7 +257,7 @@ FOR DEVELOPERS ONLY:
 //DERIVED TYPES (keep consistent with tensor_algebra.F90):
 // Tensor shape:
 typedef struct{
- int num_dim;   //tensor rank (number of dimensions): >=0, -1:Empty
+ int num_dim;   //tensor rank (number of dimensions): >=0; -1:empty
  int * dims;    //tensor dimension extents (either in regular RAM or pinned)
  int * divs;    //tensor dimension dividers (either in regular RAM or pinned)
  int * grps;    //tensor dimension groups (either in regular RAM or pinned)
@@ -289,17 +289,20 @@ typedef struct{
 
 // Interoperable tensor block:
 typedef struct{
- int ndev;                  //number of devices the tensor block resides on
- int last_write;            //flat device id where the last write happened, -1 means coherence on all devices where the tensor block resides
- talsh_dev_rsc_t * dev_rsc; //list of device resources occupied by the tensor block on each device
- void * tensF;              //pointer to Fortran <tensor_block_t>
- void * tensC;              //pointer to C <tensBlck_t>
+ talsh_tens_shape_t * shape_p; //shape of the tensor block
+ int ndev;                     //number of devices the tensor block resides on
+ int last_write;               //flat device id where the last write happened, -1 means coherence on all devices where the tensor block resides
+ talsh_dev_rsc_t * dev_rsc;    //list of device resources occupied by the tensor block on each device
+ void * tensF;                 //pointer to Fortran <tensor_block_t> (CPU,Phi)
+ void * tensC;                 //pointer to C <tensBlck_t> (Nvidia GPU)
 } talsh_tens_t;
 
 // Interoperable TAL-SH task handle:
 typedef struct{
- int dev_kind;  //device kind
- void * task_p; //pointer to the corresponding task object
+ void * task_p;    //pointer to the corresponding task object
+ int dev_kind;     //device kind (DEV_NULL: uninitalized)
+ double flops;     //number of floating point operations
+ double exec_time; //execution time in seconds
 } talsh_task_t;
 
 // CUDA task (returned by non-blocking CUDA functions):
@@ -318,7 +321,7 @@ typedef struct{
 //Note: Adding new CUDA events will require adjustment of NUM_EVENTS_PER_TASK.
 
 // Interface for a user-defined tensor block initialization routine:
-typedef void (*talsh_tens_init_i)(void * tens_ptr, int data_type, int tens_rank, int tens_dims[], int * ierr);
+typedef void (*talsh_tens_init_i)(void * tens_body_p, int data_type, int tens_rank, const int tens_dims[], int * ierr);
 
 // Device statistics:
 typedef struct{
@@ -363,10 +366,12 @@ extern "C"{
  int gpu_print_stats(int gpu_num = -1);
 #endif
 //  NV-TAL tensor block API:
+ int tensShape_create(talsh_tens_shape_t ** tshape);
  int tensShape_clean(talsh_tens_shape_t * tshape);
  int tensShape_construct(talsh_tens_shape_t * tshape, int pinned,
                          int rank, const int * dims = NULL, const int * divs = NULL, const int * grps = NULL);
  int tensShape_destruct(talsh_tens_shape_t * tshape);
+ int tensShape_destroy(talsh_tens_shape_t * tshape);
  size_t tensShape_volume(const talsh_tens_shape_t * tshape);
  int tensBlck_create(tensBlck_t **ctens);
  int tensBlck_destroy(tensBlck_t *ctens);

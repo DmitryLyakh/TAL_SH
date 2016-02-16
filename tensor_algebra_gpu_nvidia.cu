@@ -1,5 +1,5 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
-REVISION: 2016/02/08
+REVISION: 2016/02/15
 Copyright (C) 2015 Dmitry I. Lyakh (email: quant4me@gmail.com)
 Copyright (C) 2015 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -932,13 +932,13 @@ __host__ int gpu_busy_least()
 __host__ int gpu_in_focus(int gpu_num)
 /** If <gpu_num> is not passed here, returns the id of the current GPU in focus.
     If <gpu_num> is passed here, returns YEP if it is currently in focus, NOPE otherwise.
-    In case of error, returns TALSH_FAILURE (negative integer). **/
+    In case of error, returns NVTAL_FAILURE (negative integer). **/
 {
  int n;
  cudaError_t err;
- err=cudaGetDevice(&n); if(err != cudaSuccess) return TALSH_FAILURE;
+ err=cudaGetDevice(&n); if(err != cudaSuccess) return NVTAL_FAILURE;
  if(gpu_num >= 0){if(n == gpu_num){return YEP;}else{return NOPE;}}
- if(n < 0 || n >= MAX_GPUS_PER_NODE) return TALSH_FAILURE; //GPU id must not exceed the TALSH limit per node
+ if(n < 0 || n >= MAX_GPUS_PER_NODE) return NVTAL_FAILURE; //GPU id must not exceed the TALSH limit per node
  return n;
 }
 
@@ -1030,6 +1030,17 @@ __host__ int gpu_print_stats(int gpu_num)
 #endif
 
 //TENSOR BLOCK API:
+int tensShape_create(talsh_tens_shape_t ** tshape)
+/** Creates a tensor shape and cleans it. **/
+{
+ int errc;
+ if(tshape == NULL) return -1;
+ (*tshape)=(talsh_tens_shape_t*)malloc(sizeof(talsh_tens_shape_t));
+ if(*tshape == NULL) return TRY_LATER;
+ errc=tensShape_clean(*tshape); if(errc) return 1;
+ return 0;
+}
+
 int tensShape_clean(talsh_tens_shape_t * tshape)
 /** Cleans a tensor shape. A clean (initialized to null) tensor shape has .num_dim=-1.
     A further defined tensor shape has .num_dim >= 0. **/
@@ -1145,6 +1156,16 @@ int tensShape_destruct(talsh_tens_shape_t * tshape)
  if(n != 0) n=NOT_CLEAN;
  errc=tensShape_clean(tshape);
  return n; //either 0 or NOT_CLEAN
+}
+
+int tensShape_destroy(talsh_tens_shape_t * tshape)
+/** Completely destroys a tensor shape. **/
+{
+ int errc,n;
+ if(tshape == NULL) return -1;
+ n=0; errc=tensShape_destruct(tshape); if(errc) n=NOT_CLEAN;
+ free(tshape);
+ return n; //either 0 (success) or NOT_CLEAN
 }
 
 size_t tensShape_volume(const talsh_tens_shape_t * tshape)
@@ -1335,22 +1356,22 @@ int tensBlck_present(const tensBlck_t * ctens, int dev_id, int dev_kind)
     a device id <dev_id> and a device kind <dev_kind>. If <dev_kind> is absent,
     <dev_id> will be the flat device id, otherwise it will be the kind-specific id.
     If both <dev_id> and <dev_kind> are absent, any presence will be checked (on any device).
-    A return status TALSH_FAILURE indicates invalid arguments. **/
+    A return status NVTAL_FAILURE indicates invalid arguments. **/
 {
  int src_dev,dst_dev,devn,devk;
 
- if(ctens == NULL) return TALSH_FAILURE;
+ if(ctens == NULL) return NVTAL_FAILURE;
  if(ctens->src_rsc != NULL){src_dev=ctens->src_rsc->dev_id;}else{src_dev=DEV_NULL;}
  if(ctens->dst_rsc != NULL){dst_dev=ctens->dst_rsc->dev_id;}else{dst_dev=DEV_NULL;}
  if(dev_kind == DEV_NULL){
   if(dev_id == DEV_NULL){
    if(src_dev >= 0 || dst_dev >= 0) return YEP;
   }else{
-   if(dev_id < 0 || dev_id >= DEV_MAX) return TALSH_FAILURE;
+   if(dev_id < 0 || dev_id >= DEV_MAX) return NVTAL_FAILURE;
    if(src_dev == dev_id || dst_dev == dev_id) return YEP;
   }
  }else{
-  if(valid_device_kind(dev_kind) != YEP) return TALSH_FAILURE;
+  if(valid_device_kind(dev_kind) != YEP) return NVTAL_FAILURE;
   if(dev_id == DEV_NULL){
    devn=decode_device_id(src_dev,&devk);
    if(devn >= 0 && devk == dev_kind) return YEP;
@@ -1358,7 +1379,7 @@ int tensBlck_present(const tensBlck_t * ctens, int dev_id, int dev_kind)
    if(devn >= 0 && devk == dev_kind) return YEP;
   }else{
    devn=encode_device_id(dev_id,dev_kind);
-   if(devn >= DEV_MAX) return TALSH_FAILURE;
+   if(devn >= DEV_MAX) return NVTAL_FAILURE;
    if(src_dev == devn || dst_dev == devn) return YEP;
   }
  }
@@ -1624,7 +1645,7 @@ __host__ int cuda_task_status(cudaTask_t *cuda_task)
 /** Checks the status of a CUDA task. Possible status values are listed in tensor_algebra.h
     and tensor_algebra.inc (keep them consistent!). Both CUDA_TASK_COMPLETED (no errors) and
     CUDA_TASK_ERROR (error occurred) suggest a completion of the CUDA task. An unsuccessful
-    attempt to find out the status of the CUDA task results in a return status TALSH_FAILURE. **/
+    attempt to find out the status of the CUDA task results in a return status NVTAL_FAILURE. **/
 {
  int task_stat,cur_gpu,errc;
  cudaEvent_t *evnt_p;
@@ -1632,12 +1653,12 @@ __host__ int cuda_task_status(cudaTask_t *cuda_task)
 
  if(cuda_task == NULL) return CUDA_TASK_EMPTY; //NULL task pointer is treated as an empty task here
  if(cuda_task->task_error < 0 && cuda_task->gpu_id < 0) return CUDA_TASK_EMPTY; //empty CUDA task
- if(cuda_task->task_error >= 0 && cuda_task->gpu_id < 0) return TALSH_FAILURE; //completed task without an assigned GPU
+ if(cuda_task->task_error >= 0 && cuda_task->gpu_id < 0) return NVTAL_FAILURE; //completed task without an assigned GPU
  if(cuda_task->task_error == 0) return CUDA_TASK_COMPLETED; //CUDA task had completed successfully
  if(cuda_task->task_error > 0) return CUDA_TASK_ERROR; //CUDA task error had been registered
- cur_gpu=gpu_in_focus(); if(cur_gpu < 0 || cur_gpu >= MAX_GPUS_PER_NODE) return TALSH_FAILURE; //get current GPU
- errc=gpu_activate(cuda_task->gpu_id); if(errc != 0) return TALSH_FAILURE; //could not activate the CUDA task GPU
- evnt_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_finish_hl); if(evnt_p == NULL) return TALSH_FAILURE;
+ cur_gpu=gpu_in_focus(); if(cur_gpu < 0 || cur_gpu >= MAX_GPUS_PER_NODE) return NVTAL_FAILURE; //get current GPU
+ errc=gpu_activate(cuda_task->gpu_id); if(errc != 0) return NVTAL_FAILURE; //could not activate the CUDA task GPU
+ evnt_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_finish_hl); if(evnt_p == NULL) return NVTAL_FAILURE;
  err=cudaEventQuery(*evnt_p);
  if(err == cudaSuccess){
   cuda_task->task_error=0; errc=cuda_task_finalize(cuda_task); //release unneeded memory resources occupied by the task arguments
@@ -1648,17 +1669,17 @@ __host__ int cuda_task_status(cudaTask_t *cuda_task)
   }
   gpu_stats[cuda_task->gpu_id].tasks_completed++;
  }else{
-  evnt_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_output_hl); if(evnt_p == NULL) return TALSH_FAILURE;
+  evnt_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_output_hl); if(evnt_p == NULL) return NVTAL_FAILURE;
   err=cudaEventQuery(*evnt_p);
   if(err == cudaSuccess){
    task_stat=CUDA_TASK_OUTPUT_THERE; //computing kernel has finished
   }else{
-   evnt_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_comput_hl); if(evnt_p == NULL) return TALSH_FAILURE;
+   evnt_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_comput_hl); if(evnt_p == NULL) return NVTAL_FAILURE;
    err=cudaEventQuery(*evnt_p);
    if(err == cudaSuccess){
     task_stat=CUDA_TASK_INPUT_THERE; //computation started, input data is on device (can be reused later)
    }else{
-    evnt_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_start_hl); if(evnt_p == NULL) return TALSH_FAILURE;
+    evnt_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_start_hl); if(evnt_p == NULL) return NVTAL_FAILURE;
     err=cudaEventQuery(*evnt_p);
     if(err == cudaSuccess){
      task_stat=CUDA_TASK_STARTED; //task started
@@ -1677,7 +1698,7 @@ __host__ int cuda_task_completed(cudaTask_t *cuda_task)
     has completed successfully or due to a scheduling/execution failure, respectively.
     Note that having had successfully checked the CUDA task for completion before will immediately
     suggest completion later (without further querying)! Other possible outputs: CUDA_TASK_EMPTY, CUDA_TASK_SCHEDULED.
-    An inability to check the completion status of the CUDA task results in return status TALSH_FAILURE. **/
+    An inability to check the completion status of the CUDA task results in return status NVTAL_FAILURE. **/
 {
  int cur_gpu,ret_stat,errc;
  cudaStream_t *strm_p;
@@ -1687,9 +1708,9 @@ __host__ int cuda_task_completed(cudaTask_t *cuda_task)
  if(cuda_task->gpu_id < 0) return CUDA_TASK_EMPTY;
  if(cuda_task->task_error == 0) return CUDA_TASK_COMPLETED; //successful completion had occurred
  if(cuda_task->task_error > 0) return CUDA_TASK_ERROR; //completion due to an error had occurred
- cur_gpu=gpu_in_focus(); if(cur_gpu < 0 || cur_gpu >= MAX_GPUS_PER_NODE) return TALSH_FAILURE;
- errc=gpu_activate(cuda_task->gpu_id); if(errc != 0) return TALSH_FAILURE;
- strm_p=cuda_stream_ptr(cuda_task->gpu_id,cuda_task->stream_hl); if(strm_p == NULL) return TALSH_FAILURE;
+ cur_gpu=gpu_in_focus(); if(cur_gpu < 0 || cur_gpu >= MAX_GPUS_PER_NODE) return NVTAL_FAILURE;
+ errc=gpu_activate(cuda_task->gpu_id); if(errc != 0) return NVTAL_FAILURE;
+ strm_p=cuda_stream_ptr(cuda_task->gpu_id,cuda_task->stream_hl); if(strm_p == NULL) return NVTAL_FAILURE;
  err=cudaStreamQuery(*strm_p);
  if(err != cudaSuccess && err != cudaErrorInvalidResourceHandle){ //task is still in progress
   ret_stat=CUDA_TASK_SCHEDULED;
@@ -1711,7 +1732,7 @@ __host__ int cuda_task_completed(cudaTask_t *cuda_task)
 __host__ int cuda_task_wait(cudaTask_t *cuda_task)
 /** Waits upon completion of a CUDA task: Returns the output of cuda_task_completed(..).
     Possible returns are CUDA_TASK_COMPLETED, CUDA_TASK_ERROR, CUDA_TASK_SCHEDULED, CUDA_TASK_EMPTY.
-    In case the completion of a CUDA task cannot be determined, a return status TALSH_FAILURE is returned. **/
+    In case the completion of a CUDA task cannot be determined, a return status NVTAL_FAILURE is returned. **/
 {
  int i,j;
 
