@@ -7,7 +7,7 @@ TOOLKIT ?= GNU
 #Optimization: [DEV|OPT]:
 BUILD_TYPE ?= DEV
 #MPI Library: [MPICH|OPENMPI]:
-MPILIB ?= OPENMPI
+MPILIB ?= MPICH
 #BLAS: [ATLAS|MKL|ACML]:
 BLASLIB ?= ATLAS
 #Nvidia GPU via CUDA: [CUDA|NOCUDA]:
@@ -220,4 +220,4 @@ endif
 
 .PHONY: clean
 clean:
-	rm *.x *.a ./OBJ/* *.mod *.modmic *.ptx
+	rm -f *.x *.a ./OBJ/* *.mod *.modmic *.ptx

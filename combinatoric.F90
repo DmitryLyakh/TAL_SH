@@ -3,6 +3,23 @@
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
 !Revision: 2016/01/08
 
+!Copyright (C) 2007-2016 Dmitry I. Lyakh (Liakh)
+
+!This file is part of ExaTensor.
+
+!ExaTensor is free software: you can redistribute it and/or modify
+!it under the terms of the GNU Lesser General Public License as published
+!by the Free Software Foundation, either version 3 of the License, or
+!(at your option) any later version.
+
+!ExaTensor is distributed in the hope that it will be useful,
+!but WITHOUT ANY WARRANTY; without even the implied warranty of
+!MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+!GNU Lesser General Public License for more details.
+
+!You should have received a copy of the GNU Lesser General Public License
+!along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
+
 !PROCEDURES:
 ! - TRNG(i:ctrl,i:ni,i[1]:trn,i[1]:ngt): permutation generator which returns each new permutation.
 ! - TRSIGN(i:n,i[1]:itr): reorders indices in an ascending order and determines the sign of the corresponding permutation (Bubble). Use MERGE_SORT for fast.
