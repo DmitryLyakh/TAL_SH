@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2016/02/12
+!REVISION: 2016/03/18
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -23,6 +23,10 @@
         use tensor_algebra_cpu_phi !device-specific tensor algebra API + basic
         implicit none
         private
+!EXTERNAL PUBLIC:
+        public tensor_shape_t
+        public tensor_block_t
+        public MAX_SHAPE_STR_LEN
 !PARAMETERS:
  !Generic:
         integer(INTD), private:: CONS_OUT=6 !default output device for this module

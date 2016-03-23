@@ -12,5 +12,4 @@
 *.a
 *.x
 *.log
-/Misc
-/*/OBJ
+*.out

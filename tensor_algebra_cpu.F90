@@ -1,8 +1,8 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2016/02/05
+!REVISION: 2016/03/15
 
-!Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2013-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
@@ -116,11 +116,6 @@
 	end type tensor_block_t
 
 !GENERIC INTERFACES:
-	interface divide_segment
-	 module procedure divide_segment_i4
-	 module procedure divide_segment_i8
-	end interface divide_segment
-
 	interface tensor_block_slice_dlf
 	 module procedure tensor_block_slice_dlf_r4
 	 module procedure tensor_block_slice_dlf_r8
@@ -174,7 +169,6 @@
 	public set_transpose_algorithm     !switches between scatter (0) and shared-memory (1) tensor transpose algorithms
 	public set_matmult_algorithm       !switches between BLAS GEMM (0) and my OpenMP matmult kernels (1)
 	public cmplx8_to_real8             !returns the real approximate of a complex number (algorithm by D.I.L.)
-	public divide_segment              !divides a segment into subsegments maximally uniformly (max length difference of 1)
 	public tensor_block_layout         !returns the type of the storage layout for a given tensor block
 	public tensor_shape_size           !determines the tensor block size induced by its shape
 	public tensor_master_data_kind     !determines the master data kind present in a tensor block
@@ -291,52 +285,6 @@
 	endif
 	return
 	end function cmplx8_to_real8
-!---------------------------------------------------------------------------
-#ifndef NO_PHI
-!DIR$ ATTRIBUTES OFFLOAD:mic:: divide_segment_i4
-#endif
-	subroutine divide_segment_i4(seg_range,subseg_num,subseg_sizes,ierr) !SERIAL
-!A segment of range <seg_range> will be divided into <subseg_num> subsegments maximally uniformly.
-!The length of each subsegment will be returned in the array <subseg_sizes(1:subseg_num)>.
-!Any two subsegments will not differ in length by more than 1, longer subsegments preceding the shorter ones.
-	implicit none
-	integer, intent(in):: seg_range,subseg_num
-	integer, intent(out):: subseg_sizes(1:subseg_num)
-	integer, intent(inout):: ierr
-	integer i,j,k,l,m,n
-	ierr=0
-	if(seg_range.gt.0.and.subseg_num.gt.0) then
-	 n=seg_range/subseg_num; m=mod(seg_range,subseg_num)
-	 do i=1,m; subseg_sizes(i)=n+1; enddo
-	 do i=m+1,subseg_num; subseg_sizes(i)=n; enddo
-	else
-	 ierr=-1
-	endif
-	return
-	end subroutine divide_segment_i4
-!---------------------------------------------------------------------------
-#ifndef NO_PHI
-!DIR$ ATTRIBUTES OFFLOAD:mic:: divide_segment_i8
-#endif
-	subroutine divide_segment_i8(seg_range,subseg_num,subseg_sizes,ierr) !SERIAL
-!A segment of range <seg_range> will be divided into <subseg_num> subsegments maximally uniformly.
-!The length of each subsegment will be returned in the array <subseg_sizes(1:subseg_num)>.
-!Any two subsegments will not differ in length by more than 1, longer subsegments preceding the shorter ones.
-	implicit none
-	integer(LONGINT), intent(in):: seg_range,subseg_num
-	integer(LONGINT), intent(out):: subseg_sizes(1:subseg_num)
-	integer, intent(inout):: ierr
-	integer(LONGINT) i,j,k,l,m,n
-	ierr=0
-	if(seg_range.gt.0_LONGINT.and.subseg_num.gt.0_LONGINT) then
-	 n=seg_range/subseg_num; m=mod(seg_range,subseg_num)
-	 do i=1_LONGINT,m; subseg_sizes(i)=n+1_LONGINT; enddo
-	 do i=m+1_LONGINT,subseg_num; subseg_sizes(i)=n; enddo
-	else
-	 ierr=-1
-	endif
-	return
-	end subroutine divide_segment_i8
 !------------------------------------------------------------------
 	integer function tensor_block_layout(tens,ierr,check_shape) !SERIAL
 !Returns the type of the storage layout for a given tensor block <tens>.

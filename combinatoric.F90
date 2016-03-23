@@ -1,7 +1,7 @@
        module combinatoric
 !Combinatoric Procedures.
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!Revision: 2016/01/08
+!Revision: 2016/03/15
 
 !Copyright (C) 2007-2016 Dmitry I. Lyakh (Liakh)
 
@@ -26,6 +26,7 @@
 ! - i8:FACTORIAL(i:n): factorial of a number.
 ! - i:NOID(i:m,i:n): this function returns a binomial coefficient (integer).
 ! - i8:NOID8(i8:m,i8:n): this function returns a binomial coefficient (integer*8).
+! - DIVIDE_SEGMENT(i{4|8}:seg_range,i{4|8}:subseg_num,i{4|8}[1]:subseg_sizes,i:ierr): Divides a segment into subsegments maximally uniformly.
 ! - GPGEN(i:ctrl,i:ni,i[1]:vh,i[1]:trn,i[2]:cil): permutation generator with partial-ordering restrictions, returns each new permutation.
 ! - TR_CYCLE(i:ni,i[1]:trn,i:nc,i[2]:cyc): decomposes a permutation into permutation cycles and determines the sign of the permutation.
 ! - l:PERM_TRIVIAL(i:ni,i[1]:trn): checks whether the given permutation is trivial or not.
@@ -60,12 +61,20 @@
         private
 !GLOBAL PARAMETERS:
         real(8), parameter, public:: DP_ZERO_THRESH=1d-13 !certified guaranteed precision of a double-precision real number (one order lower than the epsilon)
+!GENERIC INTERFACES:
+        interface divide_segment
+         module procedure divide_segment_i4
+         module procedure divide_segment_i8
+        end interface divide_segment
 !PROCEDURE VISIBILITY:
         public trng
         public trsign
         public factorial
         public noid
         public noid8
+        public divide_segment
+        private divide_segment_i4
+        private divide_segment_i8
         public gpgen
         public tr_cycle
         public perm_trivial
@@ -217,6 +226,52 @@
 	if(noid8.le.0_8) then; write(*,*)'ERROR(combinatoric:noid8): integer*8 overflow: ',m,n,noid8; stop; endif !trap
 	return
 	end function noid8
+!---------------------------------------------------------------------------
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: divide_segment_i4
+#endif
+        subroutine divide_segment_i4(seg_range,subseg_num,subseg_sizes,ierr) !SERIAL
+!A segment of range <seg_range> will be divided into <subseg_num> subsegments maximally uniformly.
+!The length of each subsegment will be returned in the array <subseg_sizes(1:subseg_num)>.
+!Any two subsegments will not differ in length by more than 1, longer subsegments preceding the shorter ones.
+        implicit none
+        integer, intent(in):: seg_range,subseg_num
+        integer, intent(out):: subseg_sizes(1:subseg_num)
+        integer, intent(inout):: ierr
+        integer i,j,k,l,m,n
+        ierr=0
+        if(seg_range.gt.0.and.subseg_num.gt.0) then
+         n=seg_range/subseg_num; m=mod(seg_range,subseg_num)
+         do i=1,m; subseg_sizes(i)=n+1; enddo
+         do i=m+1,subseg_num; subseg_sizes(i)=n; enddo
+        else
+         ierr=-1
+        endif
+        return
+        end subroutine divide_segment_i4
+!---------------------------------------------------------------------------
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: divide_segment_i8
+#endif
+        subroutine divide_segment_i8(seg_range,subseg_num,subseg_sizes,ierr) !SERIAL
+!A segment of range <seg_range> will be divided into <subseg_num> subsegments maximally uniformly.
+!The length of each subsegment will be returned in the array <subseg_sizes(1:subseg_num)>.
+!Any two subsegments will not differ in length by more than 1, longer subsegments preceding the shorter ones.
+        implicit none
+        integer(8), intent(in):: seg_range,subseg_num
+        integer(8), intent(out):: subseg_sizes(1:subseg_num)
+        integer, intent(inout):: ierr
+        integer(8) i,j,k,l,m,n
+        ierr=0
+        if(seg_range.gt.0_8.and.subseg_num.gt.0_8) then
+         n=seg_range/subseg_num; m=mod(seg_range,subseg_num)
+         do i=1_8,m; subseg_sizes(i)=n+1_8; enddo
+         do i=m+1_8,subseg_num; subseg_sizes(i)=n; enddo
+        else
+         ierr=-1
+        endif
+        return
+        end subroutine divide_segment_i8
 !-------------------------------------------
 	subroutine gpgen(ctrl,ni,vh,trn,cil)
 !This subroutine generates all unique permutations of NI items,
