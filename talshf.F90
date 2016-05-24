@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2016/03/18
+!REVISION: 2016/05/24
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -24,28 +24,73 @@
         implicit none
         private
 !EXTERNAL PUBLIC:
-        public tensor_shape_t
-        public tensor_block_t
-        public MAX_SHAPE_STR_LEN
+        public tensor_shape_t    !tensor shape (Fortran)
+        public tensor_block_t    !tensor block (Fortran)
+        public MAX_SHAPE_STR_LEN !max length of a shape-defining string
 !PARAMETERS:
  !Generic:
         integer(INTD), private:: CONS_OUT=6 !default output device for this module
+        integer(INTD), private:: DEBUG=0    !debugging mode for this module
         logical, private:: VERBOSE=.true.   !verbosity for errors
-        logical, private:: DEBUG=.true.     !debugging mode for this module
- !Errors:
-        integer(C_INT), parameter, public:: TALSH_SUCCESS=0             !success
-        integer(C_INT), parameter, public:: TALSH_FAILURE=-666          !generic failure
+ !Errors (keep consistent with "talsh.h"):
+        integer(C_INT), parameter, public:: TALSH_SUCCESS=0                   !success
+        integer(C_INT), parameter, public:: TALSH_FAILURE=-666                !generic failure
+        integer(C_INT), parameter, public:: TALSH_NOT_AVAILABLE=-888          !information or feature not avaiable (in principle)
+        integer(C_INT), parameter, public:: TALSH_NOT_IMPLEMENTED=-999        !feature not implemented yet
+        integer(C_INT), parameter, public:: TALSH_NOT_INITIALIZED=1000000     !TALSH library has not been initialized yet
+        integer(C_INT), parameter, public:: TALSH_ALREADY_INITIALIZED=1000001 !TALSH library has already been initialized
+        integer(C_INT), parameter, public:: TALSH_INVALID_ARGS=1000002        !invalid arguments passed to a procedure
+        integer(C_INT), parameter, public:: TALSH_INTEGER_OVERFLOW=1000003    !integer overflow occurred
+        integer(C_INT), parameter, public:: TALSH_OBJECT_NOT_EMPTY=1000004    !object is not empty while expected so
+        integer(C_INT), parameter, public:: TALSH_OBJECT_IS_EMPTY=1000005     !object is empty while not expected so
+        integer(C_INT), parameter, public:: TALSH_IN_PROGRESS=1000006         !TAL-SH operation is still in progress (not finished)
+        integer(C_INT), parameter, public:: TALSH_NOT_ALLOWED=1000007         !request is not allowed by TAL-SH
+        integer(C_INT), parameter, public:: TALSH_LIMIT_EXCEEDED=1000008      !internal limit exceeded
+ !TAL-SH task status:
+        integer(C_INT), parameter, public:: TALSH_TASK_ERROR=1999999
+        integer(C_INT), parameter, public:: TALSH_TASK_EMPTY=2000000
+        integer(C_INT), parameter, public:: TALSH_TASK_SCHEDULED=2000001
+        integer(C_INT), parameter, public:: TALSH_TASK_STARTED=2000002
+        integer(C_INT), parameter, public:: TALSH_TASK_INPUT_READY=2000003
+        integer(C_INT), parameter, public:: TALSH_TASK_OUTPUT_READY=2000004
+        integer(C_INT), parameter, public:: TALSH_TASK_COMPLETED=2000005
  !Host argument buffer:
-        integer(C_SIZE_T), parameter, private:: HAB_SIZE_DEFAULT=1024*1024 !default size of the Host argument buffer
+        integer(C_SIZE_T), parameter, private:: HAB_SIZE_DEFAULT=1048576 !default size of the Host argument buffer in bytes
 !DERIVED TYPES:
-
+ !TAL-SH tensor block:
+        type, public, bind(C):: talsh_tens_t
+         type(C_PTR):: shape_p=C_NULL_PTR   !shape of the tensor block
+         type(C_PTR):: dev_rsc=C_NULL_PTR   !list of device resources occupied by the tensor block body on each device
+         type(C_PTR):: data_kind=C_NULL_PTR !list of data kinds for each device location occupied by the tensor body {R4,R8,C4,C8}
+         type(C_PTR):: avail=C_NULL_PTR     !list of the data availability flags for each device location occupied by the tensor body
+         integer(C_INT):: dev_rsc_len=0     !capacity of .dev_rsc[], .data_kind[], .avail[]
+         integer(C_INT):: ndev=0            !number of devices the tensor block body resides on: ndev <= dev_rsc_len
+        end type talsh_tens_t
+ !Tensor operation argument (auxiliary type):
+        type, bind(C):: talshTensArg_t
+         type(C_PTR):: tens_p               !pointer to a tensor block
+         integer(C_INT):: source_image      !specific body image of that tensor block participating in the operation
+        end type talshTensArg_t
+ !TAL-SH task handle:
+        type, public, bind(C):: talsh_task_t
+         type(C_PTR):: task_p=C_NULL_PTR    !pointer to the corresponding device-specific task object
+         integer(C_INT):: task_error=-1     !-1:undefined(task in progress or empty); 0:successfully completed; >0: error code
+         integer(C_INT):: dev_kind=DEV_NULL !device kind (DEV_NULL: uninitialized)
+         integer(C_INT):: data_kind=NO_TYPE !data kind {R4,R8,C4,C8}, NO_TYPE: uninitialized
+         integer(C_INT):: coherence=-1      !coherence control (-1:undefined)
+         integer(C_INT):: num_args=0        !number of tensor arguments participating in the tensor operation
+         type(talshTensArg_t):: tens_args(MAX_TENSOR_OPERANDS) !tensor arguments
+         real(C_DOUBLE):: data_vol=0d0      !total data volume (information)
+         real(C_DOUBLE):: flops=0d0         !number of floating point operations (information)
+         real(C_DOUBLE):: exec_time=0d0     !execution time in seconds (information)
+        end type talsh_task_t
 !GLOBALS:
-
-!INTERFACES:
+!       ...
+!INTERFACES FOR EXTERNAL C/C++ FUNCTIONS:
         interface
- !TAL-SH device control C API:
+ !TAL-SH control C/C++ API:
   !Initialize TAL-SH:
-         integer(C_INT) function talshInit(host_buf_size,host_arg_max,ngpus,gpu_list,nmics,mic_list,namds,amd_list) &
+         integer(C_INT) function talshInit(host_buf_size,host_arg_max,ngpus,gpu_list,nmics,mic_list,namds,amd_list)&
                                           &bind(c,name='talshInit')
           import
           implicit none
@@ -77,46 +122,405 @@
           integer(C_INT), value, intent(in):: dev_id
           integer(C_INT), intent(out):: dev_kind
          end function talshKindDevId
-
+  !Query the state of a device:
+         integer(C_INT) function talshDeviceState_(dev_num,dev_kind) bind(c,name='talshDeviceState_')
+          import
+          implicit none
+          integer(C_INT), value, intent(in):: dev_num
+          integer(C_INT), value, intent(in):: dev_kind
+         end function talshDeviceState_
+  !Find the least busy device:
+         integer(C_INT) function talshDeviceBusyLeast_(dev_kind) bind(c,name='talshDeviceBusyLeast_')
+          import
+          implicit none
+          integer(C_INT), value, intent(in):: dev_kind
+         end function talshDeviceBusyLeast_
+  !Print run-time TAL-SH statistics for chosen devices:
+         integer(C_INT) function talshStats_(dev_id,dev_kind) bind(c,name='talshStats_')
+          import
+          implicit none
+          integer(C_INT), value, intent(in):: dev_id
+          integer(C_INT), value, intent(in):: dev_kind
+         end function talshStats_
+ !TAL-SH tensor block C/C++ API:
+  !Check whether a tensor block is empty (only be called on defined tensor blocks!):
+         integer(C_INT) function talshTensorIsEmpty(tens_block) bind(c,name='talshTensorIsEmpty')
+          import
+          implicit none
+          type(C_PTR), value, intent(in):: tens_block
+         end function talshTensorIsEmpty
+  !Construct a tensor block:
+         integer(C_INT) function talshTensorConstruct_(tens_block,data_kind,tens_rank,tens_dims,dev_id,&
+                        ext_mem,in_hab,init_method,init_val_real,init_val_imag) bind(c,name='talshTensorConstruct_')
+          import
+          implicit none
+          type(talsh_tens_t):: tens_block
+          integer(C_INT), value, intent(in):: data_kind
+          integer(C_INT), value, intent(in):: tens_rank
+          integer(C_INT), intent(in):: tens_dims(*)
+          integer(C_INT), value, intent(in):: dev_id
+          type(C_PTR), value:: ext_mem
+          integer(C_INT), value, intent(in):: in_hab
+          type(C_FUNPTR), value, intent(in):: init_method
+          real(C_DOUBLE), value, intent(in):: init_val_real
+          real(C_DOUBLE), value, intent(in):: init_val_imag
+         end function talshTensorConstruct_
+  !Destruct a tensor block:
+         integer(C_INT) function talshTensorDestruct(tens_block) bind(c,name='talshTensorDestruct')
+          import
+          implicit none
+          type(talsh_tens_t):: tens_block
+         end function talshTensorDestruct
+  !Get the volume of the tensor block:
+         integer(C_SIZE_T) function talshTensorVolume(tens_block) bind(c,name='talshTensorVolume')
+          import
+          implicit none
+          type(talsh_tens_t), intent(in):: tens_block
+         end function talshTensorVolume
+  !Get the shape of the tensor block:
+         integer(C_INT) function talshTensorShape(tens_block,tens_shape) bind(c,name='talshTensorShape')
+          import
+          implicit none
+          type(talsh_tens_t), intent(in):: tens_block
+          type(talsh_tens_shape_t), intent(inout):: tens_shape
+         end function talshTensorShape
+  !Query the presence of the tensor block on device(s):
+         integer(C_INT) function talshTensorPresence_(tens_block,ncopies,copies,data_kinds,dev_kind,dev_id)&
+                                 bind(c,name='talshTensorPresence_')
+          import
+          implicit none
+          type(talsh_tens_t), intent(in):: tens_block
+          integer(C_INT), intent(out):: ncopies
+          integer(C_INT), intent(inout):: copies(*)
+          integer(C_INT), intent(inout):: data_kinds(*)
+          integer(C_INT), value, intent(in):: dev_kind
+          integer(C_INT), value, intent(in):: dev_id
+         end function talshTensorPresence_
+  !Print information about a TAL-SH tensor:
+         subroutine talsh_tensor_print_info(tens_block) bind(c,name='talshTensorPrintInfo')
+          import
+          implicit none
+          type(talsh_tens_t), intent(in):: tens_block
+         end subroutine talsh_tensor_print_info
+ !TAL-SH task C/C++ API:
+  !Destruct a TAL-SH task:
+         integer(C_INT) function talshTaskDestruct(talsh_task) bind(c,name='talshTaskDestruct')
+          import
+          implicit none
+          type(talsh_task_t), intent(inout):: talsh_task
+         end function talshTaskDestruct
+  !Get the device id the TAL-SH task is scheduled on:
+         integer(C_INT) function talshTaskDevId_(talsh_task,dev_kind) bind(c,name='talshTaskDevId_')
+          import
+          implicit none
+          type(talsh_task_t), intent(inout):: talsh_task
+          type(C_PTR):: dev_kind
+         end function talshTaskDevId_
+  !Get the TAL-SH task status:
+         integer(C_INT) function talshTaskStatus(talsh_task) bind(c,name='talshTaskStatus')
+          import
+          implicit none
+          type(talsh_task_t), intent(inout):: talsh_task
+         end function talshTaskStatus
+  !Check whether a TAL-SH task has completed:
+         integer(C_INT) function talshTaskComplete(talsh_task,stats,ierr) bind(c,name='talshTaskComplete')
+          import
+          implicit none
+          type(talsh_task_t), intent(inout):: talsh_task
+          integer(C_INT), intent(out):: stats
+          integer(C_INT), intent(out):: ierr
+         end function talshTaskComplete
+  !Wait upon completion of a TAL-SH task:
+         integer(C_INT) function talshTaskWait(talsh_task,stats) bind(c,name='talshTaskWait')
+          import
+          implicit none
+          type(talsh_task_t), intent(inout):: talsh_task
+          integer(C_INT), intent(out):: stats
+         end function talshTaskWait
+  !Wait upon completion of multiple TAL-SH tasks:
+         integer(C_INT) function talshTasksWait(ntasks,talsh_tasks,stats) bind(c,name='talshTasksWait')
+          import
+          implicit none
+          integer(C_INT), value, intent(in):: ntasks
+          type(talsh_task_t), intent(inout):: talsh_tasks(*)
+          integer(C_INT), intent(out):: stats(*)
+         end function talshTasksWait
+  !Get the TAL-SH task timings:
+         integer(C_INT) function talshTaskTime_(talsh_task,total,comput,input,output) bind(c,name='talshTaskTime_')
+          import
+          implicit none
+          type(talsh_task_t), intent(inout):: talsh_task
+          real(C_DOUBLE), intent(out):: total
+          real(C_DOUBLE), intent(out):: comput
+          real(C_DOUBLE), intent(out):: input
+          real(C_DOUBLE), intent(out):: output
+         end function talshTaskTime_
+  !Print TAL-SH task info:
+         subroutine talsh_task_print_info(talsh_task) bind(c,name='talshTaskPrint')
+          import
+          implicit none
+          type(talsh_task_t), intent(in):: talsh_task
+         end subroutine talsh_task_print_info
+ !TAL-SH tensor operations C/C++ API:
+  !Place a tensor block on a specific device:
+         integer(C_INT) function talshTensorPlace_(tens,dev_id,dev_kind,copy_ctrl,talsh_task) bind(c,name='talshTensorPlace_')
+          import
+          implicit none
+          type(talsh_tens_t), intent(inout):: tens
+          integer(C_INT), value, intent(in):: dev_id
+          integer(C_INT), value, intent(in):: dev_kind
+          integer(C_INT), value, intent(in):: copy_ctrl
+          type(talsh_task_t), intent(inout):: talsh_task
+         end function talshTensorPlace_
+  !Discard a tensor block on a specific device:
+         integer(C_INT) function talshTensorDiscard_(tens,dev_id,dev_kind) bind(c,name='talshTensorDiscard_')
+          import
+          implicit none
+          type(talsh_tens_t), intent(inout):: tens
+          integer(C_INT), value, intent(in):: dev_id
+          integer(C_INT), value, intent(in):: dev_kind
+         end function talshTensorDiscard_
+  !Tensor contraction:
+         integer(C_INT) function talshTensorContract_(cptrn,dtens,ltens,rtens,copy_ctrl,scale_real,scale_imag,&
+                                                     &dev_id,dev_kind,talsh_task) bind(c,name='talshTensorContract_')
+          import
+          implicit none
+          character(C_CHAR), intent(in):: cptrn
+          type(talsh_tens_t), intent(inout):: dtens
+          type(talsh_tens_t), intent(inout):: ltens
+          type(talsh_tens_t), intent(inout):: rtens
+          integer(C_INT), value, intent(in):: copy_ctrl
+          real(C_DOUBLE), value, intent(in):: scale_real
+          real(C_DOUBLE), value, intent(in):: scale_imag
+          integer(C_INT), value, intent(in):: dev_id
+          integer(C_INT), value, intent(in):: dev_kind
+          type(talsh_task_t), intent(inout):: talsh_task
+         end function talshTensorContract_
+ !Internal TAL-SH C/C++ API:
+  !Obtains the information on a specific tensor body image:
+         integer(C_INT) function talsh_tensor_image_info(talsh_tens,image_id,dev_id,data_kind,gmem_p,buf_entry)&
+                  & bind(c,name='talsh_tensor_image_info')
+          import
+          implicit none
+          type(talsh_tens_t), intent(in):: talsh_tens
+          integer(C_INT), value, intent(in):: image_id
+          integer(C_INT), intent(out):: dev_id
+          integer(C_INT), intent(out):: data_kind
+          type(C_PTR), intent(out):: gmem_p
+          integer(C_INT), intent(out):: buf_entry
+         end function talsh_tensor_image_info
         end interface
+!INTERFACES FOR OVERLOADED FOTRAN FUNCTIONS:
+        interface talsh_tensor_construct
+         module procedure talsh_tensor_construct_num
+         module procedure talsh_tensor_construct_sym
+         module procedure talsh_tensor_construct_shp
+        end interface talsh_tensor_construct
 !VISIBILITY:
- !TAL-SH device control API:
+ !TAL-SH control API:
         public talsh_init
         public talsh_shutdown
         public talsh_flat_dev_id
         public talsh_kind_dev_id
-!        public talsh_device_state
-!        public talsh_device_busy_least
-!        public talsh_stats
+        public talsh_device_state
+        public talsh_device_busy_least
+        public talsh_stats
  !TAL-SH tensor block API:
-!        public talsh_tensor_construct
-!        public talsh_tensor_destroy
-!        public talsh_tensor_volume
-!        public talsh_tensor_datatype
-!        public talsh_tensor_shape
-!        public talsh_tensor_presence
+        public talsh_tensor_is_empty
+        public talsh_tensor_construct
+        private talsh_tensor_construct_num
+        private talsh_tensor_construct_sym
+        private talsh_tensor_construct_shp
+        public talsh_tensor_destruct
+        public talsh_tensor_volume
+        public talsh_tensor_shape
+        public talsh_tensor_presence
+        public talsh_tensor_print_info
  !TAL-SH task API:
-!        public talsh_task_clean
-!        public talsh_task_dev_id
-!        public talsh_task_status
-!        public talsh_task_completed
-!        public talsh_task_wait
-!        public talsh_tasks_wait
-!        public talsh_task_time
- !TAL-SH tensor operations:
-!        public talsh_tensor_place
-!        public talsh_tensor_discard
+        public talsh_task_destruct
+        public talsh_task_dev_id
+        public talsh_task_status
+        public talsh_task_complete
+        public talsh_task_wait
+        public talsh_tasks_wait
+        public talsh_task_time
+        public talsh_task_print_info
+ !TAL-SH tensor operations API:
+        public talsh_tensor_place
+        public talsh_tensor_discard
 !        public talsh_tensor_init
 !        public talsh_tensor_scale
 !        public talsh_tensor_norm1
 !        public talsh_tensor_norm2
 !        public talsh_tensor_copy
 !        public talsh_tensor_add
-!        public talsh_tensor_contract
+        public talsh_tensor_contract
+ !INTERNAL:
 
        contains
-!Fortran API definitions:
- !TAL-SH device control API:
+!INTERNAL FUNCTIONS:
+!-------------------------------------------------------------------------------------------------------------------------------
+        integer(C_INT) function talsh_get_contr_ptrn_str2dig(c_str,dig_ptrn,dig_len) bind(c,name='talsh_get_contr_ptrn_str2dig')
+         implicit none
+         character(C_CHAR), intent(in):: c_str(1:*)  !in: C-string (NULL terminated) containing the mnemonic contraction pattern
+         integer(C_INT), intent(out):: dig_ptrn(1:*) !out: digitial tensor contraction pattern
+         integer(C_INT), intent(out):: dig_len       !out: length of the digital tensor contraction pattern
+         integer, parameter:: MAX_CONTR_STR_LEN=1024 !max length of the tensor contraction string
+         integer:: dgp(MAX_TENSOR_RANK*2),dgl,csl,ierr
+         character(MAX_CONTR_STR_LEN):: contr_str
+
+         talsh_get_contr_ptrn_str2dig=0; dig_len=0
+!Convert C-string to a Fortran string:
+         csl=1
+         do while(iachar(c_str(csl)).ne.0)
+          if(csl.gt.MAX_CONTR_STR_LEN) then
+           talsh_get_contr_ptrn_str2dig=-1; return
+          endif
+          contr_str(csl:csl)=c_str(csl); csl=csl+1
+         enddo
+         csl=csl-1
+!Call converter from CP-TAL:
+         if(csl.gt.0) then
+          call get_contr_pattern(contr_str(1:csl),dgp,dgl,ierr)
+          if(ierr.eq.0) then
+           dig_len=dgl; if(dgl.gt.0) dig_ptrn(1:dgl)=dgp(1:dgl)
+          else
+           talsh_get_contr_ptrn_str2dig=ierr; return
+          endif
+         endif
+         return
+        end function talsh_get_contr_ptrn_str2dig
+!------------------------------------------------------------------------------------------------------------------
+        integer(C_INT) function talsh_tensor_f_assoc(talsh_tens,image_id,tensF) bind(c,name='talsh_tensor_f_assoc')
+!Returns a C pointer <tensF> to a <tensor_block_t> object instantiated with the tensor body image <image_id>.
+!A return status TALSH_NOT_ALLOWED indicates that the requested tensor body image
+!is no longer available (to be discarded by runtime).
+         implicit none
+         type(talsh_tens_t), intent(in):: talsh_tens  !in: TAL-SH tensor
+         integer(C_INT), value, intent(in):: image_id !in: tensor body image id
+         type(C_PTR), intent(out):: tensF             !out: C pointer to <tensor_block_t> associated with the TAL-SH tensor image
+         type(tensor_block_t), pointer:: ftens
+         talsh_tensor_f_assoc=talsh_tensor_f_assoc_(talsh_tens,image_id,ftens)
+         if(talsh_tensor_f_assoc.eq.TALSH_SUCCESS) then; tensF=c_loc(ftens); else; tensF=C_NULL_PTR; endif
+         return
+        end function talsh_tensor_f_assoc
+!-------------------------------------------------------------------------------
+        integer(C_INT) function talsh_tensor_f_assoc_(talsh_tens,image_id,ftens)
+!An auxiliary function for <talsh_tensor_f_assoc()>.
+         implicit none
+         type(talsh_tens_t), intent(in):: talsh_tens        !in: TAL-SH tensor
+         integer(C_INT), intent(in):: image_id              !in: tensor body image id
+         type(tensor_block_t), pointer, intent(out):: ftens !out: pointer to a newly allocated <tensor_block_t>
+         type(talsh_tens_shape_t), pointer:: tens_shape
+         type(tensor_shape_t):: tshape
+         integer(C_INT), pointer, contiguous:: dims(:),divs(:),grps(:)
+         integer(C_INT):: devid,dtk,buf_entry,errc
+         type(C_PTR):: gmem_p
+         integer:: n,ierr
+
+         talsh_tensor_f_assoc_=TALSH_SUCCESS
+         if(.not.talsh_tensor_is_empty(talsh_tens)) then
+          if(image_id.ge.0.and.image_id.lt.talsh_tens%ndev) then
+           if(c_associated(talsh_tens%dev_rsc).and.c_associated(talsh_tens%data_kind).and.c_associated(talsh_tens%avail).and.&
+             &talsh_tens%ndev.gt.0.and.talsh_tens%ndev.le.talsh_tens%dev_rsc_len) then
+            call c_f_pointer(talsh_tens%shape_p,tens_shape)
+            n=tens_shape%num_dim
+            if(n.ge.0) then
+             allocate(ftens,STAT=ierr)
+             if(ierr.eq.0) then
+              if(n.gt.0) then
+               if(c_associated(tens_shape%dims)) then
+                call c_f_pointer(tens_shape%dims,dims,shape=(/n/))
+               else
+                dims=>NULL()
+               endif
+               if(c_associated(tens_shape%divs)) then
+                call c_f_pointer(tens_shape%divs,divs,shape=(/n/))
+               else
+                divs=>NULL()
+               endif
+               if(c_associated(tens_shape%grps)) then
+                call c_f_pointer(tens_shape%grps,grps,shape=(/n/))
+               else
+                grps=>NULL()
+               endif
+              else
+               dims=>NULL(); divs=>NULL(); grps=>NULL()
+              endif
+              call tensor_shape_assoc(tshape,ierr,dims,divs,grps)
+              if(ierr.eq.0) then
+               errc=talsh_tensor_image_info(talsh_tens,image_id,devid,dtk,gmem_p,buf_entry)
+               if(errc.eq.0) then
+                call tensor_block_assoc(ftens,tshape,dtk,gmem_p,errc)
+                if(errc.ne.0) talsh_tensor_f_assoc_=TALSH_FAILURE
+               else
+                if(errc.eq.TALSH_NOT_ALLOWED) then
+                 talsh_tensor_f_assoc_=TALSH_NOT_ALLOWED !requested image is not available (to be discarded)
+                else
+                 talsh_tensor_f_assoc_=TALSH_FAILURE
+                endif
+               endif
+              else
+               talsh_tensor_f_assoc_=TALSH_FAILURE
+              endif
+              if(talsh_tensor_f_assoc_.ne.TALSH_SUCCESS) then
+               call tensor_block_destroy(ftens,ierr)
+               deallocate(ftens)
+              endif
+             else
+              talsh_tensor_f_assoc_=TRY_LATER
+             endif
+            else
+             talsh_tensor_f_assoc_=TALSH_FAILURE
+            endif
+           else
+            talsh_tensor_f_assoc_=TALSH_FAILURE
+           endif
+          else
+           talsh_tensor_f_assoc_=TALSH_INVALID_ARGS
+          endif
+         else
+          talsh_tensor_f_assoc_=TALSH_OBJECT_IS_EMPTY
+         endif
+         return
+        end function talsh_tensor_f_assoc_
+!------------------------------------------------------------------------------------------------
+        integer(C_INT) function talsh_tensor_f_dissoc(tensF) bind(c,name='talsh_tensor_f_dissoc')
+!Destroys a temporary <tensor_block_t> object associated with a specific image of some TAL-SH tensor.
+         implicit none
+         type(C_PTR), value:: tensF !in: C pointer to a <tensor_block_t> object created by <talsh_tensor_f_assoc()>
+         type(tensor_block_t), pointer:: ftens
+         integer:: ierr
+
+         talsh_tensor_f_dissoc=TALSH_SUCCESS
+         if(c_associated(tensF)) then
+          call c_f_pointer(tensF,ftens)
+          if(.not.tensor_block_is_empty(ftens,ierr)) then
+           if(ierr.eq.0) then
+            call tensor_block_destroy(ftens,ierr)
+            if(ierr.ne.0) then
+             if(ierr.eq.NOT_CLEAN) then
+              talsh_tensor_f_dissoc=NOT_CLEAN
+             else
+              talsh_tensor_f_dissoc=TALSH_FAILURE
+             endif
+            endif
+            deallocate(ftens,STAT=ierr)
+            if(ierr.ne.0.and.talsh_tensor_f_dissoc.eq.TALSH_SUCCESS) talsh_tensor_f_dissoc=TALSH_FAILURE
+           else
+            talsh_tensor_f_dissoc=TALSH_FAILURE
+           endif
+          else
+           talsh_tensor_f_dissoc=TALSH_OBJECT_IS_EMPTY
+          endif
+         else
+          talsh_tensor_f_dissoc=TALSH_OBJECT_IS_EMPTY
+         endif
+         return
+        end function talsh_tensor_f_dissoc
+!-----------------------------------------
+!FORTRAN TAL-SH API DEFINITIONS:
+ !TAL-SH control API:
 !----------------------------------------------------------------------------------------------
         function talsh_init(host_buf_size,host_arg_max,gpu_list,mic_list,amd_list) result(ierr)
          implicit none
@@ -152,7 +556,7 @@
 !----------------------------------------------------------------
         function talsh_flat_dev_id(dev_kind,dev_num) result(res)
          implicit none
-         integer(C_INT):: res                  !out: Flat device Id [0..DEV_MAX-1]; Failure: DEV_MAX
+         integer(C_INT):: res                  !out: flat device Id [0..DEV_MAX-1]; Failure: DEV_MAX
          integer(C_INT), intent(in):: dev_kind !in: device kind
          integer(C_INT), intent(in):: dev_num  !in: device Id within its kind (0..MAX)
          res=talshFlatDevId(dev_kind,dev_num)
@@ -161,11 +565,396 @@
 !--------------------------------------------------------------
         function talsh_kind_dev_id(dev_id,dev_kind) result(res)
          implicit none
-         integer(C_INT):: res                   !out: kind-specific device Id [0..]; Failure: DEV_NULL
+         integer(C_INT):: res                   !out: kind-specific device Id [0..MAX]; Failure: DEV_NULL (negative)
          integer(C_INT), intent(in):: dev_id    !in: flat device Id
          integer(C_INT), intent(out):: dev_kind !out: device kind
          res=talshKindDevId(dev_id,dev_kind)
          return
         end function talsh_kind_dev_id
+!----------------------------------------------------------------------
+        function talsh_device_state(dev_num,dev_kind) result(dev_state)
+         implicit none
+         integer(C_INT):: dev_state                      !out: device state (Success:[DEV_OFF,DEV_ON,DEV_ON_BLAS])
+         integer(C_INT), intent(in):: dev_num            !in: either a flat or kind specific (when <dev_kind> is present) device id
+         integer(C_INT), intent(in), optional:: dev_kind !in: device kind (note that it changes the meaning of the <dev_num> argument)
+         integer(C_INT):: devk
+
+         if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_NULL; endif
+         dev_state=talshDeviceState_(dev_num,devk)
+         return
+        end function talsh_device_state
+!----------------------------------------------------------------
+        function talsh_device_busy_least(dev_kind) result(dev_id)
+         implicit none
+         integer(C_INT):: dev_id                         !out: either a flat or kind specific device id
+         integer(C_INT), intent(in), optional:: dev_kind !in: device kind (if absent, <dev_id> will return the flat device id)
+         integer(C_INT):: devk
+
+         if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_NULL; endif
+         dev_id=talshDeviceBusyLeast_(devk)
+         return
+        end function talsh_device_busy_least
+!---------------------------------------------------------
+        function talsh_stats(dev_id,dev_kind) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                           !out: error code (0:success)
+         integer(C_INT), intent(in), optional:: dev_id   !in: device id (either flat or kind specific device id, see below)
+         integer(C_INT), intent(in), optional:: dev_kind !in: device kind (if present, <dev_id> will be interpreted as kind specific)
+         integer(C_INT):: devn,devk
+
+         if(present(dev_id)) then; devn=dev_id; else; devn=-1; endif
+         if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_NULL; endif
+         ierr=talshStats_(devn,devk)
+         return
+        end function talsh_stats
+!-------------------------------------------------------------
+        function talsh_tensor_is_empty(tens_block) result(res)
+         implicit none
+         logical:: res                                       !out: .TRUE. if the tensor block is empty, .FALSE. otherwise
+         type(talsh_tens_t), intent(in), target:: tens_block !in: tensor block
+
+         res=.FALSE.
+         if(talshTensorIsEmpty(c_loc(tens_block)).eq.YEP) res=.TRUE.
+         return
+        end function talsh_tensor_is_empty
+!-----------------------------------------------------------------------------------------------------------------------------------
+        function talsh_tensor_construct_num(tens_block,data_kind,tens_shape,dev_id,ext_mem,in_hab,init_method,init_val) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                                !out: error code (0:success)
+         type(talsh_tens_t), intent(inout):: tens_block       !inout: constructed tensor block (must be empty on entrance)
+         integer(C_INT), intent(in):: data_kind               !in: data kind: {R4,R8,C4,C8,NO_TYPE}
+         integer(C_INT), intent(in):: tens_shape(1:)          !in: tensor shape (length = tensor rank)
+         integer(C_INT), intent(in), optional:: dev_id        !in: flat device ID on which the tensor block will reside
+         type(C_PTR), intent(in), optional:: ext_mem          !in: pointer to externally provided memory for tensor elements
+         integer(C_INT), intent(in), optional:: in_hab        !in: if >=0, <ext_mem> points to the HAB entry #<in_hab>
+         procedure(talsh_tens_init_i), optional:: init_method !in: user-defined initialization method (<init_val> must be absent)
+         complex(8), intent(in), optional:: init_val          !in: initialization value (will be typecast to <data_kind>, defaults to 0)
+         type(C_PTR):: tens_body_p
+         integer(C_INT):: devid,hab_entry,tens_rank
+         integer(C_INT), target:: tens_dims(1:MAX_TENSOR_RANK)
+         type(C_FUNPTR):: init_method_p
+         real(C_DOUBLE):: val_real,val_imag
+
+         ierr=TALSH_SUCCESS
+         tens_rank=size(tens_shape) !tens_shape(1:) must have the exact volume = tensor rank
+         if(tens_rank.ge.0.and.tens_rank.le.MAX_TENSOR_RANK) then
+          if(tens_rank.gt.0) tens_dims(1:tens_rank)=tens_shape(1:tens_rank)
+          if(present(dev_id)) then; devid=dev_id; else; devid=talshFlatDevId(DEV_HOST,0); endif
+          if(present(ext_mem)) then; tens_body_p=ext_mem; else; tens_body_p=C_NULL_PTR; endif
+          if(present(in_hab)) then; if(in_hab.ge.0) then; hab_entry=in_hab; else; hab_entry=-1; endif; else; hab_entry=-1; endif
+          if(present(init_method)) then; init_method_p=c_funloc(init_method); else; init_method_p=C_NULL_FUNPTR; endif
+          val_real=0d0; val_imag=0d0; if(present(init_val)) then; val_real=real(init_val); val_imag=aimag(init_val); endif
+          ierr=talshTensorConstruct_(tens_block,data_kind,tens_rank,tens_dims,devid,&
+                                     tens_body_p,hab_entry,init_method_p,val_real,val_imag)
+         else
+          ierr=TALSH_INVALID_ARGS
+         endif
+         return
+        end function talsh_tensor_construct_num
+!-----------------------------------------------------------------------------------------------------------------------------------
+        function talsh_tensor_construct_sym(tens_block,data_kind,tens_shape,dev_id,ext_mem,in_hab,init_method,init_val) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                                !out: error code (0:success)
+         type(talsh_tens_t), intent(inout):: tens_block       !inout: constructed tensor block (must be empty on entrance)
+         integer(C_INT), intent(in):: data_kind               !in: data kind: {R4,R8,C4,C8,NO_TYPE}
+         character(*), intent(in):: tens_shape                !in: tensor shape (symbolic)
+         integer(C_INT), intent(in), optional:: dev_id        !in: flat device ID on which the tensor block will reside
+         type(C_PTR), intent(in), optional:: ext_mem          !in: pointer to externally provided memory for tensor elements
+         integer(C_INT), intent(in), optional:: in_hab        !in: if >=0, <ext_mem> points to the HAB entry #<in_hab>
+         procedure(talsh_tens_init_i), optional:: init_method !in: user-defined initialization method (<init_val> must be absent)
+         complex(8), intent(in), optional:: init_val          !in: initialization value (will be typecast to <data_kind>, defaults to 0)
+         type(tensor_block_t):: ftens
+         type(C_PTR):: extmem
+         integer(C_INT):: devid,inhab,trank,tshape(1:MAX_TENSOR_RANK)
+         integer:: errc
+
+         call tensor_block_shape_create(ftens,tens_shape,errc)
+         trank=ftens%tensor_shape%num_dim
+         if(errc.eq.0.and.trank.ge.0.and.trank.le.MAX_TENSOR_RANK) then
+          tshape(1:trank)=ftens%tensor_shape%dim_extent(1:trank)
+          if(present(dev_id)) then; devid=dev_id; else; devid=talshFlatDevId(DEV_HOST,0); endif
+          if(present(ext_mem)) then; extmem=ext_mem; else; extmem=C_NULL_PTR; endif
+          if(present(in_hab)) then; inhab=in_hab; else; inhab=-1; endif
+          if(present(init_method)) then
+           ierr=talsh_tensor_construct_num(tens_block,data_kind,tshape(1:trank),devid,extmem,inhab,init_method)
+          else
+           if(present(init_val)) then
+            ierr=talsh_tensor_construct_num(tens_block,data_kind,tshape(1:trank),devid,extmem,inhab,init_val=init_val)
+           else
+            ierr=talsh_tensor_construct_num(tens_block,data_kind,tshape(1:trank),devid,extmem,inhab)
+           endif
+          endif
+         else
+          ierr=TALSH_INVALID_ARGS
+         endif
+         call tensor_block_destroy(ftens,errc)
+         return
+        end function talsh_tensor_construct_sym
+!-----------------------------------------------------------------------------------------------------------------------------------
+        function talsh_tensor_construct_shp(tens_block,data_kind,tens_shape,dev_id,ext_mem,in_hab,init_method,init_val) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                                !out: error code (0:success)
+         type(talsh_tens_t), intent(inout):: tens_block       !inout: constructed tensor block (must be empty on entrance)
+         integer(C_INT), intent(in):: data_kind               !in: data kind: {R4,R8,C4,C8,NO_TYPE}
+         type(talsh_tens_shape_t), intent(in):: tens_shape    !in: tensor shape
+         integer(C_INT), intent(in), optional:: dev_id        !in: flat device ID on which the tensor block will reside
+         type(C_PTR), intent(in), optional:: ext_mem          !in: pointer to externally provided memory for tensor elements
+         integer(C_INT), intent(in), optional:: in_hab        !in: if >=0, <ext_mem> points to the HAB entry #<in_hab>
+         procedure(talsh_tens_init_i), optional:: init_method !in: user-defined initialization method (<init_val> must be absent)
+         complex(8), intent(in), optional:: init_val          !in: initialization value (will be typecast to <data_kind>, defaults to 0)
+         type(C_PTR):: extmem
+         integer(C_INT):: devid,inhab,trank
+         integer(C_INT), pointer:: tshape(:)
+         integer:: errc
+
+         trank=tens_shape%num_dim
+         if(trank.ge.0.and.trank.le.MAX_TENSOR_RANK) then
+          call c_f_pointer(tens_shape%dims,tshape,shape=(/trank/))
+          if(present(dev_id)) then; devid=dev_id; else; devid=talshFlatDevId(DEV_HOST,0); endif
+          if(present(ext_mem)) then; extmem=ext_mem; else; extmem=C_NULL_PTR; endif
+          if(present(in_hab)) then; inhab=in_hab; else; inhab=-1; endif
+          if(present(init_method)) then
+           ierr=talsh_tensor_construct_num(tens_block,data_kind,tshape(1:trank),devid,extmem,inhab,init_method)
+          else
+           if(present(init_val)) then
+            ierr=talsh_tensor_construct_num(tens_block,data_kind,tshape(1:trank),devid,extmem,inhab,init_val=init_val)
+           else
+            ierr=talsh_tensor_construct_num(tens_block,data_kind,tshape(1:trank),devid,extmem,inhab)
+           endif
+          endif
+         else
+          ierr=TALSH_INVALID_ARGS
+         endif
+         return
+        end function talsh_tensor_construct_shp
+!--------------------------------------------------------------
+        function talsh_tensor_destruct(tens_block) result(ierr)
+         implicit none
+         integer(C_INT):: ierr
+         type(talsh_tens_t), intent(inout):: tens_block !inout: tensor block (will become empty on exit)
+         ierr=talshTensorDestruct(tens_block)
+         return
+        end function talsh_tensor_destruct
+!-----------------------------------------------------------
+        function talsh_tensor_volume(tens_block) result(vol)
+         implicit none
+         integer(C_SIZE_T):: vol                     !out: number of elements in the tensor block (negative on error)
+         type(talsh_tens_t), intent(in):: tens_block !in: tensor block
+         vol=talshTensorVolume(tens_block)
+         return
+        end function talsh_tensor_volume
+!----------------------------------------------------------------------
+        function talsh_tensor_shape(tens_block,tens_shape) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                                !out: error code (0:success)
+         type(talsh_tens_t), intent(in):: tens_block          !in: tensor block
+         type(talsh_tens_shape_t), intent(inout):: tens_shape !inout: tensor block shape (copy)
+         ierr=talshTensorShape(tens_block,tens_shape)
+         return
+        end function talsh_tensor_shape
+!--------------------------------------------------------------------------------------------------------
+        function talsh_tensor_presence(tens_block,ncopies,copies,data_kinds,dev_kind,dev_id) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                           !out: error code (0:success)
+         type(talsh_tens_t), intent(in):: tens_block     !in: tensor block
+         integer(C_INT), intent(out):: ncopies           !out: number of found copies of the tensor block
+         integer(C_INT), intent(inout):: copies(1:*)     !out: copies found (list of flat device id's)
+         integer(C_INT), intent(inout):: data_kinds(1:*) !out: data kind of each copy
+         integer(C_INT), intent(in), optional:: dev_kind !in: specific device kind of interest (defaults to All)
+         integer(C_INT), intent(in), optional:: dev_id   !in: specific device of interest
+         integer(C_INT):: devk,devnum
+
+         if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_NULL; endif
+         if(present(dev_id)) then; devnum=dev_id; else; devnum=-1; endif
+         ierr=talshTensorPresence_(tens_block,ncopies,copies,data_kinds,devk,devnum)
+         return
+        end function talsh_tensor_presence
+!------------------------------------------------------------
+        function talsh_task_destruct(talsh_task) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                          !out: error code (0:success)
+         type(talsh_task_t), intent(inout):: talsh_task !inout: TAL-SH task (clean on exit)
+         ierr=talshTaskDestruct(talsh_task)
+         return
+        end function talsh_task_destruct
+!---------------------------------------------------------------------
+        function talsh_task_dev_id(talsh_task,dev_kind) result(dev_id)
+         implicit none
+         integer(C_INT):: dev_id                                  !out: flat or kind-specific device id
+         type(talsh_task_t), intent(inout):: talsh_task           !in: value-defined TAL-SH task
+         integer(C_INT), intent(out), optional, target:: dev_kind !out: device kind (if present, <dev_id> is kind-specific, if absent <dev_id> is flat)
+
+         if(present(dev_kind)) then
+          dev_id=talshTaskDevId_(talsh_task,c_loc(dev_kind))
+         else
+          dev_id=talshTaskDevId_(talsh_task,C_NULL_PTR)
+         endif
+         return
+        end function talsh_task_dev_id
+!----------------------------------------------------------
+        function talsh_task_status(talsh_task) result(stat)
+         implicit none
+         integer(C_INT):: stat                          !out: TAL-SH task status
+         type(talsh_task_t), intent(inout):: talsh_task !inout: TAL-SH task
+         stat=talshTaskStatus(talsh_task)
+         return
+        end function talsh_task_status
+!-----------------------------------------------------------------------
+        function talsh_task_complete(talsh_task,stats,ierr) result(done)
+         implicit none
+         integer(C_INT):: done                          !out: YEP if the task has completed, NOPE otherwise
+         type(talsh_task_t), intent(inout):: talsh_task !inout: TAL-SH task
+         integer(C_INT), intent(out):: stats            !out: TAL-SH task status
+         integer(C_INT), intent(out):: ierr             !out: error code (0:success)
+         done=talshTaskComplete(talsh_task,stats,ierr)
+         return
+        end function talsh_task_complete
+!--------------------------------------------------------------
+        function talsh_task_wait(talsh_task,stats) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                          !out: error code (0:success)
+         type(talsh_task_t), intent(inout):: talsh_task !inout: TAL-SH task
+         integer(C_INT), intent(out):: stats            !out: TAL-SH task status
+         ierr=talshTaskWait(talsh_task,stats)
+         return
+        end function talsh_task_wait
+!-----------------------------------------------------------------------
+        function talsh_tasks_wait(ntasks,talsh_tasks,stats) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                                     !out: error code (0:success)
+         integer(C_INT), intent(in):: ntasks                       !in: number of tasks to wait upon
+         type(talsh_task_t), intent(inout):: talsh_tasks(1:ntasks) !inout: TAL-SH tasks
+         integer(C_INT), intent(out):: stats(1:ntasks)             !out: TAL-SH task statuses
+         ierr=talshTasksWait(ntasks,talsh_tasks,stats)
+         return
+        end function talsh_tasks_wait
+!----------------------------------------------------------------------------------
+        function talsh_task_time(talsh_task,total,comput,input,output) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                          !out: error code (0:success)
+         type(talsh_task_t), intent(inout):: talsh_task !inout: TAL-SH task
+         real(C_DOUBLE), intent(out):: total            !out: total execution time (sec)
+         real(C_DOUBLE), intent(out), optional:: comput !out: time the computation took (sec)
+         real(C_DOUBLE), intent(out), optional:: input  !out: time the ingoing data transfers took (sec)
+         real(C_DOUBLE), intent(out), optional:: output !out: time the outgoing data transfers took (sec)
+         real(C_DOUBLE):: comp_tm,in_tm,out_tm
+         ierr=talshTaskTime_(talsh_task,total,comp_tm,in_tm,out_tm)
+         if(present(comput)) comput=comp_tm
+         if(present(input)) input=in_tm
+         if(present(output)) output=out_tm
+         return
+        end function talsh_task_time
+!------------------------------------------------------------------------------------------
+        function talsh_tensor_place(tens,dev_id,dev_kind,copy_ctrl,talsh_task) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                              !out: error code (0:success)
+         type(talsh_tens_t), intent(inout):: tens           !inout: tensor block
+         integer(C_INT), intent(in):: dev_id                !in: device id (flat or kind-specific)
+         integer(C_INT), intent(in), optional:: dev_kind    !in: device kind (if present, <dev_id> is kind-specific)
+         integer(C_INT), intent(in), optional:: copy_ctrl   !in: copy control (COPY_X), defaults to COPY_M
+         type(talsh_task_t), intent(inout), optional:: talsh_task !inout: TAL-SH task handle
+         integer(C_INT):: dvk,coh,sts
+         type(talsh_task_t):: tsk
+
+         if(present(dev_kind)) then; dvk=dev_kind; else; dvk=DEV_NULL; endif
+         if(present(copy_ctrl)) then; coh=copy_ctrl; else; coh=COPY_M; endif
+         if(present(talsh_task)) then
+          ierr=talshTensorPlace_(tens,dev_id,dvk,coh,talsh_task)
+         else
+          ierr=talshTensorPlace_(tens,dev_id,dvk,coh,tsk)
+          if(ierr.eq.TALSH_SUCCESS) then
+           ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
+          endif
+          sts=talsh_task_destruct(tsk)
+         endif
+         return
+        end function talsh_tensor_place
+!-----------------------------------------------------------------------
+        function talsh_tensor_discard(tens,dev_id,dev_kind) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                           !out: error code (0:success)
+         type(talsh_tens_t), intent(inout):: tens        !inout: tensor block
+         integer(C_INT), intent(in):: dev_id             !in: device id (flat or kind-specific)
+         integer(C_INT), intent(in), optional:: dev_kind !in: device kind (if present, <dev_id> is kind-specific)
+         integer(C_INT):: dvk
+
+         if(present(dev_kind)) then; dvk=dev_kind; else; dvk=DEV_NULL; endif
+         ierr=talshTensorDiscard_(tens,dev_id,dvk)
+         return
+        end function talsh_tensor_discard
+!----------------------------------------------------------------------------------------------------------------------
+        function talsh_tensor_contract(cptrn,dtens,ltens,rtens,copy_ctrl,scale,dev_id,dev_kind,talsh_task) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                            !out: error code (0:success)
+         character(*), intent(in):: cptrn                 !in: symbolic contraction pattern, e.g. "D(a,b,c,d)+=L(c,i,j,a)*R(b,j,d,i)"
+         type(talsh_tens_t), intent(inout):: dtens        !inout: destination tensor block
+         type(talsh_tens_t), intent(inout):: ltens        !inout: left source tensor block
+         type(talsh_tens_t), intent(inout):: rtens        !inout: right source tensor block
+         integer(C_INT), intent(in), optional:: copy_ctrl !in: copy control (COPY_XXX), defaults to COPY_MTT
+         complex(8), intent(in), optional:: scale         !in: scaling value, defaults to 1
+         integer(C_INT), intent(in), optional:: dev_id    !in: device id (flat or kind-specific)
+         integer(C_INT), intent(in), optional:: dev_kind  !in: device kind (if present, <dev_id> is kind-specific)
+         type(talsh_task_t), intent(inout), optional:: talsh_task !inout: TAL-SH task (must be clean)
+         character(C_CHAR):: contr_ptrn(1:1024) !contraction pattern
+         integer(C_INT):: coh_ctrl,devn,devk,sts
+         integer:: l
+         real(C_DOUBLE):: scale_real,scale_imag
+         type(talsh_task_t):: tsk
+
+         ierr=TALSH_SUCCESS; l=len_trim(cptrn)
+         if(l.gt.0) then
+          if(present(copy_ctrl)) then; coh_ctrl=copy_ctrl; else; coh_ctrl=COPY_MTT; endif
+          if(present(scale)) then; scale_real=dble(scale); scale_imag=dimag(scale); else; scale_real=1d0; scale_imag=0d0; endif
+          if(present(dev_id)) then; devn=dev_id; else; devn=DEV_DEFAULT; endif
+          if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_DEFAULT; endif
+          call string2array(cptrn(1:l),contr_ptrn,l,ierr)
+          if(ierr.eq.0) then
+           if(present(talsh_task)) then
+            ierr=talshTensorContract_(cptrn,dtens,ltens,rtens,coh_ctrl,scale_real,scale_imag,devn,devk,talsh_task)
+           else
+            ierr=talshTensorContract_(cptrn,dtens,ltens,rtens,coh_ctrl,scale_real,scale_imag,devn,devk,tsk)
+            if(ierr.eq.TALSH_SUCCESS) then
+             ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
+            endif
+            sts=talsh_task_destruct(tsk)
+           endif
+          else
+           ierr=TALSH_INVALID_ARGS
+          endif
+         else
+          ierr=TALSH_INVALID_ARGS
+         endif
+         return
+        end function talsh_tensor_contract
+!-------------------------------------------------------------------------------------------------------------------
+        integer(C_INT) function cpu_tensor_block_contract(contr_ptrn,ltens_p,rtens_p,dtens_p,scale_real,scale_imag)&
+                                                         &bind(c,name='cpu_tensor_block_contract')
+         implicit none
+         integer(C_INT), intent(in):: contr_ptrn(*) !in: digital tensor contraction pattern
+         type(C_PTR), value:: ltens_p               !in: left tensor argument
+         type(C_PTR), value:: rtens_p               !in: right tensor argument
+         type(C_PTR), value:: dtens_p               !inout: destination tensor argument
+         real(C_DOUBLE), value:: scale_real         !in: scaling prefactor (real part)
+         real(C_DOUBLE), value:: scale_imag         !in: scaling prefactor (imaginary part)
+         type(tensor_block_t), pointer:: dtp,ltp,rtp
+         integer:: ierr
+
+         cpu_tensor_block_contract=0
+         if(dabs(scale_real-1d0).gt.ZERO_THRESH.or.dabs(scale_imag-0d0).gt.ZERO_THRESH) then !`Scaling prefactor should be accounted for
+          cpu_tensor_block_contract=TALSH_NOT_IMPLEMENTED; return !`Implement
+         endif
+         if(c_associated(dtens_p).and.c_associated(ltens_p).and.c_associated(rtens_p)) then
+          call c_f_pointer(dtens_p,dtp); call c_f_pointer(ltens_p,ltp); call c_f_pointer(rtens_p,rtp)
+          if(associated(dtp).and.associated(ltp).and.associated(rtp)) then
+           call tensor_block_contract(contr_ptrn,ltp,rtp,dtp,ierr)
+           cpu_tensor_block_contract=ierr
+          else
+           cpu_tensor_block_contract=-2
+          endif
+         else
+          cpu_tensor_block_contract=-1
+         endif
+         return
+        end function cpu_tensor_block_contract
 
        end module talsh

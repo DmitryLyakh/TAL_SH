@@ -1,3 +1,6 @@
+!BASIC FORTRAN PARAMETERS
+!REVISION: 2016-04-17
+
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -60,5 +63,14 @@
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: NOPE,YEP,SUCCESS,GENERIC_ERROR,TRY_LATER,NOT_CLEAN
 !DIR$ ATTRIBUTES ALIGN:128:: NOPE,YEP,SUCCESS,GENERIC_ERROR,TRY_LATER,NOT_CLEAN
+#endif
+
+!BASIC NUMERIC:
+        real(4), parameter, public:: EPS4=epsilon(1.0) !single precision epsilon
+        real(8), parameter, public:: EPS8=epsilon(1d0) !double precision epsilon
+        real(8), parameter, public:: ZERO_THRESH=1d-11 !numerical comparison threshold: should account for possible round-off errors
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: EPS4,EPS8,ZERO_THRESH
+!DIR$ ATTRIBUTES ALIGN:128:: EPS4,EPS8,ZERO_THRESH
 #endif
        end module dil_basic

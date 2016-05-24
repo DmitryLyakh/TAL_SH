@@ -5,7 +5,7 @@ WRAP ?= NOWRAP
 #Compiler: [GNU|PGI|INTEL|CRAY]:
 TOOLKIT ?= GNU
 #Optimization: [DEV|OPT]:
-BUILD_TYPE ?= DEV
+BUILD_TYPE ?= OPT
 #MPI Library: [MPICH|OPENMPI]:
 MPILIB ?= MPICH
 #BLAS: [ATLAS|MKL|ACML]:
@@ -122,8 +122,8 @@ CUDA_LINK = $(CUDA_LINK_$(GPU_CUDA))
 CUDA_HOST_NOWRAP = --compiler-bindir /usr/bin
 CUDA_HOST_WRAP = -I.
 CUDA_HOST = $(CUDA_HOST_$(WRAP))
-CUDA_FLAGS_DEV = --compile -arch=sm_35 -g -G -D CUDA_ARCH=350 -D DEBUG_GPU
-CUDA_FLAGS_OPT = --compile -arch=sm_35 -O3 -D CUDA_ARCH=350
+CUDA_FLAGS_DEV = --compile -arch=sm_35 -g -G -lineinfo -D CUDA_ARCH=350 -D DEBUG_GPU
+CUDA_FLAGS_OPT = --compile -arch=sm_35 -O3 -lineinfo -D CUDA_ARCH=350
 CUDA_FLAGS_CUDA = $(CUDA_HOST) $(CUDA_FLAGS_$(BUILD_TYPE))
 CUDA_FLAGS_NOCUDA = -I.
 CUDA_FLAGS = $(CUDA_FLAGS_$(GPU_CUDA))
@@ -143,9 +143,9 @@ FFLAGS_INTEL_DEV = -c -g -fpp -vec-threshold4 -openmp $(NO_ACCEL)
 FFLAGS_INTEL_OPT = -c -O3 -fpp -vec-threshold4 -openmp $(NO_ACCEL)
 FFLAGS_CRAY_DEV = -c -g $(NO_ACCEL)
 FFLAGS_CRAY_OPT = -c -O3 $(NO_ACCEL)
-FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -pg $(NO_ACCEL)
+FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -g $(NO_ACCEL)
 FFLAGS_GNU_OPT = -c -fopenmp -O3 $(NO_ACCEL)
-FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -pg $(NO_ACCEL)
+FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -g $(NO_ACCEL)
 FFLAGS_PGI_OPT = -c -mp -Mcache_align -Mstandard -O3 $(NO_ACCEL)
 FFLAGS = $(FFLAGS_$(TOOLKIT)_$(BUILD_TYPE))
 

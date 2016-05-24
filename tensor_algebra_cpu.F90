@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2016/03/15
+!REVISION: 2016/05/24
 
 !Copyright (C) 2013-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -32,6 +32,7 @@
 ! - brc - bricked storage of tensor blocks where the 1st dimension is the most senior (C like);
 ! - r4 - real(4);
 ! - r8 - real(8);
+! - c4 - complex(4);
 ! - c8 - complex(8);
 !PREPROCESSOR:
 ! -D NO_OMP: Do not use OpenMP (serial);
@@ -90,17 +91,17 @@
 !DIR$ ATTRIBUTES ALIGN:128:: MAX_SHAPE_STR_LEN,LONGINT,MAX_THREADS,data_kind_sync,trans_shmem,disable_blas
 #endif
  !Numerical:
-	real(8), parameter, private:: abs_cmp_thresh=1d-13 !default absolute error threshold for numerical comparisons
-	real(8), parameter, private:: rel_cmp_thresh=1d-2  !default relative error threshold for numerical comparisons
+	real(8), parameter, private:: ABS_CMP_THRESH=1d-13 !default absolute error threshold for numerical comparisons
+	real(8), parameter, private:: REL_CMP_THRESH=1d-2  !default relative error threshold for numerical comparisons
 #ifndef NO_PHI
-!DIR$ ATTRIBUTES OFFLOAD:mic:: abs_cmp_thresh,rel_cmp_thresh
-!DIR$ ATTRIBUTES ALIGN:128:: abs_cmp_thresh,rel_cmp_thresh
+!DIR$ ATTRIBUTES OFFLOAD:mic:: ABS_CMP_THRESH,REL_CMP_THRESH
+!DIR$ ATTRIBUTES ALIGN:128:: ABS_CMP_THRESH,REL_CMP_THRESH
 #endif
 !DERIVED DATA TYPES:
  !Tensor shape (storage layout specification for a tensor block):
 	type, public:: tensor_shape_t
 	 integer:: num_dim=-1                      !total number of dimensions (num_dim=0 defines a scalar tensor).
-	 integer, pointer:: dim_extent(:)=>NULL()  !extent of each dimension (if num_dim>0): [0..extent-1].
+	 integer, pointer:: dim_extent(:)=>NULL()  !extent of each dimension (if num_dim>0): range=[0..extent-1].
 	 integer, pointer:: dim_divider(:)=>NULL() !divider for each dimension, i.e. the <Lm_segment_size> (ordered dimensions must have the same divider!): %dim_divider(1)=0 means that an alternative (neither dimension-led nor bricked) storage layout is used.
 	 integer, pointer:: dim_group(:)=>NULL()   !dimension grouping (default group 0 means no symmetry restrictions): if %dim_divider(1)=0, then %dim_group(1) regulates the alternative storage layout kind.
 	end type tensor_shape_t
@@ -112,10 +113,16 @@
 	 complex(8):: scalar_value=cmplx(0d0,0d0,8)               !scalar value if the rank is zero, otherwise can be used for storing the norm of the tensor block
 	 real(4), pointer, contiguous:: data_real4(:)=>NULL()     !tensor block data (float)
 	 real(8), pointer, contiguous:: data_real8(:)=>NULL()     !tensor block data (double)
-	 complex(8), pointer, contiguous:: data_cmplx8(:)=>NULL() !tensor block data (complex)
+!        complex(4), pointer, contiguous:: data_cmplx4(:)=>NULL() !tensor block data (float complex) `Implement throughout
+	 complex(8), pointer, contiguous:: data_cmplx8(:)=>NULL() !tensor block data (double complex)
 	end type tensor_block_t
 
 !GENERIC INTERFACES:
+        interface tensor_block_shape_create
+         module procedure tensor_block_shape_create_sym
+         module procedure tensor_block_shape_create_num
+        end interface tensor_block_shape_create
+
 	interface tensor_block_slice_dlf
 	 module procedure tensor_block_slice_dlf_r4
 	 module procedure tensor_block_slice_dlf_r8
@@ -169,14 +176,17 @@
 	public set_transpose_algorithm     !switches between scatter (0) and shared-memory (1) tensor transpose algorithms
 	public set_matmult_algorithm       !switches between BLAS GEMM (0) and my OpenMP matmult kernels (1)
 	public cmplx8_to_real8             !returns the real approximate of a complex number (algorithm by D.I.L.)
+        public tensor_shape_assoc          !constructs a tensor shape object by pointer associating with external data
 	public tensor_block_layout         !returns the type of the storage layout for a given tensor block
-	public tensor_shape_size           !determines the tensor block size induced by its shape
+	public tensor_block_shape_size     !determines the tensor block size induced by its shape
 	public tensor_master_data_kind     !determines the master data kind present in a tensor block
 	public tensor_common_data_kind     !determines the common data kind present in two compatible tensor blocks
 	public tensor_block_compatible     !determines whether two tensor blocks are compatible (under an optional index permutation)
 	public tensor_block_mimic          !mimics the internal structure of a tensor block without copying the actual data
 	public tensor_block_create         !creates a tensor block based on the shape specification string (SSS)
 	public tensor_block_init           !initializes a tensor block with either a predefined value or random numbers
+        public tensor_block_is_empty       !returns TRUE if the tensor block is empty, FALSE otherwise
+        public tensor_block_assoc          !associates an empty <tensor_block_t> object with externally provided data
 	public tensor_block_destroy        !destroys a tensor block
 	public tensor_block_sync           !allocates and/or synchronizes different data kinds in a tensor block
 	public tensor_block_scale          !multiplies all elements of a tensor block by some factor
@@ -201,9 +211,11 @@
 	public get_contr_permutations      !given a digital contraction pattern, returns all tensor permutations necessary for the subsequent matrix multiplication
 	public contr_pattern_rnd           !returns a random tensor contraction pattern
 	public coherence_control_var       !returns a coherence control variable based on a mnemonic input
-	private tensor_shape_create        !generates the tensor shape based on the tensor shape specification string (TSSS)
-	private tensor_shape_ok            !checks the correctness of a tensor shape generated from a tensor shape specification string (TSSS)
-	public tensor_block_alloc          !queries the allocation status of data pointers in a tensor block
+	public tensor_block_shape_create   !generates the tensor shape based on either the tensor shape specification string (TSSS) or numeric arguments
+        public tensor_block_shape_create_sym !generates the tensor shape based on the tensor shape specification string (TSSS)
+        public tensor_block_shape_create_num !generates the tensor shape based on the numeric arguments
+	public tensor_block_shape_ok       !checks the correctness of a tensor shape generated from a tensor shape specification string (TSSS)
+	public tensor_block_alloc          !sets/queries the allocation status of data pointers in a tensor block
 	private tensor_block_slice_dlf     !extracts a slice from a tensor block (Fortran-like dimension-led storage layout)
 	private tensor_block_insert_dlf    !inserts a slice into a tensor block (Fortran-like dimension-led storage layout)
 	private tensor_block_copy_dlf      !tensor transpose for dimension-led (Fortran-like-stored) dense tensor blocks
@@ -270,21 +282,78 @@
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: cmplx8_to_real8
 #endif
-	real(8) function cmplx8_to_real8(cmplx_num) !SERIAL
+        real(8) function cmplx8_to_real8(cmplx_num) !SERIAL
 !This function returns a real approximant for a complex number with the following properties:
 ! 1) The Euclidean (Frobenius) norm (modulus) is preserved;
 ! 2) The sign inversion symmetry is preserved.
-	implicit none
-	complex(8), intent(in):: cmplx_num
-	real(8) real_part
-	real_part=dble(cmplx_num)
-	if(real_part.ne.0d0) then
-	 cmplx8_to_real8=abs(cmplx_num)*sign(1d0,real_part)
-	else
-	 cmplx8_to_real8=dimag(cmplx_num)
-	endif
-	return
-	end function cmplx8_to_real8
+         implicit none
+         complex(8), intent(in):: cmplx_num
+         real(8):: real_part
+         real_part=dble(cmplx_num)
+         if(real_part.ne.0d0) then
+          cmplx8_to_real8=abs(cmplx_num)*sign(1d0,real_part)
+         else
+          cmplx8_to_real8=dimag(cmplx_num)
+         endif
+         return
+        end function cmplx8_to_real8
+!--------------------------------------------------------------------
+        subroutine tensor_shape_assoc(tens_shape,ierr,dims,divs,grps)
+!Constructs a tensor shape object <tensor_shape_t) by pointer associating it
+!with external data. Incoming <tens_shape> must be empty on entrance.
+         implicit none
+         type(tensor_shape_t), intent(inout):: tens_shape !inout: tensor shape
+         integer, intent(out):: ierr                      !out: error code (0:success)
+         integer, intent(in), pointer, contiguous, optional:: dims(:) !in: dimension extents (length = tensor rank)
+         integer, intent(in), pointer, contiguous, optional:: divs(:) !in: dimension dividers
+         integer, intent(in), pointer, contiguous, optional:: grps(:) !in: dimension groups
+         integer:: n
+
+         ierr=0
+         if(tens_shape%num_dim.lt.0.and.&
+           &(.not.(associated(tens_shape%dim_extent).or.&
+                  &associated(tens_shape%dim_divider).or.&
+                  &associated(tens_shape%dim_group)))) then
+          if(present(dims)) then
+           if(associated(dims)) then
+            n=size(dims)
+            if(n.ge.0.and.n.le.MAX_TENSOR_RANK) then
+             tens_shape%num_dim=n
+             if(n.gt.0) then
+              tens_shape%dim_extent(1:n)=>dims(1:n)
+              if(present(divs)) then
+               if(associated(divs)) then
+                if(size(divs).eq.n) then
+                 tens_shape%dim_divider(1:n)=>divs(1:n)
+                else
+                 ierr=1; return
+                endif
+               endif
+              endif
+              if(present(grps)) then
+               if(associated(grps)) then
+                if(size(grps).eq.n) then
+                 tens_shape%dim_group(1:n)=>grps(1:n)
+                else
+                 ierr=2; return
+                endif
+               endif
+              endif
+             endif
+            else
+             ierr=3
+            endif
+           else
+            tens_shape%num_dim=0
+           endif
+          else
+           tens_shape%num_dim=0
+          endif
+         else
+          ierr=4 !tensor shape is not empty
+         endif
+         return
+        end subroutine tensor_shape_assoc
 !------------------------------------------------------------------
 	integer function tensor_block_layout(tens,ierr,check_shape) !SERIAL
 !Returns the type of the storage layout for a given tensor block <tens>.
@@ -304,14 +373,14 @@
 !   to assign non-zero group numbers to indices for dimension_led
 !   and bricked_dense tensor blocks.
 	implicit none
-	type(tensor_block_t), intent(inout):: tens !(out) because of <tensor_shape_ok>
+	type(tensor_block_t), intent(inout):: tens !(out) because of <tensor_block_shape_ok>
 	logical, intent(in), optional:: check_shape
 	integer, intent(inout):: ierr
 	integer i,j,k,l,m,n,ibus(0:max_tensor_rank)
 
 	ierr=0; tensor_block_layout=not_allocated
 	if(present(check_shape)) then
-	 if(check_shape) then; ierr=tensor_shape_ok(tens); if(ierr.ne.0) return; endif
+	 if(check_shape) then; ierr=tensor_block_shape_ok(tens); if(ierr.ne.0) return; endif
 	endif
 	if(tens%tensor_shape%num_dim.gt.0.and.associated(tens%tensor_shape%dim_extent).and.&
 	   &associated(tens%tensor_shape%dim_divider).and.associated(tens%tensor_shape%dim_group)) then !true tensor
@@ -338,29 +407,29 @@
 	endif
 	return
 	end function tensor_block_layout
-!-------------------------------------------------------------------
-	integer(LONGINT) function tensor_shape_size(tens_block,ierr) !SERIAL
+!-------------------------------------------------------------------------
+	integer(LONGINT) function tensor_block_shape_size(tens_block,ierr) !SERIAL
 !This function determines the size of a tensor block (number of elements) by its shape.
 !Note that a scalar (0-dimensional tensor) and a 1-dimensional tensor with extent 1 are not the same!
 	implicit none
-	type(tensor_block_t), intent(inout):: tens_block !(out) because of <tensor_block_layout> because of <tensor_shape_ok>
+	type(tensor_block_t), intent(inout):: tens_block !(out) because of <tensor_block_layout> because of <tensor_block_shape_ok>
 	integer, intent(inout):: ierr
 	integer i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,tst
 
-	ierr=0; tensor_shape_size=0_LONGINT
+	ierr=0; tensor_block_shape_size=0_LONGINT
 	tst=tensor_block_layout(tens_block,ierr); if(ierr.ne.0) return
 	select case(tst)
 	case(not_allocated)
-	 tensor_shape_size=0_LONGINT; ierr=-1
+	 tensor_block_shape_size=0_LONGINT; ierr=-1
 	case(scalar_tensor)
-	 tensor_shape_size=1_LONGINT
+	 tensor_block_shape_size=1_LONGINT
 	case(dimension_led,bricked_dense)
-	 tensor_shape_size=1_LONGINT
+	 tensor_block_shape_size=1_LONGINT
 	 do i=1,tens_block%tensor_shape%num_dim
 	  if(tens_block%tensor_shape%dim_extent(i).gt.0.and.&
 	     &tens_block%tensor_shape%dim_divider(i).gt.0.and.&
 	     &tens_block%tensor_shape%dim_divider(i).le.tens_block%tensor_shape%dim_extent(i)) then
-	   tensor_shape_size=tensor_shape_size*int(tens_block%tensor_shape%dim_extent(i),LONGINT)
+	   tensor_block_shape_size=tensor_block_shape_size*int(tens_block%tensor_shape%dim_extent(i),LONGINT)
 	  else
 	   ierr=100+i; return !invalid dimension specificator in tens_block%tensor_shape%
 	  endif
@@ -375,7 +444,7 @@
 	 ierr=-2
 	end select
 	return
-	end function tensor_shape_size
+	end function tensor_block_shape_size
 !---------------------------------------------------------------
 	character(2) function tensor_master_data_kind(tens,ierr) !SERIAL
 !This function determines the master data kind present in a tensor block.
@@ -623,8 +692,8 @@
 	integer, intent(inout):: ierr
 
 	ierr=0
-	call tensor_shape_create(shape_str,tens_block,ierr); if(ierr.ne.0) then; ierr=1; return; endif
-	ierr=tensor_shape_ok(tens_block); if(ierr.ne.0) then; ierr=2; return; endif
+	call tensor_block_shape_create(tens_block,shape_str,ierr); if(ierr.ne.0) then; ierr=1; return; endif
+	ierr=tensor_block_shape_ok(tens_block); if(ierr.ne.0) then; ierr=2; return; endif
 	select case(data_kind)
 	case('r4')
 	 if(present(val_r4)) then
@@ -711,7 +780,8 @@
 	complex(8) vec_c8(0:vec_size-1),valc8
 	logical res
 
-	ierr=0; tens_block%tensor_block_size=tensor_shape_size(tens_block,ierr); if(ierr.ne.0) then; ierr=1; return; endif
+	ierr=0; tens_block%tensor_block_size=tensor_block_shape_size(tens_block,ierr)
+        if(ierr.ne.0) then; ierr=1; return; endif
 	if(tens_block%tensor_block_size.le.0_LONGINT) then; ierr=2; return; endif
 	if(tens_block%tensor_shape%num_dim.eq.0) then !scalar tensor
 	 if(associated(tens_block%data_real4)) then
@@ -967,6 +1037,94 @@
 	end select
 	return
 	end subroutine tensor_block_init
+!--------------------------------------------------------
+        logical function tensor_block_is_empty(tens,ierr)
+!Returns TRUE if the tensor block is empty, FALSE otherwise.
+         implicit none
+         type(tensor_block_t), intent(in):: tens !in: tensor block
+         integer, intent(out), optional:: ierr   !out: error code (0:success)
+         integer:: errc
+
+         errc=0; tensor_block_is_empty=.TRUE.
+         if(tens%tensor_shape%num_dim.ge.0) then
+          tensor_block_is_empty=.FALSE.
+          if(tens%tensor_shape%num_dim.le.MAX_TENSOR_RANK) then
+           if(.not.associated(tens%tensor_shape%dim_extent).and.tens%tensor_shape%num_dim.gt.0) then
+            errc=2; tensor_block_is_empty=.TRUE.
+           endif
+          else
+           errc=1; tensor_block_is_empty=.TRUE.
+          endif
+         endif
+         if(present(ierr)) ierr=errc
+         return
+        end function tensor_block_is_empty
+!------------------------------------------------------------------------------
+        subroutine tensor_block_assoc(tens,tens_shape,data_kind,tens_body,ierr)
+!Constructs a <tensor_block_t> object based on externally provided data.
+!No new memory is allocated (only pointer association occurs).
+         implicit none
+         type(tensor_block_t), intent(inout):: tens    !inout: tensor block (empty on entrance, defined on exit)
+         type(tensor_shape_t), intent(in):: tens_shape !in: tensor block shape
+         integer(C_INT), intent(in):: data_kind        !in: data kind
+         type(C_PTR), intent(in):: tens_body           !in: tensor body (elements of <data_kind>)
+         integer(C_INT), intent(out), optional:: ierr  !out: error code (0:success)
+         real(4), pointer, contiguous:: r4p(:)
+         real(8), pointer, contiguous:: r8p(:)
+         complex(4), pointer, contiguous:: c4p(:)
+         complex(8), pointer, contiguous:: c8p(:)
+
+         ierr=0
+         if(tensor_block_is_empty(tens)) then
+          if(tens_shape%num_dim.ge.0.and.tens_shape%num_dim.le.MAX_TENSOR_RANK.and.associated(tens_shape%dim_extent)) then
+           if(c_associated(tens_body)) then
+            tens%ptr_alloc=0
+            tens%tensor_shape=tens_shape !pointer components are pointer associated only
+            tens%tensor_block_size=tensor_block_shape_size(tens,ierr); if(ierr.ne.0) then; ierr=1; return; endif
+            if(tens%tensor_block_size.le.0) then; ierr=2; return; endif
+            if(tens%tensor_shape%num_dim.ge.0) then
+             select case(data_kind)
+             case(R4)
+              call c_f_pointer(tens_body,r4p,shape=(/tens%tensor_block_size/))
+              if(tens%tensor_shape%num_dim.gt.0) then
+               tens%data_real4(0:)=>r4p; tens%scalar_value=(0d0,0d0)
+              else
+               tens%scalar_value=cmplx(real(r4p(lbound(r4p,1)),8),0d0,8)
+              endif
+              r4p=>NULL()
+             case(R8)
+              call c_f_pointer(tens_body,r8p,shape=(/tens%tensor_block_size/))
+              if(tens%tensor_shape%num_dim.gt.0) then
+               tens%data_real8(0:)=>r8p; tens%scalar_value=(0d0,0d0)
+              else
+               tens%scalar_value=cmplx(r8p(lbound(r8p,1)),0d0,8)
+              endif
+              r8p=>NULL()
+             case(C8)
+              call c_f_pointer(tens_body,c8p,shape=(/tens%tensor_block_size/))
+              if(tens%tensor_shape%num_dim.gt.0) then
+               tens%data_cmplx8(0:)=>c8p; tens%scalar_value=(0d0,0d0)
+              else
+               tens%scalar_value=c8p(lbound(c8p,1))
+              endif
+              c8p=>NULL()
+             case default
+              ierr=3
+             end select
+            else
+             ierr=4
+            endif
+           else
+            ierr=5 !tensor body is absent
+           endif
+          else
+           ierr=6 !tensor shape is empty
+          endif
+         else
+          ierr=7 !tensor block is not empty
+         endif
+         return
+        end subroutine tensor_block_assoc
 !-------------------------------------------------------
 	subroutine tensor_block_destroy(tens_block,ierr) !SERIAL
 !This subroutine destroys a tensor block <tens_block>.
@@ -1598,7 +1756,7 @@
 ! - If no <data_kind> is specified, the highest possible data kind will be used from <tens>.
 ! - <slice> is syncronized at the end.
 	implicit none
-	type(tensor_block_t), intent(inout):: tens !(out) because of <tensor_block_copy> because of <tensor_block_layout> because of <tensor_shape_ok>
+	type(tensor_block_t), intent(inout):: tens !(out) because of <tensor_block_copy> because of <tensor_block_layout> because of <tensor_block_shape_ok>
 	type(tensor_block_t), intent(inout):: slice
 	integer, intent(in):: ext_beg(1:*)
 	character(2), intent(in), optional:: data_kind
@@ -1613,7 +1771,7 @@
 	 n=tens%tensor_shape%num_dim
 	 if(n.gt.0) then !true tensor
 !Check and possibly adjust arguments:
-	  ls=tensor_shape_size(slice,ierr); if(ierr.ne.0) then; ierr=1; return; endif
+	  ls=tensor_block_shape_size(slice,ierr); if(ierr.ne.0) then; ierr=1; return; endif
 	  if(slice%tensor_block_size.le.0_LONGINT.or.slice%tensor_block_size.ne.ls) then; ierr=2; return; endif !invalid size of the tensor slice
 	  if(present(data_kind)) then
 	   dtk=data_kind
@@ -1715,7 +1873,7 @@
 ! - <tens> is syncronized at the end.
 	implicit none
 	type(tensor_block_t), intent(inout):: tens
-	type(tensor_block_t), intent(inout):: slice !(out) because of <tensor_block_copy> because of <tensor_block_layout> because of <tensor_shape_ok>
+	type(tensor_block_t), intent(inout):: slice !(out) because of <tensor_block_copy> because of <tensor_block_layout> because of <tensor_block_shape_ok>
 	integer, intent(in):: ext_beg(1:*)
 	character(2), intent(in), optional:: data_kind
 	integer, intent(inout):: ierr
@@ -1728,7 +1886,7 @@
 	 n=tens%tensor_shape%num_dim
 	 if(n.gt.0) then !true tensor
 !Check and possibly adjust arguments:
-	  ls=tensor_shape_size(slice,ierr); if(ierr.ne.0) then; ierr=1; return; endif
+	  ls=tensor_block_shape_size(slice,ierr); if(ierr.ne.0) then; ierr=1; return; endif
 	  if(slice%tensor_block_size.le.0_LONGINT.or.slice%tensor_block_size.ne.ls) then; ierr=2; return; endif !invalid size of the tensor slice
 	  stk=tensor_master_data_kind(slice,ierr); if(ierr.ne.0) then; ierr=3; return; endif
 	  if(stk.eq.'--') then; ierr=4; return; endif !empty slice
@@ -1864,7 +2022,7 @@
 	  else
 	   dtk=tensor_master_data_kind(tens,ierr); if(ierr.ne.0) then; ierr=1; return; endif
 	  endif
-	  if(present(print_thresh)) then; prth=print_thresh; else; prth=abs_cmp_thresh; endif
+	  if(present(print_thresh)) then; prth=print_thresh; else; prth=ABS_CMP_THRESH; endif
 	  tst=tensor_block_layout(tens,ierr); if(ierr.ne.0) then; ierr=2; return; endif
 	  select case(tst)
 	  case(dimension_led)
@@ -2134,7 +2292,7 @@
 	if(present(cmp_thresh)) then
 	 cmp_thr8=cmp_thresh
 	else
-	 if(rel_comp) then; cmp_thr8=rel_cmp_thresh; else; cmp_thr8=abs_cmp_thresh; endif
+	 if(rel_comp) then; cmp_thr8=REL_CMP_THRESH; else; cmp_thr8=ABS_CMP_THRESH; endif
 	endif
 	if(present(diff_count)) then; diff_count=0_LONGINT; no_exit=.true.; else; no_exit=.false.; endif
 	tensor_block_cmp=tensor_block_compatible(tens1,tens2,ierr,no_check_data_kinds=.true.)
@@ -2295,7 +2453,7 @@
 !NOTE:
 ! - All allocated data kinds will be copied (no further sync is required).
 	implicit none
-	type(tensor_block_t), intent(inout):: tens_in !(out) because of <tensor_block_layout> because of <tensor_shape_ok>
+	type(tensor_block_t), intent(inout):: tens_in !(out) because of <tensor_block_layout> because of <tensor_block_shape_ok>
 	type(tensor_block_t), intent(inout):: tens_out
 	integer, intent(in), optional:: transp(0:*)
 	integer, intent(inout):: ierr
@@ -2596,7 +2754,7 @@
 	integer, intent(in):: contr_ptrn(1:*)
 	integer, intent(in), optional:: ord_rest(1:*)
 	character(2), intent(in), optional:: data_kind
-	type(tensor_block_t), intent(inout), target:: ltens,rtens !(out) because of <tensor_block_layout> because of <tensor_shape_ok>
+	type(tensor_block_t), intent(inout), target:: ltens,rtens !(out) because of <tensor_block_layout> because of <tensor_block_shape_ok>
 	type(tensor_block_t), intent(inout), target:: dtens
 	integer, intent(inout):: ierr
 !------------------------------------------------
@@ -3264,7 +3422,7 @@
 ! - divs(1:trank) - (optional) dimension extent dividers;
 ! - grps(1:trank) - (optional) dimension groups;
 !OUTPUT:
-! - tsss(1:tsl) - tensor shape specification string (see <tensor_shape_create> below);
+! - tsss(1:tsl) - tensor shape specification string (see <tensor_block_shape_create> below);
 ! - ierr - error code (0:success).
         implicit none
         integer, intent(in):: trank
@@ -3649,21 +3807,21 @@
         endif
         return
         end subroutine contr_pattern_rnd
-!----------------------------------------------------------------------------
-        function coherence_control_var(narg,coh_str) result(coh_ctrl) bind(c)
+!----------------------------------------------------------------------------------------------------------
+        function coherence_control_var(nargs,coh_str) result(coh_ctrl) bind(c,name='coherence_control_var')
 !Given a mnemonic description of the coherence control, returns an integer
 !that can be used in tensor operations for specifying it. A negative return
 !value indicates an error (invalid arguments).
         implicit none
         integer(C_INT):: coh_ctrl                    !out: coherence control variable (-:error)
-        integer(C_INT), intent(in):: narg            !in: number of arguments (>0)
-        character(C_CHAR), intent(in):: coh_str(1:*) !in: coherence letter for each argument (dest arg, 1st lhs arg, 2nd lhs arg, ...): "D","M","T","K"
+        integer(C_INT), intent(in):: nargs           !in: number of arguments (>0)
+        character(C_CHAR), intent(in):: coh_str(1:*) !in: coherence letter for each argument (dest arg, 1st rhs arg, 2nd rhs arg, ...): "D","M","T","K"
         integer(C_INT):: i
 
         coh_ctrl=-1
-        if(narg.gt.0.and.narg.le.MAX_TENSOR_OPERANDS) then
+        if(nargs.gt.0.and.nargs.le.MAX_TENSOR_OPERANDS) then
          coh_ctrl=0
-         do i=1,narg
+         aloop: do i=1,nargs
           select case(coh_str(i))
           case('d','D')
            coh_ctrl=coh_ctrl*4+0
@@ -3675,18 +3833,16 @@
            coh_ctrl=coh_ctrl*4+3
           case default
            coh_ctrl=-2
-           exit
+           exit aloop
           end select
-         enddo
+         enddo aloop
         endif
         return
         end function coherence_control_var
-!-----------------------------------------
-!PRIVATE FUNCTIONS:
-!----------------------------------------------------------
-	subroutine tensor_shape_create(shape_str,tens,ierr) !SERIAL
+!--------------------------------------------------------------------
+	subroutine tensor_block_shape_create_sym(tens,shape_str,ierr) !SERIAL
 !This subroutine generates a tensor shape based on the tensor shape specification string (TSSS) <str>.
-!Only the syntax of the TSSS is checked, but not the logical consistency (which can be checked by function <tensor_shape_ok>)!
+!Only the syntax of the TSSS is checked, but not the logical consistency (which can be checked by function <tensor_block_shape_ok>)!
 !FORMAT of <shape_str>:
 !"(E1/D1{G1},E2/D2{G2},...)":
 !  Ex is the extent of dimension x (segment);
@@ -3694,11 +3850,12 @@
 !      Ex MUST be a multiple of Dx (for simply dense tensor blocks Dx=Ex).
 !  {Gx} optionally specifies the symmetric group the dimension belongs to, Gx>=0 (default group 0 has no symmetry ordering).
 !       Dimensions grouped together (group#>0) will obey a non-descending ordering from left to right.
+!Only dimension-led-dense, bricked-dense, and bricked-ordered formats are considered here.
 !By default, the 1st dimension is the most minor one while the last is the most senior (Fortran-like).
 !If the number of dimensions equals to zero, the %scalar_value field will be used instead of data arrays.
 	implicit none
+        type(tensor_block_t), intent(inout):: tens
 	character(*), intent(in):: shape_str
-	type(tensor_block_t), intent(inout):: tens
 	integer, intent(inout):: ierr
 	integer i,j,k,l,m,n,k0,k1,k2,k3,ks,kf
 	character(MAX_SHAPE_STR_LEN) shp
@@ -3706,7 +3863,7 @@
 
 	ierr=0; l=len_trim(shape_str)
 	if(l.gt.MAX_SHAPE_STR_LEN) then
-	 if(verbose) write(cons_out,*)'FATAL(tensor_algebra::tensor_shape_create): '//&
+	 if(verbose) write(cons_out,*)'FATAL(tensor_algebra::tensor_block_shape_create_sym): '//&
 	             &'max length of a shape specification string exceeded: ',l
 	 ierr=1; return
 	endif
@@ -3814,14 +3971,66 @@
 	 return
 	 end subroutine remove_blanks
 
-	end subroutine tensor_shape_create
-!---------------------------------------------
-	integer function tensor_shape_ok(tens) !SERIAL
+	end subroutine tensor_block_shape_create_sym
+!-------------------------------------------------------------------------
+        subroutine tensor_block_shape_create_num(tens,dims,ierr,divs,grps)
+!Constructs the tensor shape inside a <tensor_block_t> object.
+!If the <tensor_block_t> object is not empty, it will be destroyed.
+         implicit none
+         type(tensor_block_t), intent(inout):: tens !inout: tensor block
+         integer, intent(in):: dims(1:)             !in: dimension extents (length = tensor rank)
+         integer, intent(inout):: ierr              !out: error code (0:success)
+         integer, intent(in), optional:: divs(1:)   !in: dimension dividers
+         integer, intent(in), optional:: grps(1:)   !in: dimension groups
+         integer:: n
+         logical:: res
+
+         ierr=0
+         if(.not.tensor_block_is_empty(tens)) then; call tensor_block_destroy(tens,ierr); endif
+         if(ierr.eq.0) then
+          n=size(dims)
+          if(n.ge.0.and.n.le.MAX_TENSOR_RANK) then
+           tens%tensor_shape%num_dim=n
+           if(n.gt.0) then
+            allocate(tens%tensor_shape%dim_extent(1:n),STAT=ierr); if(ierr.ne.0) then; ierr=1; return; endif
+            allocate(tens%tensor_shape%dim_divider(1:n),STAT=ierr); if(ierr.ne.0) then; ierr=2; return; endif
+            allocate(tens%tensor_shape%dim_group(1:n),STAT=ierr); if(ierr.ne.0) then; ierr=3; return; endif
+            res=tensor_block_alloc(tens,'sp',ierr,.true.); if(ierr.ne.0) then; ierr=4; return; endif
+            tens%tensor_shape%dim_extent(1:n)=dims(1:n)
+            if(present(divs)) then
+             if(size(divs).eq.n) then
+              tens%tensor_shape%dim_divider(1:n)=divs(1:n)
+             else
+              ierr=5; return
+             endif
+            else
+             tens%tensor_shape%dim_divider(1:n)=tens%tensor_shape%dim_extent(1:n)
+            endif
+            if(present(grps)) then
+             if(size(grps).eq.n) then
+              tens%tensor_shape%dim_group(1:n)=grps(1:n)
+             else
+              ierr=6; return
+             endif
+            else
+             tens%tensor_shape%dim_group(1:n)=0
+            endif
+           endif
+          else
+           ierr=7
+          endif
+         else
+          ierr=8
+         endif
+         return
+        end subroutine tensor_block_shape_create_num
+!---------------------------------------------------
+	integer function tensor_block_shape_ok(tens) !SERIAL
 !This function checks the logical correctness of a tensor shape generated from a tensor shape specification string (TSSS).
 !INPUT:
 ! - tens - tensor block;
 !OUTPUT:
-! - tensor_shape_ok - error code (0:success);
+! - tensor_block_shape_ok - error code (0:success);
 !NOTES:
 ! - Ordered (symmetric) indices must have the same divider! Whether or not should they have the same extent is still debatable for me (D.I.L.).
 	implicit none
@@ -3830,16 +4039,16 @@
 	integer group_ext(1:max_tensor_rank),group_div(1:max_tensor_rank)
 	logical res
 
-	tensor_shape_ok=0; ierr=0
+	tensor_block_shape_ok=0; ierr=0
 	if(tens%tensor_shape%num_dim.eq.0) then !scalar (rank-0) tensor
 	 if(tensor_block_alloc(tens,'sp',ierr)) then
-	  if(ierr.ne.0) then; tensor_shape_ok=-1; return; endif
-	  deallocate(tens%tensor_shape%dim_extent,STAT=ierr); if(ierr.ne.0) then; tensor_shape_ok=-2; return; endif
-	  deallocate(tens%tensor_shape%dim_divider,STAT=ierr); if(ierr.ne.0) then; tensor_shape_ok=-3; return; endif
-	  deallocate(tens%tensor_shape%dim_group,STAT=ierr); if(ierr.ne.0) then; tensor_shape_ok=-4; return; endif
-	  res=tensor_block_alloc(tens,'sp',ierr,.false.); if(ierr.ne.0) then; tensor_shape_ok=-5; return; endif
+	  if(ierr.ne.0) then; tensor_block_shape_ok=-1; return; endif
+	  deallocate(tens%tensor_shape%dim_extent,STAT=ierr); if(ierr.ne.0) then; tensor_block_shape_ok=-2; return; endif
+	  deallocate(tens%tensor_shape%dim_divider,STAT=ierr); if(ierr.ne.0) then; tensor_block_shape_ok=-3; return; endif
+	  deallocate(tens%tensor_shape%dim_group,STAT=ierr); if(ierr.ne.0) then; tensor_block_shape_ok=-4; return; endif
+	  res=tensor_block_alloc(tens,'sp',ierr,.false.); if(ierr.ne.0) then; tensor_block_shape_ok=-5; return; endif
 	 else
-	  if(ierr.ne.0) then; tensor_shape_ok=-6; return; endif
+	  if(ierr.ne.0) then; tensor_block_shape_ok=-6; return; endif
 	  nullify(tens%tensor_shape%dim_extent)
 	  nullify(tens%tensor_shape%dim_divider)
 	  nullify(tens%tensor_shape%dim_group)
@@ -3847,40 +4056,40 @@
 	elseif(tens%tensor_shape%num_dim.gt.0) then !true tensor (rank>0)
 	 n=tens%tensor_shape%num_dim
 	 if(n.le.max_tensor_rank) then
-	  if(.not.associated(tens%tensor_shape%dim_extent)) then; tensor_shape_ok=1; return; endif
-	  if(.not.associated(tens%tensor_shape%dim_divider)) then; tensor_shape_ok=2; return; endif
-	  if(.not.associated(tens%tensor_shape%dim_group)) then; tensor_shape_ok=3; return; endif
-	  if(size(tens%tensor_shape%dim_extent).ne.n) then; tensor_shape_ok=4; return; endif
-	  if(size(tens%tensor_shape%dim_divider).ne.n) then; tensor_shape_ok=5; return; endif
-	  if(size(tens%tensor_shape%dim_group).ne.n) then; tensor_shape_ok=6; return; endif
+	  if(.not.associated(tens%tensor_shape%dim_extent)) then; tensor_block_shape_ok=1; return; endif
+	  if(.not.associated(tens%tensor_shape%dim_divider)) then; tensor_block_shape_ok=2; return; endif
+	  if(.not.associated(tens%tensor_shape%dim_group)) then; tensor_block_shape_ok=3; return; endif
+	  if(size(tens%tensor_shape%dim_extent).ne.n) then; tensor_block_shape_ok=4; return; endif
+	  if(size(tens%tensor_shape%dim_divider).ne.n) then; tensor_block_shape_ok=5; return; endif
+	  if(size(tens%tensor_shape%dim_group).ne.n) then; tensor_block_shape_ok=6; return; endif
 	  kf=0
 	  do i=1,n
-	   if(tens%tensor_shape%dim_extent(i).le.0) then; tensor_shape_ok=7; return; endif
+	   if(tens%tensor_shape%dim_extent(i).le.0) then; tensor_block_shape_ok=7; return; endif
 	   if(tens%tensor_shape%dim_divider(i).gt.0.and.tens%tensor_shape%dim_divider(i).le.tens%tensor_shape%dim_extent(i)) then
 	    kf=1
 	    if(mod(tens%tensor_shape%dim_extent(i),tens%tensor_shape%dim_divider(i)).ne.0) then
-	     tensor_shape_ok=8; return
+	     tensor_block_shape_ok=8; return
 	    endif
 	   elseif(tens%tensor_shape%dim_divider(i).eq.0) then
-	    if(kf.ne.0) then; tensor_shape_ok=9; return; endif
+	    if(kf.ne.0) then; tensor_block_shape_ok=9; return; endif
 	   else !negative divider
-	    tensor_shape_ok=10; return
+	    tensor_block_shape_ok=10; return
 	   endif
 	  enddo
 	  if(kf.ne.0) then !dimension_led or bricked storage layout
 	   group_div(1:n)=0
 	   do i=1,n
 	    if(tens%tensor_shape%dim_group(i).lt.0) then
-	     tensor_shape_ok=11; return
+	     tensor_block_shape_ok=11; return
 	    elseif(tens%tensor_shape%dim_group(i).gt.0) then !non-trivial symmetric group
 	     if(tens%tensor_shape%dim_group(i).le.n) then
 	      if(group_div(tens%tensor_shape%dim_group(i)).eq.0)&
 	        &group_div(tens%tensor_shape%dim_group(i))=tens%tensor_shape%dim_divider(i)
 	      if(tens%tensor_shape%dim_divider(i).ne.group_div(tens%tensor_shape%dim_group(i))) then
-	       tensor_shape_ok=12; return !divider must be the same for symmetric dimensions
+	       tensor_block_shape_ok=12; return !divider must be the same for symmetric dimensions
 	      endif
 	     else
-	      tensor_shape_ok=13; return
+	      tensor_block_shape_ok=13; return
 	     endif
 	    endif
 	   enddo
@@ -3888,13 +4097,13 @@
 	   !`Future
 	  endif
 	 else !max tensor rank exceeded: increase parameter <max_tensor_rank> of this module
-	  tensor_shape_ok=-100-max_tensor_rank
+	  tensor_block_shape_ok=-100-max_tensor_rank
 	 endif
 	else !negative tensor rank
-	 tensor_shape_ok=14
+	 tensor_block_shape_ok=14
 	endif
 	return
-	end function tensor_shape_ok
+	end function tensor_block_shape_ok
 !------------------------------------------------------------
         logical function tensor_block_alloc(tens,dk,ierr,sts) !SERIAL
 !This function queries or sets the allocation status of data pointers in a tensor block.
@@ -3913,7 +4122,7 @@
 ! - ierr: error code (0: success).
 !NOTES:
 ! - %ptr_alloc component of tensor_block_t stores the relevant info:
-!    Bits 0-2: %extent, %divider%, %group;
+!    Bits 0-2: %dim_extent, %dim_divider%, %dim_group;
 !    Bit 4: %data_real4;
 !    Bit 5: %data_real8;
 !    Bit 6: %data_cmplx8.
@@ -4011,6 +4220,8 @@
         end select
         return
         end function tensor_block_alloc
+!--------------------------------------
+!PRIVATE FUNCTIONS:
 !-----------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_slice_dlf_r4

@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2016/02/15
+REVISION: 2016/05/20
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -67,7 +67,7 @@ FOR DEVELOPERS ONLY:
 #include <time.h>
 #include "mem_manager.h"
 
-//DEVICE COMPUTE CAPABILITY (for Host code, use __CUDA_ARCH__ for device code):
+//DEVICE COMPUTE CAPABILITY (for Host code, but use __CUDA_ARCH__ for device code):
 #ifndef CUDA_ARCH
 #define CUDA_ARCH 130 //minimal required compute capability
 #endif
@@ -86,6 +86,7 @@ FOR DEVELOPERS ONLY:
 #define MAX_MICS_PER_NODE 8        //max allowed number of Intel MICs on a node
 #define MAX_AMDS_PER_NODE 8        //max allowed number of AMD GPUs on a node
 #define DEV_NULL -1                //abstract null device
+#define DEV_DEFAULT DEV_NULL       //will allow runtime to choose the device
 #define DEV_HOST 0                 //multicore CPU Host (includes any self-hosted system)
 #define DEV_NVIDIA_GPU 1           //NVidia GPU (as an accelerator)
 #define DEV_INTEL_MIC 2            //Intel Xeon Phi (as an accelerator)
@@ -102,7 +103,7 @@ FOR DEVELOPERS ONLY:
 #define GPU_SHMEM_WIDTH 8          //default width of the GPU shared memory banks (4 or 8 bytes)
 #define MAX_CUDA_BLOCKS 1024       //max number of CUDA thread blocks per kernel
 #if CUDA_ARCH >= 300
-#define TENS_TRANSP_BUF_SIZE 2560  //buffer size (elements) for <gpu_tensor_block_copy_dlf_XX__>
+#define TENS_TRANSP_BUF_SIZE 2048  //buffer size (elements) for <gpu_tensor_block_copy_dlf_XX__>
 #else
 #define TENS_TRANSP_BUF_SIZE 1536  //buffer size (elements) for <gpu_tensor_block_copy_dlf_XX__>
 #endif
@@ -288,25 +289,7 @@ typedef struct{
  tensBlck_t * tens_p; //pointer to a tensor block
  int * prmn_p;        //tensor block dimension permutation: pinnned HOST memory (miBank)
  int const_mem_entry; //NVidia GPU constant memory entry handle (>=0, -1:None)
-} tensArg_t;
-
-// Interoperable tensor block:
-typedef struct{
- talsh_tens_shape_t * shape_p; //shape of the tensor block
- int ndev;                     //number of devices the tensor block resides on
- int last_write;               //flat device id where the last write happened, -1 means coherence on all devices where the tensor block resides
- talsh_dev_rsc_t * dev_rsc;    //list of device resources occupied by the tensor block on each device
- void * tensF;                 //pointer to Fortran <tensor_block_t> (CPU,Phi)
- void * tensC;                 //pointer to C <tensBlck_t> (Nvidia GPU)
-} talsh_tens_t;
-
-// Interoperable TAL-SH task handle:
-typedef struct{
- void * task_p;    //pointer to the corresponding task object
- int dev_kind;     //device kind (DEV_NULL: uninitalized)
- double flops;     //number of floating point operations
- double exec_time; //execution time in seconds
-} talsh_task_t;
+} cudaTensArg_t;
 
 // CUDA task (returned by non-blocking CUDA functions):
 typedef struct{
@@ -317,14 +300,14 @@ typedef struct{
  int event_comput_hl;    //handle of the CUDA event recorded before the CUDA kernels start (all input data is on Device)
  int event_output_hl;    //handle of the CUDA event recorded when the CUDA kernels finish (before output to the Host)
  int event_finish_hl;    //handle of the CUDA event recorded at the end of the task (full completion)
- unsigned int coherence; //coherence control for this task (see COPY_XXX constants)
+ unsigned int coherence; //coherence control for this task (see COPY_X, COPY_XX, and COPY_XXX constants)
  unsigned int num_args;  //number of tensor arguments participating in the tensor operation
- tensArg_t tens_args[MAX_TENSOR_OPERANDS]; //tensor arguments participating in the tensor operation
+ cudaTensArg_t tens_args[MAX_TENSOR_OPERANDS]; //tensor arguments participating in the tensor operation
 } cudaTask_t;
 //Note: Adding new CUDA events will require adjustment of NUM_EVENTS_PER_TASK.
 
 // Interface for a user-defined tensor block initialization routine:
-typedef void (*talsh_tens_init_i)(void * tens_body_p, int data_type, int tens_rank, const int tens_dims[], int * ierr);
+typedef void (*talsh_tens_init_i)(void * tens_body_p, int data_kind, int tens_rank, const int tens_dims[], int * ierr);
 
 // Device statistics:
 typedef struct{
@@ -345,10 +328,26 @@ extern "C"{
 #endif
 //Generic:
  int tens_valid_data_kind(int datk, int * datk_size = NULL);
+ unsigned int argument_coherence_get_value(unsigned int coh_ctrl, unsigned int tot_args, unsigned int arg_num);
+ int argument_coherence_set_value(unsigned int * coh_ctrl, unsigned int tot_args, unsigned int arg_num, unsigned int coh_val);
 // Device id conversion:
  int valid_device_kind(int dev_kind);
  int encode_device_id(int dev_kind, int dev_num);
  int decode_device_id(int dev_id, int * dev_kind = NULL);
+// Device resource management:
+ int tensDevRsc_create(talsh_dev_rsc_t **drsc);
+ int tensDevRsc_clean(talsh_dev_rsc_t * drsc);
+ int tensDevRsc_is_empty(talsh_dev_rsc_t * drsc);
+ int tensDevRsc_same(const talsh_dev_rsc_t * drsc0, const talsh_dev_rsc_t * drsc1);
+ int tensDevRsc_clone(const talsh_dev_rsc_t * drsc_in, talsh_dev_rsc_t * drsc_out);
+ int tensDevRsc_attach_mem(talsh_dev_rsc_t * drsc, int dev_id, void * mem_p, int buf_entry = -1);
+ int tensDevRsc_detach_mem(talsh_dev_rsc_t * drsc);
+ int tensDevRsc_allocate_mem(talsh_dev_rsc_t * drsc, int dev_id, size_t mem_size, int in_arg_buf = NOPE);
+ int tensDevRsc_free_mem(talsh_dev_rsc_t * drsc);
+ int tensDevRsc_get_gmem_ptr(talsh_dev_rsc_t * drsc, void ** gmem_p);
+ int tensDevRsc_device_id(talsh_dev_rsc_t * drsc);
+ int tensDevRsc_release_all(talsh_dev_rsc_t * drsc);
+ int tensDevRsc_destroy(talsh_dev_rsc_t * drsc);
 #ifndef NO_GPU
 // NVidia GPU operations (NV-TAL):
 //  NV-TAL debugging:
@@ -377,6 +376,7 @@ extern "C"{
  int tensShape_destroy(talsh_tens_shape_t * tshape);
  size_t tensShape_volume(const talsh_tens_shape_t * tshape);
  int tensBlck_create(tensBlck_t **ctens);
+ int tensBlck_clean(tensBlck_t *ctens);
  int tensBlck_destroy(tensBlck_t *ctens);
  int tensBlck_construct(tensBlck_t *ctens, int pinned,
                         int trank, const int *dims = NULL, const int *divs = NULL, const int *grps = NULL);
@@ -400,25 +400,25 @@ extern "C"{
  int cuda_task_completed(cudaTask_t *cuda_task);
  int cuda_task_wait(cudaTask_t *cuda_task);
  int cuda_tasks_wait(unsigned int num_tasks, cudaTask_t **cuda_tasks, int *task_stats);
+ int cuda_task_error_code(const cudaTask_t *cuda_task);
+ int cuda_task_dev_rsc_copy(const cudaTask_t *cuda_task, unsigned int arg_num, char which, talsh_dev_rsc_t *dev_rsc);
+ int cuda_task_dev_rsc_move(cudaTask_t *cuda_task, unsigned int arg_num, char which, talsh_dev_rsc_t *dev_rsc);
+ int cuda_task_arg_destroy(cudaTask_t *cuda_task, int arg_num = -1);
  float cuda_task_time(const cudaTask_t *cuda_task, float *in_copy, float *out_copy, float *comp);
  void cuda_task_print(const cudaTask_t *cuda_task);
 //  NV-TAL tensor operations:
- int gpu_put_arg(tensBlck_t *ctens);
- int gpu_get_arg(tensBlck_t *ctens);
- int gpu_put_arg_(tensBlck_t *ctens, cudaTask_t *cuda_task);
- int gpu_get_arg_(tensBlck_t *ctens, cudaTask_t *cuda_task);
- int gpu_array_norm2_r4_(size_t size, const float *arr, float *norm2);
- int gpu_array_norm2_r8_(size_t size, const double *arr, double *norm2);
+ int gpu_array_norm2_r4(size_t size, const float *arr, float *norm2);
+ int gpu_array_norm2_r8(size_t size, const double *arr, double *norm2);
  int gpu_matrix_multiply_tn_r4(size_t ll, size_t lr, size_t lc, const float *lmat, const float *rmat, float *dmat);
  int gpu_matrix_multiply_tn_r8(size_t ll, size_t lr, size_t lc, const double *lmat, const double *rmat, double *dmat);
- int gpu_tensor_block_init_(tensBlck_t *ctens, double val, int copy_back, cudaTask_t *cuda_task);
- int gpu_tensor_block_scale_(tensBlck_t *ctens, double val, int copy_back, cudaTask_t *cuda_task);
- int gpu_tensor_block_add_dlf_(tensBlck_t *ctens0, tensBlck_t *ctens1, double val, int copy_back, cudaTask_t *cuda_task);
- int gpu_tensor_block_copy_dlf(const int *dim_trn, tensBlck_t *tens_in, tensBlck_t *tens_out);
- int gpu_tensor_block_copy_dlf_(const int *dim_trn, tensBlck_t *tens_in, tensBlck_t *tens_out,
-                                int copy_back, cudaTask_t *cuda_task);
- int gpu_tensor_block_contract_dlf_(const int *cptrn, tensBlck_t *ltens, tensBlck_t *rtens, tensBlck_t *dtens, unsigned int coh_ctrl,
-                                    cudaTask_t *cuda_task, int gpu_id = -1, double alpha = 1.0, double beta = 1.0);
+ int gpu_tensor_block_init(tensBlck_t *ctens, double val, int copy_back, cudaTask_t *cuda_task);
+ int gpu_tensor_block_scale(tensBlck_t *ctens, double val, int copy_back, cudaTask_t *cuda_task);
+ int gpu_tensor_block_add_dlf(tensBlck_t *ctens0, tensBlck_t *ctens1, double val, int copy_back, cudaTask_t *cuda_task);
+ int gpu_tensor_block_copy_dlf(const int *dim_trn, tensBlck_t *tens_in, tensBlck_t *tens_out,
+                               int copy_back, cudaTask_t *cuda_task);
+ int gpu_tensor_block_place(tensBlck_t *ctens, int gpu_id, unsigned int coh_ctrl, cudaTask_t *cuda_task);
+ int gpu_tensor_block_contract_dlf(const int *cptrn, tensBlck_t *ltens, tensBlck_t *rtens, tensBlck_t *dtens, unsigned int coh_ctrl,
+                                   cudaTask_t *cuda_task, int gpu_id = -1, double alpha = 1.0, double beta = 1.0);
 #endif
 #ifdef __cplusplus
 }
