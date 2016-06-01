@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2016/05/24
+!REVISION: 2016/06/01
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -285,7 +285,7 @@
                                                      &dev_id,dev_kind,talsh_task) bind(c,name='talshTensorContract_')
           import
           implicit none
-          character(C_CHAR), intent(in):: cptrn
+          character(C_CHAR), intent(in):: cptrn(*)
           type(talsh_tens_t), intent(inout):: dtens
           type(talsh_tens_t), intent(inout):: ltens
           type(talsh_tens_t), intent(inout):: rtens
@@ -309,6 +309,13 @@
           type(C_PTR), intent(out):: gmem_p
           integer(C_INT), intent(out):: buf_entry
          end function talsh_tensor_image_info
+ !CUDA runtime:
+  !Get on-node GPU device count:
+         integer(C_INT) function cuda_get_device_count(dev_count) bind(c,name='cuda_get_device_count')
+          import
+          implicit none
+          integer(C_INT), intent(out):: dev_count
+         end function cuda_get_device_count
         end interface
 !INTERFACES FOR OVERLOADED FOTRAN FUNCTIONS:
         interface talsh_tensor_construct
@@ -355,7 +362,8 @@
 !        public talsh_tensor_copy
 !        public talsh_tensor_add
         public talsh_tensor_contract
- !INTERNAL:
+ !CUDA runtime:
+        public cuda_get_device_count
 
        contains
 !INTERNAL FUNCTIONS:
@@ -895,7 +903,7 @@
          integer(C_INT), intent(in), optional:: dev_id    !in: device id (flat or kind-specific)
          integer(C_INT), intent(in), optional:: dev_kind  !in: device kind (if present, <dev_id> is kind-specific)
          type(talsh_task_t), intent(inout), optional:: talsh_task !inout: TAL-SH task (must be clean)
-         character(C_CHAR):: contr_ptrn(1:1024) !contraction pattern
+         character(C_CHAR):: contr_ptrn(1:1024) !contraction pattern as a C-string
          integer(C_INT):: coh_ctrl,devn,devk,sts
          integer:: l
          real(C_DOUBLE):: scale_real,scale_imag
@@ -907,12 +915,12 @@
           if(present(scale)) then; scale_real=dble(scale); scale_imag=dimag(scale); else; scale_real=1d0; scale_imag=0d0; endif
           if(present(dev_id)) then; devn=dev_id; else; devn=DEV_DEFAULT; endif
           if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_DEFAULT; endif
-          call string2array(cptrn(1:l),contr_ptrn,l,ierr)
+          call string2array(cptrn(1:l),contr_ptrn,l,ierr); l=l+1; contr_ptrn(l:l)=achar(0) !C-string
           if(ierr.eq.0) then
            if(present(talsh_task)) then
-            ierr=talshTensorContract_(cptrn,dtens,ltens,rtens,coh_ctrl,scale_real,scale_imag,devn,devk,talsh_task)
+            ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,coh_ctrl,scale_real,scale_imag,devn,devk,talsh_task)
            else
-            ierr=talshTensorContract_(cptrn,dtens,ltens,rtens,coh_ctrl,scale_real,scale_imag,devn,devk,tsk)
+            ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,coh_ctrl,scale_real,scale_imag,devn,devk,tsk)
             if(ierr.eq.TALSH_SUCCESS) then
              ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
             endif

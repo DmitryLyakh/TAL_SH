@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2016/05/21
+REVISION: 2016/05/31
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -216,7 +216,16 @@ __device__ static int norm2_wr_lock=0; //write lock (shared by all <gpu_array_no
 // Infrastructure for kernels <gpu_array_dot_product_XX__>:
 __device__ static int dot_product_wr_lock=0; //write lock (shared by all <gpu_array_dot_product_XX__> running on GPU)
 #endif
-//-------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------
+//CUDA runtime (for Fortran):
+#ifndef NO_GPU
+int cuda_get_device_count(int * dev_count)
+{
+ cudaError_t cuda_err = cudaGetDeviceCount(dev_count);
+ if(cuda_err != cudaSuccess){*dev_count=-1; return 1;}
+ return 0;
+}
+#endif
 //GENERIC:
 int tens_valid_data_kind(int datk, int * datk_size)
 /** Returns YEP if the data kind <datk> is valid in TAL-SH, NOPE otherwise.
@@ -890,13 +899,19 @@ no GPU will be initialized. **/
      if(err == cudaSuccess){
       for(j=gpu_end;j>=gpu_beg;j--){
        if(j != i && gpu_up[j] > GPU_OFF){
-        if(gpu_prop[j].unifiedAddressing != 0) err=cudaDeviceEnablePeerAccess(j,0); //device i can access memory of device j
+        if(gpu_prop[j].unifiedAddressing != 0){
+         err=cudaDeviceEnablePeerAccess(j,0); //device i can access memory of device j
+         if((err != cudaSuccess) && VERBOSE) printf("\n#MSG(tensor_algebra_gpu_nvidia): GPU peer no access: %d->%d\n",i,j);
+        }else{
+         if(VERBOSE) printf("\n#MSG(tensor_algebra_gpu_nvidia): GPU peer no access: %d->%d\n",i,j);
+        }
        }
       }
      }else{
       gpu_up[i]=GPU_OFF; n--;
      }
     }
+    err=cudaGetLastError(); //clear the GPU#i error status
    }
   }
 #endif
@@ -2823,7 +2838,11 @@ __host__ int gpu_tensor_block_place(tensBlck_t *ctens, int gpu_id, unsigned int 
    }
    //Activate the transfer executing GPU:
    if(gpu_ex != cur_gpu){j=gpu_activate(gpu_ex); if(j){j=gpu_activate(cur_gpu); return -9;}} //activate the target GPU
-   err=cudaGetLastError(); if(err != cudaSuccess){++nclean; err=cudaSuccess;} //clear the GPU error status
+   err=cudaGetLastError();
+   if(err != cudaSuccess){
+    if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_place): Previous error detected: %s\n",cudaGetErrorString(err));
+    ++nclean; err=cudaSuccess; //clear the GPU error status (sets NOT_CLEAN on exit)
+   }
    errc=cuda_task_construct(cuda_task,gpu_ex); if(errc) j=gpu_activate(cur_gpu);
   }
   if(errc){if(errc == TRY_LATER || errc == DEVICE_UNABLE){return errc;}else{return -10;}}

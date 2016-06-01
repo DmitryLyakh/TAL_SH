@@ -1,30 +1,37 @@
 NAME = talsh
 
-#Cross-compiling wrappers: [WRAP|NOWRAP]:
-WRAP ?= NOWRAP
-#Compiler: [GNU|PGI|INTEL|CRAY]:
-TOOLKIT ?= GNU
-#Optimization: [DEV|OPT]:
-BUILD_TYPE ?= OPT
-#MPI Library: [MPICH|OPENMPI]:
-MPILIB ?= MPICH
-#BLAS: [ATLAS|MKL|ACML]:
-BLASLIB ?= ATLAS
-#Nvidia GPU via CUDA: [CUDA|NOCUDA]:
-GPU_CUDA ?= CUDA
+#ADJUST THE FOLLOWING ACCORDINGLY:
 
-#Local paths (for unwrapped compilation):
-# MPI:
-PATH_MPICH ?= /usr/local/mpich3.2
-PATH_OPENMPI ?= /usr/local/openmpi1.10.1
-# BLAS LIB:
-PATH_BLAS_ATLAS ?= /usr/lib
-PATH_BLAS_INTEL ?= /usr/lib
-PATH_BLAS_ACML ?= /usr/lib
+#Cross-compiling wrappers: [WRAP|NOWRAP]:
+export WRAP ?= NOWRAP
+#Compiler: [GNU|PGI|INTEL|CRAY]:
+export TOOLKIT ?= GNU
+#Optimization: [DEV|OPT]:
+export BUILD_TYPE ?= DEV
+#MPI Library: [MPICH|OPENMPI]:
+export MPILIB ?= MPICH
+#BLAS: [ATLAS|MKL|ACML]:
+export BLASLIB ?= ATLAS
+#Nvidia GPU via CUDA: [CUDA|NOCUDA]:
+export GPU_CUDA ?= CUDA
+#Operating system: [LINUX|NO_LINUX]:
+export EXA_OS ?= LINUX
+
+#SET YOUR LOCAL PATHS (for unwrapped build):
+
+# MPI path:
+export PATH_MPICH ?= /usr/local/mpich3.2
+export PATH_OPENMPI ?= /usr/local/openmpi1.10.1
+# BLAS lib path:
+export PATH_BLAS_ATLAS ?= /usr/lib
+export PATH_BLAS_MKL ?= /ccs/compilers/intel/rh6-x86_64/16.0.0/compilers_and_libraries/linux/mkl/lib
+export PATH_BLAS_ACML ?= /usr/lib
 PATH_BLAS = $(PATH_BLAS_$(BLASLIB))
-# CUDA:
-PATH_CUDA ?= /usr/local/cuda
-#DONE.
+# CUDA path:
+export PATH_CUDA ?= /usr/local/cuda
+
+#YOU ARE DONE!
+
 
 #=================
 #Fortran compiler:
@@ -98,7 +105,7 @@ MPI_LINK = $(MPI_LINK_$(WRAP))
 
 #LINEAR ALGEBRA FLAGS:
 LA_LINK_ATLAS = -L$(PATH_BLAS) -lblas -llapack
-LA_LINK_MKL = -L$(PATH_BLAS) -lmkl_core -lmkl_intel_thread -lmkl_intel_lp64 -lmkl_blas95_lp64 -lmkl_lapack95_lp64 -lrt
+LA_LINK_MKL = -L$(PATH_BLAS) -lmkl_intel_lp64 -lmkl_core -lmkl_intel_thread -lpthread -lm -ldl
 LA_LINK_ACML = -L$(PATH_BLAS) -lacml_mp
 LA_LINK_WRAP = -L.
 LA_LINK_NOWRAP = $(LA_LINK_$(BLASLIB))
@@ -126,7 +133,7 @@ CUDA_FLAGS_DEV = --compile -arch=sm_35 -g -G -lineinfo -D CUDA_ARCH=350 -D DEBUG
 CUDA_FLAGS_OPT = --compile -arch=sm_35 -O3 -lineinfo -D CUDA_ARCH=350
 CUDA_FLAGS_CUDA = $(CUDA_HOST) $(CUDA_FLAGS_$(BUILD_TYPE))
 CUDA_FLAGS_NOCUDA = -I.
-CUDA_FLAGS = $(CUDA_FLAGS_$(GPU_CUDA))
+CUDA_FLAGS = $(CUDA_FLAGS_$(GPU_CUDA)) -D$(EXA_OS)
 
 #Accelerator support:
 NO_ACCEL_CUDA = -D NO_AMD -D NO_PHI -D CUDA_ARCH=350
@@ -136,18 +143,20 @@ NO_ACCEL = $(NO_ACCEL_$(GPU_CUDA))
 #C FLAGS:
 CFLAGS_DEV = -c -g $(NO_ACCEL)
 CFLAGS_OPT = -c -O3 $(NO_ACCEL)
-CFLAGS = $(CFLAGS_$(BUILD_TYPE))
+CFLAGS = $(CFLAGS_$(BUILD_TYPE)) -D$(EXA_OS)
 
 #FORTRAN FLAGS:
-FFLAGS_INTEL_DEV = -c -g -fpp -vec-threshold4 -openmp $(NO_ACCEL)
-FFLAGS_INTEL_OPT = -c -O3 -fpp -vec-threshold4 -openmp $(NO_ACCEL)
+FFLAGS_INTEL_DEV = -c -g -fpp -vec-threshold4 -qopenmp -mkl=parallel $(NO_ACCEL)
+#FFLAGS_INTEL_DEV = -c -g -fpp -vec-threshold4 -openmp $(NO_ACCEL)
+FFLAGS_INTEL_OPT = -c -O3 -fpp -vec-threshold4 -qopenmp -mkl=parallel $(NO_ACCEL)
+#FFLAGS_INTEL_OPT = -c -O3 -fpp -vec-threshold4 -openmp $(NO_ACCEL)
 FFLAGS_CRAY_DEV = -c -g $(NO_ACCEL)
 FFLAGS_CRAY_OPT = -c -O3 $(NO_ACCEL)
 FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -g $(NO_ACCEL)
 FFLAGS_GNU_OPT = -c -fopenmp -O3 $(NO_ACCEL)
 FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -g $(NO_ACCEL)
 FFLAGS_PGI_OPT = -c -mp -Mcache_align -Mstandard -O3 $(NO_ACCEL)
-FFLAGS = $(FFLAGS_$(TOOLKIT)_$(BUILD_TYPE))
+FFLAGS = $(FFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) -D$(EXA_OS)
 
 #THREADS:
 LTHREAD_GNU   = -lgomp
