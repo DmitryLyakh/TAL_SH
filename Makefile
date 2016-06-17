@@ -16,6 +16,7 @@ export BLASLIB ?= ATLAS
 export GPU_CUDA ?= CUDA
 #Nvidia GPU architecture:
 export GPU_ARCH ?= 350
+export GPU_SM_ARCH=sm_35
 #Operating system: [LINUX|NO_LINUX]:
 export EXA_OS ?= LINUX
 
@@ -131,8 +132,8 @@ CUDA_LINK = $(CUDA_LINK_$(GPU_CUDA))
 CUDA_HOST_NOWRAP = --compiler-bindir /usr/bin
 CUDA_HOST_WRAP = -I.
 CUDA_HOST = $(CUDA_HOST_$(WRAP))
-CUDA_FLAGS_DEV = --compile -arch=sm_35 -g -G -lineinfo -D CUDA_ARCH=$(GPU_ARCH) -D DEBUG_GPU
-CUDA_FLAGS_OPT = --compile -arch=sm_35 -O3 -lineinfo -D CUDA_ARCH=$(GPU_ARCH)
+CUDA_FLAGS_DEV = --compile -arch=$(GPU_SM_ARCH) -g -G -lineinfo -D CUDA_ARCH=$(GPU_ARCH) -D DEBUG_GPU
+CUDA_FLAGS_OPT = --compile -arch=$(GPU_SM_ARCH) -O3 -lineinfo -D CUDA_ARCH=$(GPU_ARCH)
 CUDA_FLAGS_CUDA = $(CUDA_HOST) $(CUDA_FLAGS_$(BUILD_TYPE))
 CUDA_FLAGS_NOCUDA = -I.
 CUDA_FLAGS = $(CUDA_FLAGS_$(GPU_CUDA)) -D$(EXA_OS)
