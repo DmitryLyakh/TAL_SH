@@ -14,6 +14,8 @@ export MPILIB ?= MPICH
 export BLASLIB ?= ATLAS
 #Nvidia GPU via CUDA: [CUDA|NOCUDA]:
 export GPU_CUDA ?= CUDA
+#Nvidia GPU architecture:
+export GPU_ARCH ?= 350
 #Operating system: [LINUX|NO_LINUX]:
 export EXA_OS ?= LINUX
 
@@ -129,19 +131,19 @@ CUDA_LINK = $(CUDA_LINK_$(GPU_CUDA))
 CUDA_HOST_NOWRAP = --compiler-bindir /usr/bin
 CUDA_HOST_WRAP = -I.
 CUDA_HOST = $(CUDA_HOST_$(WRAP))
-CUDA_FLAGS_DEV = --compile -arch=sm_35 -g -G -lineinfo -D CUDA_ARCH=350 -D DEBUG_GPU
-CUDA_FLAGS_OPT = --compile -arch=sm_35 -O3 -lineinfo -D CUDA_ARCH=350
+CUDA_FLAGS_DEV = --compile -arch=sm_35 -g -G -lineinfo -D CUDA_ARCH=$(GPU_ARCH) -D DEBUG_GPU
+CUDA_FLAGS_OPT = --compile -arch=sm_35 -O3 -lineinfo -D CUDA_ARCH=$(GPU_ARCH)
 CUDA_FLAGS_CUDA = $(CUDA_HOST) $(CUDA_FLAGS_$(BUILD_TYPE))
 CUDA_FLAGS_NOCUDA = -I.
 CUDA_FLAGS = $(CUDA_FLAGS_$(GPU_CUDA)) -D$(EXA_OS)
 
 #Accelerator support:
-NO_ACCEL_CUDA = -D NO_AMD -D NO_PHI -D CUDA_ARCH=350
+NO_ACCEL_CUDA = -D NO_AMD -D NO_PHI -D CUDA_ARCH=$(GPU_ARCH)
 NO_ACCEL_NOCUDA = -D NO_AMD -D NO_PHI -D NO_GPU
 NO_ACCEL = $(NO_ACCEL_$(GPU_CUDA))
 
 #C FLAGS:
-CFLAGS_DEV = -c -g $(NO_ACCEL)
+CFLAGS_DEV = -c -g $(NO_ACCEL) -D_DEBUG
 CFLAGS_OPT = -c -O3 $(NO_ACCEL)
 CFLAGS = $(CFLAGS_$(BUILD_TYPE)) -D$(EXA_OS)
 

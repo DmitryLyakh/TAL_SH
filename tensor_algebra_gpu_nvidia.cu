@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2016/05/31
+REVISION: 2016/06/17
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -44,8 +44,8 @@ FOR DEVELOPERS ONLY:
     a) Allocate memory for the object itself, if needed: Suffix _alloc or _create (includes cleaning);
     b) Clean (initialize to null) an allocated (empty) object: Suffix _clean (normally included in _create);
     c) Construct (define or redefine) an existing object (resources will be acquired/released): Suffix _construct;
-    d) Destruct a defined object (resources will be released, the object will be initialized to clean): Suffix _destruct;
-    e) Free the memory occupied by an object: Suffix _free or _destroy (may include _destruct).
+    d) Destruct a defined object (resources will be released, the object will be reset to clean): Suffix _destruct;
+    e) Free the memory occupied by an object: Suffix _free or _destroy (may include _destruct, if needed).
    Thus, as a rule, the device resource acquisition/release occurs solely in _construct and _destruct functions.
  # A state of a C object:
     a) Undefined: After the memory allocation (either dynamic or static);
@@ -68,14 +68,18 @@ FOR DEVELOPERS ONLY:
    The corresponding object will be kept in its initial state if no SUCCESS.
  # Some CUDA kernels operating on two or more arguments assume no aliases
    for GPU pointers (__restrict__). Check each specific operation to see whether
-   it is ok for two tensor arguments to refer to the same tensor.
+   it is ok for the two tensor arguments to refer to the same tensor body.
 TO BE FIXED:
  # In tensor operation scheduling functions, if a scheduling error occurs after
    the data transfer or CUDA kernel has been scheduled, the CUDA task finalization
    must not begin until the partially scheduled CUDA task has completed on GPU.
- # Initialize default complex Alpha/Beta GEMM constants in <init_gpus>.
-   Set up user-defined GEMM constants on GPU in <gpu_tensor_block_contract_dlf>
-   and <gpu_tensor_block_add_dlf>.
+   Insert cudaStreamSynchronize in the finalization procedure.
+ # Invoke cudaDeviceCanAccessPeer() in tensor operations to check whether
+   two devices of the same kind can access each other's memory.
+ # Account for implicit data transfers to/from peer GPUs in their statistics.
+ # User-provided Alpha/Beta factors for gpu_tensor_block_contract() and
+   gpu_tensor_block_add() reside on Host, thus requiring a slab in GPU
+   memory (either global or constant) as a temporary for BLAS references.
 **/
 
 #include <stdio.h>
