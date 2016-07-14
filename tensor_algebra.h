@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2016/05/31
+REVISION: 2016/07/01
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -154,6 +154,7 @@ FOR DEVELOPERS ONLY:
 #define NOT_CLEAN -192837465
 #define NVTAL_SUCCESS 0
 #define NVTAL_FAILURE -666
+#define NVTAL_DEFERRED 918273645
 
 #define EVERYTHING 0
 #define SOURCE 1

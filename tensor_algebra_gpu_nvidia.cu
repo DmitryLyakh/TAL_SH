@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2016/06/17
+REVISION: 2016/07/01
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -2015,7 +2015,8 @@ __host__ static int cuda_task_set_arg(cudaTask_t *cuda_task, unsigned int arg_nu
 __host__ static int cuda_task_record(cudaTask_t *cuda_task, unsigned int coh_ctrl, unsigned int err_code)
 /** Records a scheduled CUDA task. A successfully scheduled CUDA task has <err_code>=0,
     otherwise a positive <err_code> indicates a task scheduling failure. In the latter
-    case, the CUDA task will be finalized here. **/
+    case, the CUDA task will be finalized here. Special error code NVTAL_DEFERRED is a
+    non-critical task scheduling failure, not considered as an error.  **/
 {
  int i,errc;
 
@@ -2033,7 +2034,12 @@ __host__ static int cuda_task_record(cudaTask_t *cuda_task, unsigned int coh_ctr
   }
  }else{ //CUDA task that failed scheduling
   cuda_task->task_error=err_code; cuda_task->coherence=coh_ctrl;
-  errc=cuda_task_finalize(cuda_task); gpu_stats[cuda_task->gpu_id].tasks_failed++;
+  errc=cuda_task_finalize(cuda_task);
+  if(err_code == NVTAL_DEFERRED){
+   gpu_stats[cuda_task->gpu_id].tasks_deferred++;
+  }else{
+   gpu_stats[cuda_task->gpu_id].tasks_failed++;
+  }
  }
  return 0;
 }
@@ -2100,7 +2106,7 @@ __host__ static int cuda_task_finalize(cudaTask_t *cuda_task) //do not call this
 //-------------------------------------------------
 //EXPORTED FUNCTIONS (callable from C/C++/Fortran):
 //-------------------------------------------------
-#ifdef NOTHING
+#if 0
 //------------------------------------------------------------------------------
 // SQUARED 2-NORM OF AN ARRAY (R4) RESIDING ON GPU (non-blocking):
 __host__ int gpu_array_norm2_r4(size_t arr_size, const float *arr, float *norm2)
@@ -2855,8 +2861,13 @@ __host__ int gpu_tensor_block_place(tensBlck_t *ctens, int gpu_id, unsigned int 
   //Set the CUDA task argument(s):
   errc=cuda_task_set_arg(cuda_task,0,ctens);
   if(errc){
-   j=cuda_task_record(cuda_task,coh_ctrl,1); j=gpu_activate(cur_gpu); //not an error if TRY_LATER or DEVICE_UNABLE are returned
-   if(errc == TRY_LATER || errc == DEVICE_UNABLE){return errc;}else{return 1;}
+   if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+    j=cuda_task_record(cuda_task,coh_ctrl,NVTAL_DEFERRED); j=gpu_activate(cur_gpu); //not an error if TRY_LATER or DEVICE_UNABLE are returned
+    return errc;
+   }else{
+    j=cuda_task_record(cuda_task,coh_ctrl,1); j=gpu_activate(cur_gpu);
+    return 1;
+   }
   }
   //Determine the volume/size of the tensor block:
   tvol=tensBlck_volume(ctens); tsize=tvol*tds;
@@ -2883,8 +2894,13 @@ __host__ int gpu_tensor_block_place(tensBlck_t *ctens, int gpu_id, unsigned int 
    }
    errc=tensDevRsc_allocate_mem(ctens->dst_rsc,devid,tsize,YEP);
    if(errc){
-    j=cuda_task_record(cuda_task,coh_ctrl,9); j=gpu_activate(cur_gpu);
-    if(errc == TRY_LATER || errc == DEVICE_UNABLE){return errc;}else{return 9;}
+    if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+     j=cuda_task_record(cuda_task,coh_ctrl,NVTAL_DEFERRED); j=gpu_activate(cur_gpu);
+     return errc;
+    }else{
+     j=cuda_task_record(cuda_task,coh_ctrl,9); j=gpu_activate(cur_gpu);
+     return 9;
+    }
    }
   }else{
    if(ctens->dst_rsc != NULL){
@@ -3094,20 +3110,35 @@ NOTES:
 // Destination argument:
  errc=cuda_task_set_arg(cuda_task,0,dtens);
  if(errc){
-  i=cuda_task_record(cuda_task,coh_ctrl,1); i=gpu_activate(cur_gpu); //not an error if TRY_LATER or DEVICE_UNABLE are returned
-  if(errc == TRY_LATER || errc == DEVICE_UNABLE){return errc;}else{return 1;}
+  if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+   i=cuda_task_record(cuda_task,coh_ctrl,NVTAL_DEFERRED); i=gpu_activate(cur_gpu); //not an error if TRY_LATER or DEVICE_UNABLE are returned
+   return errc;
+  }else{
+   i=cuda_task_record(cuda_task,coh_ctrl,1); i=gpu_activate(cur_gpu);
+   return 1;
+  }
  }
 // Left argument:
  errc=cuda_task_set_arg(cuda_task,1,ltens);
  if(errc){
-  i=cuda_task_record(cuda_task,coh_ctrl,2); i=gpu_activate(cur_gpu); //not an error if TRY_LATER or DEVICE_UNABLE are returned
-  if(errc == TRY_LATER || errc == DEVICE_UNABLE){return errc;}else{return 2;}
+  if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+   i=cuda_task_record(cuda_task,coh_ctrl,NVTAL_DEFERRED); i=gpu_activate(cur_gpu); //not an error if TRY_LATER or DEVICE_UNABLE are returned
+   return errc;
+  }else{
+   i=cuda_task_record(cuda_task,coh_ctrl,2); i=gpu_activate(cur_gpu);
+   return 2;
+  }
  }
 // Right argument:
  errc=cuda_task_set_arg(cuda_task,2,rtens);
  if(errc){
-  i=cuda_task_record(cuda_task,coh_ctrl,3); i=gpu_activate(cur_gpu); //not an error if TRY_LATER or DEVICE_UNABLE are returned
-  if(errc == TRY_LATER || errc == DEVICE_UNABLE){return errc;}else{return 3;}
+  if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+   i=cuda_task_record(cuda_task,coh_ctrl,NVTAL_DEFERRED); i=gpu_activate(cur_gpu); //not an error if TRY_LATER or DEVICE_UNABLE are returned
+   return errc;
+  }else{
+   i=cuda_task_record(cuda_task,coh_ctrl,3); i=gpu_activate(cur_gpu);
+   return 3;
+  }
  }
 //Associate CUDA stream and event pointers locally for convenience:
  cuda_stream=cuda_stream_ptr(cuda_task->gpu_id,cuda_task->stream_hl);
@@ -3151,8 +3182,13 @@ NOTES:
   }
   errc=tensDevRsc_allocate_mem(dtens->dst_rsc,targ_dev,dsize,YEP);
   if(errc){
-   i=cuda_task_record(cuda_task,coh_ctrl,12); i=gpu_activate(cur_gpu);
-   if(errc == TRY_LATER || errc == DEVICE_UNABLE){return errc;}else{return 12;}
+   if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+    i=cuda_task_record(cuda_task,coh_ctrl,NVTAL_DEFERRED); i=gpu_activate(cur_gpu);
+    return errc;
+   }else{
+    i=cuda_task_record(cuda_task,coh_ctrl,12); i=gpu_activate(cur_gpu);
+    return 12;
+   }
   }
  }else{
   if(dtens->dst_rsc != NULL){
@@ -3170,8 +3206,13 @@ NOTES:
   }
   errc=tensDevRsc_allocate_mem(ltens->dst_rsc,targ_dev,lsize,YEP);
   if(errc){
-   i=cuda_task_record(cuda_task,coh_ctrl,14); i=gpu_activate(cur_gpu);
-   if(errc == TRY_LATER || errc == DEVICE_UNABLE){return errc;}else{return 14;}
+   if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+    i=cuda_task_record(cuda_task,coh_ctrl,NVTAL_DEFERRED); i=gpu_activate(cur_gpu);
+    return errc;
+   }else{
+    i=cuda_task_record(cuda_task,coh_ctrl,14); i=gpu_activate(cur_gpu);
+    return 14;
+   }
   }
  }else{
   if(ltens->dst_rsc != NULL){
@@ -3189,8 +3230,13 @@ NOTES:
   }
   errc=tensDevRsc_allocate_mem(rtens->dst_rsc,targ_dev,rsize,YEP);
   if(errc){
-   i=cuda_task_record(cuda_task,coh_ctrl,16); i=gpu_activate(cur_gpu);
-   if(errc == TRY_LATER || errc == DEVICE_UNABLE){return errc;}else{return 16;}
+   if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+    i=cuda_task_record(cuda_task,coh_ctrl,NVTAL_DEFERRED); i=gpu_activate(cur_gpu);
+    return errc;
+   }else{
+    i=cuda_task_record(cuda_task,coh_ctrl,16); i=gpu_activate(cur_gpu);
+    return 16;
+   }
   }
  }else{
   if(rtens->dst_rsc != NULL){
@@ -3208,8 +3254,13 @@ NOTES:
   }
   errc=tensDevRsc_allocate_mem(dtens->tmp_rsc,targ_dev,dsize,YEP);
   if(errc){
-   i=cuda_task_record(cuda_task,coh_ctrl,18); i=gpu_activate(cur_gpu);
-   if(errc == TRY_LATER || errc == DEVICE_UNABLE){return errc;}else{return 18;}
+   if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+    i=cuda_task_record(cuda_task,coh_ctrl,NVTAL_DEFERRED); i=gpu_activate(cur_gpu);
+    return errc;
+   }else{
+    i=cuda_task_record(cuda_task,coh_ctrl,18); i=gpu_activate(cur_gpu);
+    return 18;
+   }
   }
  }
 //  Left tensor:
@@ -3221,8 +3272,13 @@ NOTES:
   }
   errc=tensDevRsc_allocate_mem(ltens->tmp_rsc,targ_dev,lsize,YEP);
   if(errc){
-   i=cuda_task_record(cuda_task,coh_ctrl,20); i=gpu_activate(cur_gpu);
-   if(errc == TRY_LATER || errc == DEVICE_UNABLE){return errc;}else{return 20;}
+   if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+    i=cuda_task_record(cuda_task,coh_ctrl,NVTAL_DEFERRED); i=gpu_activate(cur_gpu);
+    return errc;
+   }else{
+    i=cuda_task_record(cuda_task,coh_ctrl,20); i=gpu_activate(cur_gpu);
+    return 20;
+   }
   }
  }
 //  Right tensor:
@@ -3234,8 +3290,13 @@ NOTES:
   }
   errc=tensDevRsc_allocate_mem(rtens->tmp_rsc,targ_dev,rsize,YEP);
   if(errc){
-   i=cuda_task_record(cuda_task,coh_ctrl,22); i=gpu_activate(cur_gpu);
-   if(errc == TRY_LATER || errc == DEVICE_UNABLE){return errc;}else{return 22;}
+   if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+    i=cuda_task_record(cuda_task,coh_ctrl,NVTAL_DEFERRED); i=gpu_activate(cur_gpu);
+    return errc;
+   }else{
+    i=cuda_task_record(cuda_task,coh_ctrl,22); i=gpu_activate(cur_gpu);
+    return 22;
+   }
   }
  }
 #ifdef DEBUG_GPU

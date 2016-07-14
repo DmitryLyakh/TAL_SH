@@ -124,13 +124,14 @@
           write(*,'(1x,"Scheduling tensor contraction ",i2," on GPU ",i2,"... ")',ADVANCE='NO') n,i
           ierr=talsh_tensor_contract('D(a,b,i,j)+=L(j,k,c,i)*R(c,b,k,a)',tens(j+1),tens(j+2),tens(j+3),&
                                     &copy_ctrl=COPY_TTT,dev_id=talsh_flat_dev_id(DEV_NVIDIA_GPU,i),talsh_task=tsks(n))
-          write(*,'("Status ",i11)') ierr
           if(ierr.ne.TRY_LATER) then
+           write(*,'("Status ",i11)') ierr
            if(ierr.ne.TALSH_SUCCESS) then; ierr=5; return; endif
            sts(n)=TALSH_TASK_SCHEDULED
 !          call talsh_task_print_info(tsks(n)) !debug
            j=j+3 !next set of tensor arguments
           else
+           write(*,'("Deferred")')
            ierr=talsh_task_destruct(tsks(n))
            if(ierr.ne.TALSH_SUCCESS) then; print *,ierr; ierr=6; return; endif
            n=n-1

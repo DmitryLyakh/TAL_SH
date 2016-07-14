@@ -1,7 +1,6 @@
 NAME = talsh
 
 #ADJUST THE FOLLOWING ACCORDINGLY:
-
 #Cross-compiling wrappers: [WRAP|NOWRAP]:
 export WRAP ?= NOWRAP
 #Compiler: [GNU|PGI|INTEL|CRAY]:
@@ -15,13 +14,15 @@ export BLASLIB ?= ATLAS
 #Nvidia GPU via CUDA: [CUDA|NOCUDA]:
 export GPU_CUDA ?= CUDA
 #Nvidia GPU architecture:
-export GPU_ARCH ?= 350
-export GPU_SM_ARCH=sm_35
+export GPU_SM_ARCH ?= 35
 #Operating system: [LINUX|NO_LINUX]:
 export EXA_OS ?= LINUX
 
-#SET YOUR LOCAL PATHS (for unwrapped build):
+#WORKAROUNDS (ignore if you do not experience problems):
+#Fool CUDA 7.0 with GCC > 4.9: [YES|NO]:
+export FOOL_CUDA ?= NO
 
+#SET YOUR LOCAL PATHS (for unwrapped builds):
 # MPI path:
 export PATH_MPICH ?= /usr/local/mpich3.2
 export PATH_OPENMPI ?= /usr/local/openmpi1.10.1
@@ -129,14 +130,20 @@ CUDA_LINK_NOCUDA = -L.
 CUDA_LINK = $(CUDA_LINK_$(GPU_CUDA))
 
 #CUDA FLAGS:
+GPU_SM = sm_$(GPU_SM_ARCH)
+GPU_ARCH = $(GPU_SM_ARCH)0
 CUDA_HOST_NOWRAP = --compiler-bindir /usr/bin
 CUDA_HOST_WRAP = -I.
 CUDA_HOST = $(CUDA_HOST_$(WRAP))
-CUDA_FLAGS_DEV = --compile -arch=$(GPU_SM_ARCH) -g -G -lineinfo -D CUDA_ARCH=$(GPU_ARCH) -D DEBUG_GPU
-CUDA_FLAGS_OPT = --compile -arch=$(GPU_SM_ARCH) -O3 -lineinfo -D CUDA_ARCH=$(GPU_ARCH)
+CUDA_FLAGS_DEV = --compile -arch=$(GPU_SM) -g -G -lineinfo -D DEBUG_GPU
+CUDA_FLAGS_OPT = --compile -arch=$(GPU_SM) -O3 -lineinfo
 CUDA_FLAGS_CUDA = $(CUDA_HOST) $(CUDA_FLAGS_$(BUILD_TYPE))
 CUDA_FLAGS_NOCUDA = -I.
+ifeq ($(FOOL_CUDA),NO)
 CUDA_FLAGS = $(CUDA_FLAGS_$(GPU_CUDA)) -D$(EXA_OS)
+else
+CUDA_FLAGS = $(CUDA_FLAGS_$(GPU_CUDA)) -D$(EXA_OS) -D__GNUC__=4
+endif
 
 #Accelerator support:
 NO_ACCEL_CUDA = -D NO_AMD -D NO_PHI -D CUDA_ARCH=$(GPU_ARCH)
