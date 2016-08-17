@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2016/07/01
+REVISION: 2016/08/17
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -103,28 +103,28 @@ FOR DEVELOPERS ONLY:
 #define GPU_SHMEM_WIDTH 8          //default width of the GPU shared memory banks (4 or 8 bytes)
 #define MAX_CUDA_BLOCKS 1024       //max number of CUDA thread blocks per kernel
 #if CUDA_ARCH >= 300
-#define TENS_TRANSP_BUF_SIZE 2048  //buffer size (elements) for <gpu_tensor_block_copy_dlf_XX__>
+#define TENS_TRANSP_BUF_SIZE 2048  //buffer size (elements) for <gpu_tensor_block_copy_dlf__>
 #else
-#define TENS_TRANSP_BUF_SIZE 1536  //buffer size (elements) for <gpu_tensor_block_copy_dlf_XX__>
+#define TENS_TRANSP_BUF_SIZE 1536  //buffer size (elements) for <gpu_tensor_block_copy_dlf__>
 #endif
-#define TENS_TRANSP_TAB_SIZE 69    //look up table size (integers) for <gpu_tensor_block_copy_dlf_XX__>
-#define MAT_MULT_TILE_DIMY 16      //Y tile dimension size for <gpu_matrix_multiply_tn_XX__>
+#define TENS_TRANSP_TAB_SIZE 69    //look up table size (integers) for <gpu_tensor_block_copy_dlf__>
+#define MAT_MULT_TILE_DIMY 16      //Y tile dimension size for <gpu_matrix_multiply_tn__>
 #if CUDA_ARCH >= 200
-#define MAT_MULT_TILE_DIMX 32      //X tile dimension size for <gpu_matrix_multiply_tn_XX__>: Must be multiple of MAT_MULT_TILE_DIMY
+#define MAT_MULT_TILE_DIMX 32      //X tile dimension size for <gpu_matrix_multiply_tn__>: Must be multiple of MAT_MULT_TILE_DIMY
 #else
-#define MAT_MULT_TILE_DIMX 16      //X tile dimension size for <gpu_matrix_multiply_tn_XX__>: Must be multiple of MAT_MULT_TILE_DIMY
+#define MAT_MULT_TILE_DIMX 16      //X tile dimension size for <gpu_matrix_multiply_tn__>: Must be multiple of MAT_MULT_TILE_DIMY
 #endif
-#define THRDS_ARRAY_PRODUCT 256    //threads per block for <gpu_array_product_XX__>
-#define THRDS_ARRAY_NORM2 256      //threads per block for <gpu_array_norm2_XX__>
-#define THRDS_ARRAY_INIT 256       //threads per block for <gpu_array_init_XX__>
-#define THRDS_ARRAY_SCALE 256      //threads per block for <gpu_array_scale_XX__> and <gpu_array_dot_product_XX__>
-#define THRDS_ARRAY_ADD 256        //threads per block for <gpu_array_add_XX__>
+#define THRDS_ARRAY_PRODUCT 256    //threads per block for <gpu_array_product__>
+#define THRDS_ARRAY_NORM2 256      //threads per block for <gpu_array_norm2__>
+#define THRDS_ARRAY_INIT 256       //threads per block for <gpu_array_init__>
+#define THRDS_ARRAY_SCALE 256      //threads per block for <gpu_array_scale__> and <gpu_array_dot_product__>
+#define THRDS_ARRAY_ADD 256        //threads per block for <gpu_array_add__>
 #if CUDA_ARCH >= 200
-#define THRDS_TENSOR_COPY 256      //threads per block for <gpu_tensor_block_copy_dlf_XX__>
+#define THRDS_TENSOR_COPY 256      //threads per block for <gpu_tensor_block_copy_dlf__>
 #else
-#define THRDS_TENSOR_COPY 192      //threads per block for <gpu_tensor_block_copy_dlf_XX__>
+#define THRDS_TENSOR_COPY 192      //threads per block for <gpu_tensor_block_copy_dlf__>
 #endif
-#define THRDS_TENSOR_COPY_SCAT 256 //threads per block for <gpu_tensor_block_copy_scatter_dlf_XX__>
+#define THRDS_TENSOR_COPY_SCAT 256 //threads per block for <gpu_tensor_block_copy_scatter_dlf__>
 
 //DATA KINDS (keep consistent with tensor_algebra.F90):
 #define NO_TYPE 0 //null type
@@ -149,6 +149,7 @@ FOR DEVELOPERS ONLY:
 #define BLAS_OFF 1
 #define EFF_TRN_OFF 0
 #define EFF_TRN_ON 1
+#define EFF_TRN_ON_CUTT 2
 #define DEVICE_UNABLE -546372819
 #define TRY_LATER -918273645
 #define NOT_CLEAN -192837465
@@ -367,7 +368,7 @@ int cuda_get_device_count(int * dev_count);
  int gpu_activate(int gpu_num);
 //  NV-TAL internal control:
  int gpu_set_shmem_width(int width);
- void gpu_set_transpose_algorithm(int alg);
+ void gpu_set_transpose_algorithm(int alg); //{EFF_TRN_OFF,EFF_TRN_ON,EFF_TRN_ON_CUTT}
  void gpu_set_matmult_algorithm(int alg);
  int gpu_print_stats(int gpu_num = -1);
 #endif
@@ -379,6 +380,7 @@ int cuda_get_device_count(int * dev_count);
  int tensShape_destruct(talsh_tens_shape_t * tshape);
  int tensShape_destroy(talsh_tens_shape_t * tshape);
  size_t tensShape_volume(const talsh_tens_shape_t * tshape);
+ int tensShape_rank(const talsh_tens_shape_t * tshape);
  int tensBlck_create(tensBlck_t **ctens);
  int tensBlck_clean(tensBlck_t *ctens);
  int tensBlck_destroy(tensBlck_t *ctens);

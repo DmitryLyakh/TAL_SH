@@ -1,6 +1,6 @@
 *** TAL-SH: Tensor Algebra Library for Shared Memory Computers ***
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2016/05/23
+REVISION: 2016/08/17
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -403,6 +403,20 @@ API: Destroy a tensor block object (destruct it first and then completely destro
  C/C++:
   int talshTensorDestroy(    //out: error code (0:success)
    talsh_tens_t * tens_block //inout: a tensor block (will be destroyed on exit)
+  )
+
+  NOTE: In C/C++, this function must not be called on static undefined (not cleaned) tensor blocks.
+
+API: Get the rank of a tensor block (number of dimensions):
+
+ Fortran 2003:
+  function talsh_tensor_rank(tens_block) result(rank)
+   integer(C_INT):: rank                       !out: tensor block rank
+   type(talsh_tens_t), intent(in):: tens_block !in: tensor block
+
+ C/C++:
+  int talshTensorRank(             //out: tensor block rank
+   const talsh_tens_t * tens_block //in: pointer to a tensor block
   )
 
   NOTE: In C/C++, this function must not be called on static undefined (not cleaned) tensor blocks.

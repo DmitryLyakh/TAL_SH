@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2016/06/01
+!REVISION: 2016/08/17
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -27,6 +27,10 @@
         public tensor_shape_t    !tensor shape (Fortran)
         public tensor_block_t    !tensor block (Fortran)
         public MAX_SHAPE_STR_LEN !max length of a shape-defining string
+        public tensor_shape_rank
+        public get_contr_pattern
+        public get_contr_pattern_sym
+        public contr_pattern_rnd
 !PARAMETERS:
  !Generic:
         integer(INTD), private:: CONS_OUT=6 !default output device for this module
@@ -171,6 +175,12 @@
           implicit none
           type(talsh_tens_t):: tens_block
          end function talshTensorDestruct
+  !Get the rank of the tensor block:
+         integer(C_INT) function talshTensorRank(tens_block) bind(c,name='talshTensorRank')
+          import
+          implicit none
+          type(talsh_tens_t), intent(in):: tens_block
+         end function talshTensorRank
   !Get the volume of the tensor block:
          integer(C_SIZE_T) function talshTensorVolume(tens_block) bind(c,name='talshTensorVolume')
           import
@@ -339,6 +349,7 @@
         private talsh_tensor_construct_sym
         private talsh_tensor_construct_shp
         public talsh_tensor_destruct
+        public talsh_tensor_rank
         public talsh_tensor_volume
         public talsh_tensor_shape
         public talsh_tensor_presence
@@ -495,8 +506,11 @@
 !------------------------------------------------------------------------------------------------
         integer(C_INT) function talsh_tensor_f_dissoc(tensF) bind(c,name='talsh_tensor_f_dissoc')
 !Destroys a temporary <tensor_block_t> object associated with a specific image of some TAL-SH tensor.
+!`PROBLEM: Even though <tensF> is a generic C pointer to a dynamically allocated <tensor_block_t> object,
+!          the back association of <tensF> into a <tensor_block_t> Fortran pointer may lose the information
+!          about dynamic allocation, causing failure with some compilers (Cray).
          implicit none
-         type(C_PTR), value:: tensF !in: C pointer to a <tensor_block_t> object created by <talsh_tensor_f_assoc()>
+         type(C_PTR), value:: tensF !in: C pointer to a dynamically allocated <tensor_block_t> object by <talsh_tensor_f_assoc()>
          type(tensor_block_t), pointer:: ftens
          integer:: ierr
 
@@ -513,7 +527,7 @@
               talsh_tensor_f_dissoc=TALSH_FAILURE
              endif
             endif
-            deallocate(ftens,STAT=ierr)
+            deallocate(ftens,STAT=ierr) !``May fail with some compilers because the allocation status can be lost
             if(ierr.ne.0.and.talsh_tensor_f_dissoc.eq.TALSH_SUCCESS) talsh_tensor_f_dissoc=TALSH_FAILURE
            else
             talsh_tensor_f_dissoc=TALSH_FAILURE
@@ -526,6 +540,55 @@
          endif
          return
         end function talsh_tensor_f_dissoc
+!----------------------------------------------------------------------------
+        integer(C_INT) function talsh_update_f_scalar(tensF,data_kind,gmem_p) bind(c,name='talsh_update_f_scalar')
+!Updates the given memory location <gmem_p> with the value of a scalar tensor.
+!The memory location is the (single-element) body of a scalar tensor of type <talsh_tens_t>.
+         implicit none
+         type(C_PTR), value:: tensF                    !in: C pointer to <tensor_block_t>
+         integer(C_INT), intent(in), value:: data_kind !in: data kind
+         type(C_PTR), value:: gmem_p                   !in: C pointer to the single-element body of a <talsh_tens_t> image
+         type(tensor_block_t), pointer:: ftens
+         integer:: ierr
+         real(4), pointer:: r4p
+         real(8), pointer:: r8p
+         complex(4), pointer:: c4p
+         complex(8), pointer:: c8p
+         complex(8):: val
+
+         talsh_update_f_scalar=TALSH_SUCCESS
+         if(c_associated(tensF)) then
+          call c_f_pointer(tensF,ftens)
+          if(.not.tensor_block_is_empty(ftens,ierr)) then
+           if(ierr.eq.0) then
+            if(c_associated(gmem_p)) then
+             val=tensor_block_scalar_value(ftens)
+             select case(data_kind)
+             case(R4)
+              call c_f_pointer(gmem_p,r4p); r4p=real(val,4); r4p=>NULL()
+             case(R8)
+              call c_f_pointer(gmem_p,r8p); r8p=real(val,8); r8p=>NULL()
+             case(C4)
+              call c_f_pointer(gmem_p,c4p); c4p=cmplx(real(val),imag(val),4); c4p=>NULL()
+             case(C8)
+              call c_f_pointer(gmem_p,c8p); c8p=val; c8p=>NULL()
+             case default
+              talsh_update_f_scalar=TALSH_INVALID_ARGS
+             end select
+            else
+             talsh_update_f_scalar=TALSH_INVALID_ARGS
+            endif
+           else
+            talsh_update_f_scalar=TALSH_FAILURE
+           endif
+          else
+           talsh_update_f_scalar=TALSH_OBJECT_IS_EMPTY
+          endif
+         else
+          talsh_update_f_scalar=TALSH_OBJECT_IS_EMPTY
+         endif
+         return
+        end function talsh_update_f_scalar
 !-----------------------------------------
 !FORTRAN TAL-SH API DEFINITIONS:
  !TAL-SH control API:
@@ -743,6 +806,14 @@
          ierr=talshTensorDestruct(tens_block)
          return
         end function talsh_tensor_destruct
+!----------------------------------------------------------
+        function talsh_tensor_rank(tens_block) result(rank)
+         implicit none
+         integer(C_INT):: rank                       !out: tensor block rank (number of dimensions)
+         type(talsh_tens_t), intent(in):: tens_block !in: tensor block
+         rank=talshTensorRank(tens_block)
+         return
+        end function talsh_tensor_rank
 !-----------------------------------------------------------
         function talsh_tensor_volume(tens_block) result(vol)
          implicit none

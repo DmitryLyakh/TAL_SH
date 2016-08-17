@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API header.
-REVISION: 2016/05/23
+REVISION: 2016/08/17
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -141,6 +141,8 @@ extern "C"{
  int talshTensorDestruct(talsh_tens_t * tens_block);
 //  Destroy a tensor block:
  int talshTensorDestroy(talsh_tens_t * tens_block);
+//  Get the tensor block rank (number of dimensions):
+ int talshTensorRank(const talsh_tens_t * tens_block);
 //  Get the tensor block volume (number of elements):
  size_t talshTensorVolume(const talsh_tens_t * tens_block);
 //  Get the shape of the tensor block:

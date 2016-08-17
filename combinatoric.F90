@@ -1,7 +1,7 @@
        module combinatoric
 !Combinatoric Procedures.
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!Revision: 2016/03/15
+!Revision: 2016/08/16
 
 !Copyright (C) 2007-2016 Dmitry I. Lyakh (Liakh)
 
@@ -996,6 +996,7 @@
 !This subroutine returns a random permutation of NI items [1..NI].
 !INPUT:
 ! - ni - number of items, range [1:ni], if ni<=0 nothing will be done;
+! - no_trivial - if .TRUE., the trivial permutation will never be returned, unless ni=1;
 !OUTPUT:
 ! - trn(0:ni) - generated permutation (trn(0) - sign of the permutation);
 	implicit none
@@ -1011,31 +1012,33 @@
 
 	if(ni.gt.0) then
 	 trn(0)=+1; do i=1,ni; trn(i)=i; enddo !initial permutation
-	 ploop: do
-	  do nr=1,num_repeats
-	   do i=1,ni,random_chunk
-	    l=min(i+random_chunk-1,ni)-i+1
-	    call random_number(ra(1:l))
-	    ra(1:l)=ra(1:l)*2d0
-	    do k=1,l
-	     if(ra(k).lt.1d0) then
-	      j=i+k-1
-	      n=int(ra(k)*dble(ni))+1; if(n.gt.ni) n=ni
-	      if(n.ne.j) then; m=trn(j); trn(j)=trn(n); trn(n)=m; trn(0)=-trn(0); endif
-	     endif
+         if(ni.gt.1) then
+	  ploop: do
+	   do nr=1,num_repeats
+	    do i=1,ni,random_chunk
+	     l=min(i+random_chunk-1,ni)-i+1
+	     call random_number(ra(1:l))
+	     ra(1:l)=ra(1:l)*2d0
+	     do k=1,l
+	      if(ra(k).lt.1d0) then
+	       j=i+k-1
+	       n=int(ra(k)*dble(ni))+1; if(n.gt.ni) n=ni
+	       if(n.ne.j) then; m=trn(j); trn(j)=trn(n); trn(n)=m; trn(0)=-trn(0); endif
+	      endif
+	     enddo
 	    enddo
 	   enddo
-	  enddo
-	  if(present(no_trivial)) then
-	   if(no_trivial) then
-	    if(.not.perm_trivial(ni,trn)) exit ploop
+	   if(present(no_trivial)) then
+	    if(no_trivial) then
+	     if(.not.perm_trivial(ni,trn)) exit ploop
+	    else
+	     exit ploop
+	    endif
 	   else
 	    exit ploop
 	   endif
-	  else
-	   exit ploop
-	  endif
-	 enddo ploop
+	  enddo ploop
+         endif
 !	else
 !	 write(*,*)'ERROR(random_permutation): negative or zero number of items: ',ni
 !	 stop
@@ -1047,6 +1050,7 @@
 !This subroutine returns a random permutation of NI items [1..NI].
 !INPUT:
 ! - ni - number of items, range [1:ni], if ni<=0 nothing will be done;
+! - no_trivial - if .TRUE., the trivial permutation will never be returned, unless ni=1;
 !OUTPUT:
 ! - trn(0:ni) - generated permutation (trn(0) - sign of the permutation);
 	implicit none
@@ -1062,31 +1066,33 @@
 
 	if(ni.gt.0_8) then
 	 trn(0)=+1_8; do i=1_8,ni; trn(i)=i; enddo !initial permutation
-	 ploop: do
-	  do nr=1_8,num_repeats
-	   do i=1_8,ni,random_chunk
-	    l=min(i+random_chunk-1_8,ni)-i+1_8
-	    call random_number(ra(1_8:l))
-	    ra(1_8:l)=ra(1_8:l)*2d0
-	    do k=1_8,l
-	     if(ra(k).lt.1d0) then
-	      j=i+k-1_8
-	      n=int(ra(k)*dble(ni),8)+1_8; if(n.gt.ni) n=ni
-	      if(n.ne.j) then; m=trn(j); trn(j)=trn(n); trn(n)=m; trn(0)=-trn(0); endif
-	     endif
+         if(ni.gt.1_8) then
+	  ploop: do
+	   do nr=1_8,num_repeats
+	    do i=1_8,ni,random_chunk
+	     l=min(i+random_chunk-1_8,ni)-i+1_8
+	     call random_number(ra(1_8:l))
+	     ra(1_8:l)=ra(1_8:l)*2d0
+	     do k=1_8,l
+	      if(ra(k).lt.1d0) then
+	       j=i+k-1_8
+	       n=int(ra(k)*dble(ni),8)+1_8; if(n.gt.ni) n=ni
+	       if(n.ne.j) then; m=trn(j); trn(j)=trn(n); trn(n)=m; trn(0)=-trn(0); endif
+	      endif
+	     enddo
 	    enddo
 	   enddo
-	  enddo
-	  if(present(no_trivial)) then
-	   if(no_trivial) then
-	    if(.not.perm_trivial_int8(ni,trn)) exit ploop
+	   if(present(no_trivial)) then
+	    if(no_trivial) then
+	     if(.not.perm_trivial_int8(ni,trn)) exit ploop
+	    else
+	     exit ploop
+	    endif
 	   else
 	    exit ploop
 	   endif
-	  else
-	   exit ploop
-	  endif
-	 enddo ploop
+	  enddo ploop
+         endif
 !	else
 !	 write(*,*)'ERROR(random_permutation_int8): negative or zero number of items: ',ni
 !	 stop
@@ -1095,7 +1101,7 @@
 	end subroutine random_permutation_int8
 !-----------------------------------------------------------
 	subroutine random_composition(ordered,irange,ni,trn)
-!This subroutine returns a random sequence of ni natural numbers from the range [1..ni] without repeats.
+!This subroutine returns a random sequence of ni natural numbers from the range [1..irange] without repeats.
 !INPUT:
 ! - ordered - if .true. the sequence will be ordered;
 ! - irange - range of natural numbers to be used: [1..irange];
@@ -1107,7 +1113,7 @@
 	integer, intent(in):: irange
 	integer, intent(in):: ni
 	integer, intent(out):: trn(0:ni)
-	integer, parameter:: rnd_chunk=2**12
+	integer, parameter:: rnd_chunk=2**10
 	integer i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
 	integer, allocatable:: prm(:)
 	real(8) rnd_buf(1:rnd_chunk),rn,accept_thresh
@@ -1121,8 +1127,7 @@
 	   do i=1,irange
 	    if(k0.eq.0) then; k0=min(rnd_chunk,k); call random_number(rnd_buf(1:k0)); endif
 	    if(rnd_buf(k0).ge.accept_thresh(k,l)) then
-	     n=n+1; trn(n)=i
-	     l=l-1; if(l.eq.0) exit
+	     n=n+1; trn(n)=i; l=l-1; if(l.eq.0) exit
 	    endif
 	    k=k-1; k0=k0-1
 	   enddo
@@ -1141,18 +1146,17 @@
 	   do i=1,irange
 	    if(k0.eq.0) then; k0=min(rnd_chunk,k); call random_number(rnd_buf(1:k0)); endif
 	    if(rnd_buf(k0).ge.accept_thresh(k,l)) then
-	     n=n+1; trn(prm(n))=i
-	     l=l-1; if(l.eq.0) exit
+	     n=n+1; trn(prm(n))=i; l=l-1; if(l.eq.0) exit
 	    endif
 	    k=k-1; k0=k0-1
 	   enddo
-	   deallocate(prm)
 	   if(n.eq.ni) then
 	    trn(0)=prm(0)
 	   else
 	    write(*,*)'ERROR(combinatoric:random_composition): trap: invalid number of items: ',n,ni,irange,ordered
 	    stop
 	   endif
+           deallocate(prm)
 	  endif
 	 endif
 	else

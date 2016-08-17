@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API.
-REVISION: 2016/06/17
+REVISION: 2016/08/17
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -94,6 +94,7 @@ int talsh_get_contr_ptrn_str2dig(const char * c_str, int * dig_ptrn, int * dig_l
 // Fortran tensor block aliasing:
 int talsh_tensor_f_assoc(const talsh_tens_t * talsh_tens, int image_id, void ** tensF);
 int talsh_tensor_f_dissoc(void * tensF);
+int talsh_update_f_scalar(void * tensF, int data_kind, void * gmem_p);
 #ifdef __cplusplus
 }
 #endif
@@ -917,6 +918,12 @@ int talshTensorDestroy(talsh_tens_t * tens_block) //in: non-NULL pointer to a te
  return errc;
 }
 
+int talshTensorRank(const talsh_tens_t * tens_block)
+/** Returns the tensor block rank (number of dimensions). **/
+{
+ return tensShape_rank(tens_block->shape_p);
+}
+
 size_t talshTensorVolume(const talsh_tens_t * tens_block) //in: tensor block
 /** Returns the total number of elements in the tensor block.
     0 on return means the tensor block is empty. **/
@@ -1470,15 +1477,15 @@ int talshTaskComplete(talsh_task_t * talsh_task, int * stats, int * ierr)
  cudaTask_t *cuda_task_p;
 
  errc=NOPE;
- if(talsh_on == 0){*ierr=TALSH_NOT_INITIALIZED; return errc;}
  if(ierr == NULL) return TALSH_INVALID_ARGS;
+ if(talsh_on == 0){*ierr=TALSH_NOT_INITIALIZED; return errc;}
  if(talsh_task == NULL || stats == NULL){*ierr=TALSH_INVALID_ARGS; return errc;}
+ *ierr=TALSH_SUCCESS;
  if(talsh_task->task_error >= 0){ //already finalized
   if(talsh_task->task_error == 0){*stats=TALSH_TASK_COMPLETED;}else{*stats=TALSH_TASK_ERROR;}
   return YEP;
  }
  if(talsh_task->task_p == NULL){*ierr=TALSH_OBJECT_IS_EMPTY; return errc;}
- *ierr=TALSH_SUCCESS;
  switch(talsh_task->dev_kind){
   case DEV_HOST:
    host_task_p=((host_task_t*)(talsh_task->task_p));
@@ -1575,8 +1582,9 @@ int talshTaskTime(talsh_task_t * talsh_task, double * total, double * comput, do
  }
  switch(talsh_task->dev_kind){
   case DEV_HOST:
-   tot_tm=(float)talsh_task->exec_time; in_tm=-1.0f; out_tm=-1.0f; comp_tm=-1.0f;
+   tot_tm=(float)(talsh_task->exec_time); in_tm=-1.0f; out_tm=-1.0f; comp_tm=-1.0f;
    if(tot_tm < 0.0f) errc=TALSH_FAILURE;
+   break;
   case DEV_NVIDIA_GPU:
 #ifndef NO_GPU
    cuda_task_p=(cudaTask_t*)(talsh_task->task_p);
@@ -1840,6 +1848,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
  cudaTask_t * cuda_task;
  tensBlck_t *dctr,*lctr,*rctr;
  void *dftr,*lftr,*rftr;
+ clock_t ctm;
 
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  //Create a TAL-SH task:
@@ -1966,7 +1975,14 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
    if(cohl == COPY_D || (cohl == COPY_M && ltens->dev_rsc[limg].dev_id != devid)) ltens->avail[limg] = NOPE;
    if(cohd == COPY_D || (cohd == COPY_M && dtens->dev_rsc[dimg].dev_id != devid)) dtens->avail[dimg] = NOPE;
    //Schedule the tensor operation via the device-specific runtime:
+   ctm=clock();
    errc=cpu_tensor_block_contract(contr_ptrn,lftr,rftr,dftr,scale_real,scale_imag); //blocking call
+   if(talshTensorRank(dtens) == 0){ //an explicit update is needed for scalar destinations
+    j=talsh_update_f_scalar(dftr,dtens->data_kind[dimg],dtens->dev_rsc[dimg].gmem_p);
+    if(j) errc=TALSH_FAILURE;
+   }
+   tsk->exec_time=((double)(clock()-ctm))/CLOCKS_PER_SEC;
+   //Dissociate <tensor_block_t> objects:
    j=talsh_tensor_f_dissoc(rftr); if(j) errc=TALSH_FAILURE;
    j=talsh_tensor_f_dissoc(lftr); if(j) errc=TALSH_FAILURE;
    j=talsh_tensor_f_dissoc(dftr); if(j) errc=TALSH_FAILURE;
