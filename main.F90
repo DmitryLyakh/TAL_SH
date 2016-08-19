@@ -340,6 +340,7 @@
               if(ierr.ne.TALSH_SUCCESS) then; ierr=6; return; endif
               cval=(1d-3,0d0); ierr=talsh_tensor_construct(rtens,R8,rdims(1:rr),init_val=cval)
               if(ierr.ne.TALSH_SUCCESS) then; ierr=7; return; endif
+#ifndef NO_GPU
    !Schedule tensor contraction on GPU:
               ierr=talsh_tensor_contract(str(1:l),dtens,ltens,rtens,&
                                         &copy_ctrl=COPY_TTT,dev_id=talsh_flat_dev_id(DEV_NVIDIA_GPU,0),talsh_task=tsk)
@@ -352,10 +353,12 @@
               gn1=talshTensorImageNorm1_cpu(dtens)!; write(*,'(1x,"Destination Norm1 (GPU) = ",D25.14)') gn1
    !Destruct task handle:
               ierr=talsh_task_destruct(tsk); if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
-   !Run tensor contraction on CPU:
+   !Destruct the destination tensor:
               ierr=talsh_tensor_destruct(dtens); if(ierr.ne.TALSH_SUCCESS) then; ierr=12; return; endif
               cval=(1d-1,0d0); ierr=talsh_tensor_construct(dtens,R8,ddims(1:rd),init_val=cval)
               if(ierr.ne.TALSH_SUCCESS) then; ierr=13; return; endif
+#endif
+   !Run tensor contraction on CPU:
               ierr=talsh_tensor_contract(str(1:l),dtens,ltens,rtens,dev_id=talsh_flat_dev_id(DEV_HOST,0),talsh_task=tsk)
               if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=14; return; endif
               ierr=talsh_task_wait(tsk,sts); if(ierr.ne.TALSH_SUCCESS.or.sts.ne.TALSH_TASK_COMPLETED) then; ierr=15; return; endif
@@ -363,10 +366,12 @@
               if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=16; return; endif
               write(*,'(1x,D8.2)') flops/tm
               cn1=talshTensorImageNorm1_cpu(dtens)!; write(*,'(1x,"Destination Norm1 (CPU) = ",D25.14)') cn1
+#ifndef NO_GPU
               if(dabs(cn1-gn1).gt.CMP_ZERO) then
                write(*,'("FAILED: CPU/GPU result mismatch: 1-norms (CPU vs GPU): ",D25.14,2x,D25.14)') cn1,gn1
                ierr=17; return
               endif
+#endif
               ierr=talsh_task_destruct(tsk); if(ierr.ne.TALSH_SUCCESS) then; ierr=18; return; endif
    !Destruct tensor blocks:
               ierr=talsh_tensor_destruct(dtens); if(ierr.ne.TALSH_SUCCESS) then; ierr=19; return; endif
