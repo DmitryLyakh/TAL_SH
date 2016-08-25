@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2016/08/17
+REVISION: 2016/08/25
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -78,7 +78,11 @@ FOR DEVELOPERS ONLY:
 #define MAX_GPU_ARGS 128           //max allowed number of tensor arguments simultaneously residing on a GPU: Must be a multiple of 8
 #define MAX_MLNDS_PER_TENS 4       //max number of multi-indices per tensor block (dims, divs, grps, prmn)
 #define MAX_CUDA_TASKS 128         //max allowed number of simultaneously active CUDA tasks per CUDA device
+#ifdef GPU_FINE_TIMING
+#define NUM_EVENTS_PER_TASK 6      //number of CUDA events recorded per CUDA task
+#else
 #define NUM_EVENTS_PER_TASK 4      //number of CUDA events recorded per CUDA task
+#endif
 #define MAX_CUDA_EVENTS MAX_CUDA_TASKS*NUM_EVENTS_PER_TASK //max number of CUDA events per CUDA device
 
 //DEVICE KINDS:
@@ -302,6 +306,10 @@ typedef struct{
  int event_comput_hl;    //handle of the CUDA event recorded before the CUDA kernels start (all input data is on Device)
  int event_output_hl;    //handle of the CUDA event recorded when the CUDA kernels finish (before output to the Host)
  int event_finish_hl;    //handle of the CUDA event recorded at the end of the task (full completion)
+#ifdef GPU_FINE_TIMING
+ int event_mmbeg_hl      //handle of the CUDA event recorded before the matrix multiplication starts
+ int event_mmend_hl      //handle of the CUDA event recorded after the matrix multiplication finishes
+#endif
  unsigned int coherence; //coherence control for this task (see COPY_X, COPY_XX, and COPY_XXX constants)
  unsigned int num_args;  //number of tensor arguments participating in the tensor operation
  cudaTensArg_t tens_args[MAX_TENSOR_OPERANDS]; //tensor arguments participating in the tensor operation
@@ -410,7 +418,8 @@ int cuda_get_device_count(int * dev_count);
  int cuda_task_dev_rsc_copy(const cudaTask_t *cuda_task, unsigned int arg_num, char which, talsh_dev_rsc_t *dev_rsc);
  int cuda_task_dev_rsc_move(cudaTask_t *cuda_task, unsigned int arg_num, char which, talsh_dev_rsc_t *dev_rsc);
  int cuda_task_arg_destroy(cudaTask_t *cuda_task, int arg_num = -1);
- float cuda_task_time(const cudaTask_t *cuda_task, float *in_copy, float *out_copy, float *comp);
+ float cuda_task_time(const cudaTask_t *cuda_task, float *in_copy = NULL, float *out_copy = NULL, float *comp = NULL, float *mmul = NULL);
+ float cuda_task_time_(const cudaTask_t *cuda_task, float *in_copy, float *out_copy, float *comp, float *mmul);
  void cuda_task_print(const cudaTask_t *cuda_task);
 //  NV-TAL tensor operations:
  int gpu_array_norm2_r4(size_t size, const float *arr, float *norm2);

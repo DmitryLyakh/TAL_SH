@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API header.
-REVISION: 2016/08/17
+REVISION: 2016/08/25
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -43,6 +43,7 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #define TALSH_IN_PROGRESS 1000006
 #define TALSH_NOT_ALLOWED 1000007
 #define TALSH_LIMIT_EXCEEDED 1000008
+#define TALSH_NOT_FOUND 1000009
 
 //TAL-SH TASK STATUS:
 #define TALSH_TASK_ERROR 1999999
@@ -148,6 +149,12 @@ extern "C"{
 //  Get the shape of the tensor block:
  int talshTensorShape(const talsh_tens_t * tens_block,
                       talsh_tens_shape_t * tens_shape);
+//  Get the data kind of each tensor image:
+ int talshTensorDataKind(const talsh_tens_t * tens_block,
+                         int * num_images,
+                         int * data_kinds);
+//  Query whether the tensor block is currently in use:
+ int talshTensorInUse(const talsh_tens_t * tens_block);
 //  Query the presence of the tensor block on device(s):
  int talshTensorPresence(const talsh_tens_t * tens_block,
                          int * ncopies,
@@ -156,6 +163,14 @@ extern "C"{
                          int dev_kind = DEV_NULL,
                          int dev_id = -1);
  int talshTensorPresence_(const talsh_tens_t * tens_block, int * ncopies, int copies[], int data_kinds[], int dev_kind, int dev_id);
+//  Get access to the tensor body image for a subsequent initialization:
+ int talshTensorGetBodyAccess(talsh_tens_t * tens_block,
+                              void ** body_p,
+                              int data_kind,
+                              int dev_id,
+                              int dev_kind = DEV_NULL);
+ int talshTensorGetBodyAccess_(talsh_tens_t * tens_block, void ** body_p, int data_kind, int dev_id, int dev_kind);
+//  Print the information on a tensor block:
  void talshTensorPrintInfo(const talsh_tens_t * tens_block);
 // TAL-SH task API:
 //  Create a clean (defined-empty) TAL-SH task:
@@ -190,8 +205,9 @@ extern "C"{
                    double * total,
                    double * comput = NULL,
                    double * input = NULL,
-                   double * output = NULL);
- int talshTaskTime_(talsh_task_t * talsh_task, double * total, double * comput, double * input, double * output);
+                   double * output = NULL,
+                   double * mmul = NULL);
+ int talshTaskTime_(talsh_task_t * talsh_task, double * total, double * comput, double * input, double * output, double * mmul);
 //  Print TAL-SH task info:
  void talshTaskPrint(const talsh_task_t * talsh_task);
 // TAL-SH tensor operations API:

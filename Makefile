@@ -12,7 +12,7 @@ export MPILIB ?= MPICH
 #BLAS: [ATLAS|MKL|ACML]:
 export BLASLIB ?= ATLAS
 #Nvidia GPU via CUDA: [CUDA|NOCUDA]:
-export GPU_CUDA ?= NOCUDA
+export GPU_CUDA ?= CUDA
 #Nvidia GPU architecture (two digits):
 export GPU_SM_ARCH ?= 35
 #Operating system: [LINUX|NO_LINUX]:
@@ -25,6 +25,9 @@ export WITH_CUTT ?= NO
 #WORKAROUNDS (ignore if you do not experience problems):
 #Fool CUDA 7.0 with GCC > 4.9: [YES|NO]:
 export FOOL_CUDA ?= NO
+
+#GPU FINE TIMING (for benchmarking only):
+export GPU_FINE_TIMING ?= NO
 
 #SET YOUR LOCAL PATHS (for unwrapped builds):
 # MPI path:
@@ -155,14 +158,19 @@ CUDA_FLAGS_OPT = --compile -arch=$(GPU_SM) -O3 -lineinfo
 CUDA_FLAGS_CUDA = $(CUDA_HOST) $(CUDA_FLAGS_$(BUILD_TYPE))
 CUDA_FLAGS_NOCUDA = -I.
 ifeq ($(FOOL_CUDA),NO)
-CUDA_FLAGS_PRE = $(CUDA_FLAGS_$(GPU_CUDA)) -D$(EXA_OS)
+CUDA_FLAGS_PRE1 = $(CUDA_FLAGS_$(GPU_CUDA)) -D$(EXA_OS)
 else
-CUDA_FLAGS_PRE = $(CUDA_FLAGS_$(GPU_CUDA)) -D$(EXA_OS) -D__GNUC__=4
+CUDA_FLAGS_PRE1 = $(CUDA_FLAGS_$(GPU_CUDA)) -D$(EXA_OS) -D__GNUC__=4
 endif
 ifeq ($(WITH_CUTT),YES)
-CUDA_FLAGS = $(CUDA_FLAGS_PRE) -D USE_CUTT
+CUDA_FLAGS_PRE2 = $(CUDA_FLAGS_PRE1) -D USE_CUTT
 else
-CUDA_FLAGS = $(CUDA_FLAGS_PRE)
+CUDA_FLAGS_PRE2 = $(CUDA_FLAGS_PRE1)
+endif
+ifeq ($(GPU_FINE_TIMING),YES)
+CUDA_FLAGS = $(CUDA_FLAGS_PRE2) -D GPU_FINE_TIMING
+else
+CUDA_FLAGS = $(CUDA_FLAGS_PRE2)
 endif
 
 #Accelerator support:

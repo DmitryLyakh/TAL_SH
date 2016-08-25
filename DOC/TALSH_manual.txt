@@ -1,6 +1,6 @@
 *** TAL-SH: Tensor Algebra Library for Shared Memory Computers ***
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2016/08/17
+REVISION: 2016/08/25
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -378,6 +378,16 @@ API: Construct a tensor block:
    is absent (Fortran) or NULL (C/C++). If neither initialization method nor initialization
    value is provided, the tensor block will still be initialized to zero.
 
+   The interface of the user-defined initialization method may often be found
+   to be too restricive since no additional information can be provided. In this case,
+   an alternative solution is to simply construct a tensor block without any initialization
+   method and then use the function <talshTensorGetBodyAccess()> to obtain a C pointer
+   to the tensor image of proper data kind on a desired device. This C pointer can be
+   used for defining the value of that tensor image (all other images, if any, will
+   automatically be discarded by the TAL-SH runtime). This alternative method can be
+   used anytime, not necessarily right after the tensor construction. However, the
+   tensor is not expected to participate in any tensor operation at that point.
+
    NOTE: This function must only be called on clean tensor blocks (empty defined).
 
    NOTE:`So far the initialization only works for the CPU Host (DEV_HOST).
@@ -454,6 +464,22 @@ API: Get the shape of a tensor block:
   NOTE: In C/C++, argument <tens_shape> must be either empty clean or defined to a value on input.
         Static undefined (not cleaned) <tens_shape> objects are not allowed!
 
+API: Get the data kind of each tensor image:
+
+ Fortran 2003:
+  function talsh_tensor_data_kind(tens_block,num_images,data_kinds) result(ierr)
+   integer(C_INT):: ierr                           !out: error code (0:success)
+   type(talsh_tens_t), intent(in):: tens_block     !in: tensor block
+   integer(C_INT), intent(out):: num_images        !out: number of existing images
+   integer(C_INT), intent(inout):: data_kinds(1:*) !out: data kind of each image
+
+ C/C++:
+  int talshTensorDataKind(          //out: error code (0:success)
+   const talsh_tens_t * tens_block, //in: pointer to a tensor block
+   int * num_images,                //out: number of existing images
+   int * data_kinds                 //out: data kinds of each image
+  )
+
 API: Query the presence of a tensor block on device(s):
 
  Fortran 2003:
@@ -481,6 +507,32 @@ API: Query the presence of a tensor block on device(s):
 
   NOTE: This function must not be called on static undefined (not cleaned) tensor blocks).
 
+API: Get access to the tensor body (specific image) for a subsequent initialization:
+
+ Fortran 2003:
+  function talsh_tensor_get_body_access(tens_block,body_p,data_kind,dev_id,dev_kind) result(ierr)
+   integer(C_INT):: ierr                           //out: error code (0:success)
+   type(talsh_tens_t), intent(inout):: tens_block  //inout: pointer to a tensor block
+   type(C_PTR), intent(inout):: body_p             //out: pointer to the tensor body image
+   integer(C_INT), intent(in):: data_kind          //in: requested data kind
+   integer(C_INT), intent(in):: dev_id             //in: requested device id, either kind-specific or flat
+   integer(C_INT), intent(in), optional:: dev_kind //in: requested device kind (if present, <dev_id> is kind-specific)
+
+ C/C++:
+  int talshTensorGetBodyAccess( //out: error code (0:success)
+   talsh_tens_t * tens_block,   //in: pointer to a tensor block
+   void ** body_p,              //out: pointer to the tensor body image
+   int data_kind,               //in: requested data kind
+   int dev_id,                  //in: requested device id, either kind-specific or flat
+   int dev_kind = DEV_NULL      //in: requested device kind (if present, <dev_id> is kind-specific)
+  )
+
+  Description:
+   This function returns a pointer to the tensor image which has the requested <data_kind>
+   and resides on device <dev_id> (or {<dev_kind>,<dev_id>}). If no match, returns TALSH_NOT_FOUND.
+
+  NOTE: Upon success, all other tensor images will be discarded. The tensor block must not be in use
+        in order for this function to succeed. If it is in use, TALSH_NOT_ALLOWED will be returned.
 
 4. TAL-SH task API
 

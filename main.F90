@@ -200,7 +200,7 @@
         if(ierr.ne.TALSH_SUCCESS) then; ierr=14; return; endif
         return
         end subroutine test_talsh_f
-!----------------------------------------------------
+!-----------------------------------------------------
         subroutine benchmark_tensor_contractions(ierr)
 !Benchmarks tensor contraction performance.
          use, intrinsic:: ISO_C_BINDING
@@ -227,7 +227,7 @@
          type(talsh_tens_t):: dtens,ltens,rtens
          type(talsh_task_t):: tsk
          complex(8):: cval
-         real(C_DOUBLE):: flops,tm,tmc,tmi,tmo,gn1,cn1
+         real(C_DOUBLE):: flops,tm,tmc,tmi,tmo,tmm,gn1,cn1
 
          interface
           real(C_DOUBLE) function talshTensorImageNorm1_cpu(talsh_tens) bind(c,name='talshTensorImageNorm1_cpu')
@@ -326,6 +326,7 @@
               enddo
   !Contract tensors:
               n=n+1 !tensor contraction number
+   !Get the symbolic contraction pattern:
               call get_contr_pattern_sym(rl,rr,cptrn,cptrn_sym,l,ierr); if(ierr.ne.0) then; ierr=4; return; endif
               do i=1,l; str(i:i)=cptrn_sym(i); enddo
               write(*,'(2x,"Contraction ",i7,": (",16(1x,i3))',ADVANCE='NO') n,ddims(1:rd)
@@ -334,11 +335,11 @@
               call printl(6,'): '//str(1:l),adv=.FALSE.)
 !             write(*,'(":",32(1x,i3))',ADVANCE='NO') cptrn(1:rl+rr)
    !Construct tensor blocks:
-              cval=(1d-1,0d0); ierr=talsh_tensor_construct(dtens,R8,ddims(1:rd),init_val=cval)
+              cval=(1d-1,0d0); ierr=talsh_tensor_construct(dtens,R8,ddims(1:rd),in_hab=YEP,init_val=cval)
               if(ierr.ne.TALSH_SUCCESS) then; ierr=5; return; endif
-              cval=(1d-2,0d0); ierr=talsh_tensor_construct(ltens,R8,ldims(1:rl),init_val=cval)
+              cval=(1d-2,0d0); ierr=talsh_tensor_construct(ltens,R8,ldims(1:rl),in_hab=YEP,init_val=cval)
               if(ierr.ne.TALSH_SUCCESS) then; ierr=6; return; endif
-              cval=(1d-3,0d0); ierr=talsh_tensor_construct(rtens,R8,rdims(1:rr),init_val=cval)
+              cval=(1d-3,0d0); ierr=talsh_tensor_construct(rtens,R8,rdims(1:rr),in_hab=YEP,init_val=cval)
               if(ierr.ne.TALSH_SUCCESS) then; ierr=7; return; endif
 #ifndef NO_GPU
    !Schedule tensor contraction on GPU:
@@ -347,9 +348,19 @@
               if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=8; return; endif
    !Wait for GPU completion:
               ierr=talsh_task_wait(tsk,sts); if(ierr.ne.TALSH_SUCCESS.or.sts.ne.TALSH_TASK_COMPLETED) then; ierr=9; return; endif
-              ierr=talsh_task_time(tsk,tm,tmc,tmi,tmo)
+              ierr=talsh_task_time(tsk,tm,tmc,tmi,tmo,tmm)
               if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=10; return; endif
-              write(*,'(": ",D8.2,1x,D8.2)',ADVANCE='NO') flops/dble(words),flops/tmc
+              write(*,'(": ",D8.2)',ADVANCE='NO') flops/dble(words) !compute intensity
+              if(tmc.gt.0d0) then
+               write(*,'(1x,D8.2)',ADVANCE='NO') flops/tmc !GPU tensor contraction Flop/s
+              else
+               write(*,'(" ???")',ADVANCE='NO')
+              endif
+              if(tmm.gt.0d0) then
+               write(*,'(1x,D8.2)',ADVANCE='NO') flops/tmm !GPU matrix multiplication Flop/s
+              else
+               write(*,'(" ???")',ADVANCE='NO')
+              endif
               gn1=talshTensorImageNorm1_cpu(dtens)!; write(*,'(1x,"Destination Norm1 (GPU) = ",D25.14)') gn1
    !Destruct task handle:
               ierr=talsh_task_destruct(tsk); if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
@@ -362,9 +373,13 @@
               ierr=talsh_tensor_contract(str(1:l),dtens,ltens,rtens,dev_id=talsh_flat_dev_id(DEV_HOST,0),talsh_task=tsk)
               if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=14; return; endif
               ierr=talsh_task_wait(tsk,sts); if(ierr.ne.TALSH_SUCCESS.or.sts.ne.TALSH_TASK_COMPLETED) then; ierr=15; return; endif
-              ierr=talsh_task_time(tsk,tm,tmc,tmi,tmo)
+              ierr=talsh_task_time(tsk,tm,tmc,tmi,tmo,tmm)
               if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=16; return; endif
-              write(*,'(1x,D8.2)') flops/tm
+              if(tm.gt.0d0) then
+               write(*,'(1x,D8.2)') flops/tm !CPU tensor contraction Flop/s
+              else
+               write(*,'(" ???")')
+              endif
               cn1=talshTensorImageNorm1_cpu(dtens)!; write(*,'(1x,"Destination Norm1 (CPU) = ",D25.14)') cn1
 #ifndef NO_GPU
               if(dabs(cn1-gn1).gt.CMP_ZERO) then

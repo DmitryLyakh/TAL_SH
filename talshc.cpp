@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API.
-REVISION: 2016/08/17
+REVISION: 2016/08/25
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -115,6 +115,8 @@ int talsh_tensor_image_info(const talsh_tens_t * talsh_tens, //in: TAL-SH tensor
 // Discard tensor body images:
 static int talsh_tensor_image_discard(talsh_tens_t * talsh_tens, int image_id);
 static int talsh_tensor_image_discard_other(talsh_tens_t * talsh_tens, int image_id);
+// Choose an appropriate tensor body image to use in a tensor operation:
+static int talsh_choose_image_for_device(talsh_tens_t * tens, unsigned int coh_ctrl, int * copied, int dvk, int dvn = DEV_NULL);
 // Host task API:
 static int host_task_create(host_task_t ** host_task);
 static int host_task_clean(host_task_t * host_task);
@@ -131,8 +133,6 @@ static int talsh_tensor_c_dissoc(tensBlck_t * tensC);
 static int talsh_find_optimal_device(const talsh_tens_t * tens0,
                                      const talsh_tens_t * tens1 = NULL,
                                      const talsh_tens_t * tens2 = NULL);
-// Choose the appropriate tensor body image to use in a tensor operation:
-static int talsh_choose_image_for_device(talsh_tens_t * tens, unsigned int coh_ctrl, int * copied, int dvk, int dvn = DEV_NULL);
 // Additional TAL-SH tensor API:
 static int talshTensorIsHealthy(const talsh_tens_t * talsh_tens);
 // Additional TAL-SH task API:
@@ -948,6 +948,32 @@ int talshTensorShape(const talsh_tens_t * tens_block, talsh_tens_shape_t * tens_
  return errc;
 }
 
+int talshTensorDataKind(const talsh_tens_t * tens_block, int * num_images, int * data_kinds)
+/** Returns the data kind of each tensor image. **/
+{
+ int i;
+
+ if(tens_block == NULL || num_images == NULL || data_kinds == NULL) return TALSH_INVALID_ARGS;
+ if(talshTensorIsEmpty(tens_block) != NOPE) return TALSH_OBJECT_IS_EMPTY;
+ *num_images=tens_block->ndev;
+ for(i=0;i<(*num_images);++i) data_kinds[i]=tens_block->data_kind[i];
+ return TALSH_SUCCESS;
+}
+
+int talshTensorInUse(const talsh_tens_t * tens_block)
+/** Returns YEP is the tensor block is currently in use, NOPE otherwise.
+    In case of an error, an error code is returned. **/
+{
+ int i;
+
+ if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
+ if(tens_block == NULL) return TALSH_INVALID_ARGS;
+ if(talshTensorIsEmpty(tens_block) != NOPE) return TALSH_OBJECT_IS_EMPTY;
+ if(talshTensorIsHealthy(tens_block) != YEP) return TALSH_FAILURE;
+ for(i=0;i<tens_block->ndev;++i) if(tens_block->avail[i] != YEP) return YEP;
+ return NOPE;
+}
+
 int talshTensorPresence(const talsh_tens_t * tens_block, int * ncopies, int copies[], int data_kinds[], int dev_kind, int dev_id)
 /** Returns the list of devices on which a copy of the tensor block resides, together with the data kind.
     The presence of optional <dev_kind> and <dev_id> arguments further customizes the search,
@@ -994,6 +1020,44 @@ int talshTensorPresence(const talsh_tens_t * tens_block, int * ncopies, int copi
 int talshTensorPresence_(const talsh_tens_t * tens_block, int * ncopies, int copies[], int data_kinds[], int dev_kind, int dev_id) //Fortran wrapper
 {
  return talshTensorPresence(tens_block, ncopies, copies, data_kinds, dev_kind, dev_id);
+}
+
+int talshTensorGetBodyAccess(talsh_tens_t * tens_block,
+                             void ** body_p,
+                             int data_kind,
+                             int dev_id,
+                             int dev_kind)
+/** Based on the requested data kind and device, returns a pointer to the body
+    of the matching tensor image (if any). If no match, TALSH_NOT_FOUND is returned.
+    Upon success, all other tensor images will be discarded. **/
+{
+ int i,errc;
+
+ if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
+ if(tens_block == NULL || body_p == NULL) return TALSH_INVALID_ARGS;
+ *body_p=NULL;
+ if(talshTensorIsEmpty(tens_block) != NOPE) return TALSH_OBJECT_IS_EMPTY;
+ if(talshTensorIsHealthy(tens_block) != YEP) return TALSH_FAILURE;
+ if(talshTensorInUse(tens_block) != NOPE) return TALSH_NOT_ALLOWED;
+ if(dev_kind != DEV_NULL) dev_id=talshFlatDevId(dev_kind,dev_id);
+ if(dev_id >= 0 && dev_id < DEV_MAX){
+  for(i=0;i<tens_block->ndev;++i){
+   if(tens_block->dev_rsc[i].dev_id == dev_id && tens_block->data_kind[i] == data_kind){
+    *body_p=tens_block->dev_rsc[i].gmem_p;
+    errc=talsh_tensor_image_discard_other(tens_block,i);
+    if(errc != TALSH_SUCCESS) errc=TALSH_FAILURE;
+    return errc;
+   }
+  }
+ }else{
+  return TALSH_INVALID_ARGS;
+ }
+ return TALSH_NOT_FOUND;
+}
+
+int talshTensorGetBodyAccess_(talsh_tens_t * tens_block, void ** body_p, int data_kind, int dev_id, int dev_kind)
+{
+ return talshTensorGetBodyAccess(tens_block,body_p,data_kind,dev_id,dev_kind);
 }
 
 static int talshTensorIsHealthy(const talsh_tens_t * talsh_tens)
@@ -1566,11 +1630,11 @@ int talshTasksWait(int ntasks, talsh_task_t talsh_tasks[], int stats[])
  return TALSH_SUCCESS;
 }
 
-int talshTaskTime(talsh_task_t * talsh_task, double * total, double * comput, double * input, double * output)
+int talshTaskTime(talsh_task_t * talsh_task, double * total, double * comput, double * input, double * output, double * mmul)
 /** Returns the timing information for a given TAL-SH task. **/
 {
  int sts,errc;
- float tot_tm,in_tm,out_tm,comp_tm;
+ float tot_tm,in_tm,out_tm,comp_tm,mmul_tm;
  cudaTask_t *cuda_task_p;
 
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
@@ -1582,13 +1646,13 @@ int talshTaskTime(talsh_task_t * talsh_task, double * total, double * comput, do
  }
  switch(talsh_task->dev_kind){
   case DEV_HOST:
-   tot_tm=(float)(talsh_task->exec_time); in_tm=-1.0f; out_tm=-1.0f; comp_tm=-1.0f;
+   tot_tm=(float)(talsh_task->exec_time); in_tm=-1.0f; out_tm=-1.0f; comp_tm=-1.0f; mmul_tm=-1.0f;
    if(tot_tm < 0.0f) errc=TALSH_FAILURE;
    break;
   case DEV_NVIDIA_GPU:
 #ifndef NO_GPU
    cuda_task_p=(cudaTask_t*)(talsh_task->task_p);
-   tot_tm=cuda_task_time(cuda_task_p,&in_tm,&out_tm,&comp_tm);
+   tot_tm=cuda_task_time(cuda_task_p,&in_tm,&out_tm,&comp_tm,&mmul_tm);
    if(tot_tm < 0.0f) errc=TALSH_FAILURE;
 #else
    return TALSH_NOT_AVAILABLE;
@@ -1615,12 +1679,13 @@ int talshTaskTime(talsh_task_t * talsh_task, double * total, double * comput, do
  if(comput != NULL) *comput=(double)comp_tm;
  if(input != NULL) *input=(double)in_tm;
  if(output != NULL) *output=(double)out_tm;
+ if(mmul != NULL) *mmul=(double)mmul_tm;
  return errc;
 }
 
-int talshTaskTime_(talsh_task_t * talsh_task, double * total, double * comput, double * input, double * output) //Fortran wrapper
+int talshTaskTime_(talsh_task_t * talsh_task, double * total, double * comput, double * input, double * output, double * mmul) //Fortran wrapper
 {
- return talshTaskTime(talsh_task,total,comput,input,output);
+ return talshTaskTime(talsh_task,total,comput,input,output,mmul);
 }
 
 void talshTaskPrint(const talsh_task_t * talsh_task)

@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2016/08/17
+REVISION: 2016/08/25
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -1607,9 +1607,13 @@ __host__ int cuda_task_clean(cudaTask_t *cuda_task)
 {
  if(cuda_task == NULL) return -1;
  cuda_task->task_error=-1; cuda_task->gpu_id=-1; cuda_task->num_args=0;
- cuda_task->stream_hl=-1; cuda_task->event_start_hl=-1; cuda_task->event_comput_hl=-1;
+ cuda_task->stream_hl=-1;
+ cuda_task->event_start_hl=-1; cuda_task->event_comput_hl=-1;
  cuda_task->event_output_hl=-1; cuda_task->event_finish_hl=-1;
- for(int i=0;i<MAX_TENSOR_OPERANDS;i++){
+#ifdef GPU_FINE_TIMING
+ cuda_task->event_mmbeg_hl=-1; cuda_task->event_mmend_hl=-1;
+#endif
+ for(int i=0;i<MAX_TENSOR_OPERANDS;++i){
   cuda_task->tens_args[i].tens_p=NULL;
   cuda_task->tens_args[i].prmn_p=NULL;
   cuda_task->tens_args[i].const_mem_entry=-1;
@@ -1651,6 +1655,18 @@ __host__ int cuda_task_construct(cudaTask_t *cuda_task, int gpu_id)
       errc=cuda_event_get(gpu_id,&(cuda_task->event_finish_hl));
       if(errc != 0){
        cuda_task->event_finish_hl=-1; if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=7;
+#ifdef GPU_FINE_TIMING
+      }else{
+       errc=cuda_event_get(gpu_id,&(cuda_task->event_mmbeg_hl));
+       if(errc != 0){
+        cuda_task->event_mmbeg_hl=-1; if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=8;
+       }else{
+        errc=cuda_event_get(gpu_id,&(cuda_task->event_mmend_hl));
+        if(errc != 0){
+         cuda_task->event_mmend_hl=-1; if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=9;
+        }
+       }
+#endif
       }
      }
     }
@@ -1659,6 +1675,10 @@ __host__ int cuda_task_construct(cudaTask_t *cuda_task, int gpu_id)
   if(errc == 0){
    cuda_task->task_error=-1; cuda_task->gpu_id=gpu_id;
   }else{
+#ifdef GPU_FINE_TIMING
+   i=cuda_event_release(gpu_id,cuda_task->event_mmbeg_hl); cuda_task->event_mmbeg_hl=-1;
+   i=cuda_event_release(gpu_id,cuda_task->event_mmend_hl); cuda_task->event_mmend_hl=-1;
+#endif
    i=cuda_event_release(gpu_id,cuda_task->event_finish_hl); cuda_task->event_finish_hl=-1;
    i=cuda_event_release(gpu_id,cuda_task->event_output_hl); cuda_task->event_output_hl=-1;
    i=cuda_event_release(gpu_id,cuda_task->event_comput_hl); cuda_task->event_comput_hl=-1;
@@ -1694,6 +1714,10 @@ __host__ int cuda_task_destruct(cudaTask_t *cuda_task)
   errc=cuda_event_release(cuda_task->gpu_id,cuda_task->event_comput_hl); cuda_task->event_comput_hl=-1; if(errc != 0) n++;
   errc=cuda_event_release(cuda_task->gpu_id,cuda_task->event_output_hl); cuda_task->event_output_hl=-1; if(errc != 0) n++;
   errc=cuda_event_release(cuda_task->gpu_id,cuda_task->event_finish_hl); cuda_task->event_finish_hl=-1; if(errc != 0) n++;
+#ifdef GPU_FINE_TIMING
+  errc=cuda_event_release(cuda_task->gpu_id,cuda_task->event_mmbeg_hl); cuda_task->event_mmbeg_hl=-1; if(errc != 0) n++;
+  errc=cuda_event_release(cuda_task->gpu_id,cuda_task->event_mmend_hl); cuda_task->event_mmend_hl=-1; if(errc != 0) n++;
+#endif
 // Clean the CUDA task:
   errc=cuda_task_clean(cuda_task);
  }else{
@@ -1939,31 +1963,50 @@ __host__ int cuda_task_arg_destroy(cudaTask_t *cuda_task, int arg_num) //interna
  return errc;
 }
 
-__host__ float cuda_task_time(const cudaTask_t *cuda_task, float *in_copy, float *out_copy, float *comp)
+__host__ float cuda_task_time(const cudaTask_t *cuda_task, float *in_copy, float *out_copy, float *comp, float *mmul)
 /** Returns the time (in seconds) the CUDA task took to complete. Also, <in_copy> is the input copying time,
-    <out_copy> is the output copying time, and <comp> is the computing time in seconds.
-    A negative return value means an error occurred. **/
+    <out_copy> is the output copying time, <comp> is the computing time, and <mmul> is the matrix
+    multiplication time in seconds. A negative return value means an error occurred. **/
 {
  int cur_gpu,errc;
  float time_ms;
  cudaEvent_t *evnt0_p,*evnt1_p,*evnt2_p,*evnt3_p;
+#ifdef GPU_FINE_TIMING
+ cudaEvent_t *evnt4_p,*evnt5_p;
+#endif
  cudaError_t err;
 
  if(cuda_task != NULL){
-  if(cuda_task->task_error < 0) return -9.0f;
-  if(cuda_task->gpu_id < 0 || cuda_task->gpu_id >= MAX_GPUS_PER_NODE) return -8.0f;
-  cur_gpu=gpu_in_focus(); if(cur_gpu < 0 || cur_gpu >= MAX_GPUS_PER_NODE) return -7.0f;
-  errc=gpu_activate(cuda_task->gpu_id); if(errc != 0) return -6.0f;
-  evnt0_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_start_hl); if(evnt0_p == NULL) return -5.0f;
-  evnt1_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_comput_hl); if(evnt1_p == NULL) return -4.0f;
-  evnt2_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_output_hl); if(evnt2_p == NULL) return -3.0f;
-  evnt3_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_finish_hl); if(evnt3_p == NULL) return -2.0f;
-  err=cudaEventElapsedTime(&time_ms,*evnt0_p,*evnt1_p); //time in miliseconds
-  if(err == cudaSuccess){*in_copy=time_ms/1000.0f;}else{*in_copy=-1.0f;}
-  err=cudaEventElapsedTime(&time_ms,*evnt1_p,*evnt2_p); //time in miliseconds
-  if(err == cudaSuccess){*comp=time_ms/1000.0f;}else{*comp=-1.0f;}
-  err=cudaEventElapsedTime(&time_ms,*evnt2_p,*evnt3_p); //time in miliseconds
-  if(err == cudaSuccess){*out_copy=time_ms/1000.0f;}else{*out_copy=-1.0f;}
+  if(cuda_task->task_error < 0) return -10.0f; //unfinished or empty task
+  if(cuda_task->gpu_id < 0 || cuda_task->gpu_id >= MAX_GPUS_PER_NODE) return -9.0f;
+  cur_gpu=gpu_in_focus(); if(cur_gpu < 0 || cur_gpu >= MAX_GPUS_PER_NODE) return -8.0f;
+  errc=gpu_activate(cuda_task->gpu_id); if(errc != 0) return -7.0f;
+  evnt0_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_start_hl); if(evnt0_p == NULL) return -6.0f;
+  evnt1_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_comput_hl); if(evnt1_p == NULL) return -5.0f;
+  evnt2_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_output_hl); if(evnt2_p == NULL) return -4.0f;
+  evnt3_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_finish_hl); if(evnt3_p == NULL) return -3.0f;
+#ifdef GPU_FINE_TIMING
+  evnt4_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_mmbeg_hl); if(evnt4_p == NULL) return -2.0f;
+  evnt5_p=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_mmend_hl); if(evnt5_p == NULL) return -1.0f;
+#endif
+  if(in_copy != NULL){
+   err=cudaEventElapsedTime(&time_ms,*evnt0_p,*evnt1_p); //time in miliseconds
+   if(err == cudaSuccess){*in_copy=time_ms/1000.0f;}else{*in_copy=-1.0f;}
+  }
+  if(comp != NULL){
+   err=cudaEventElapsedTime(&time_ms,*evnt1_p,*evnt2_p); //time in miliseconds
+   if(err == cudaSuccess){*comp=time_ms/1000.0f;}else{*comp=-1.0f;}
+  }
+  if(out_copy != NULL){
+   err=cudaEventElapsedTime(&time_ms,*evnt2_p,*evnt3_p); //time in miliseconds
+   if(err == cudaSuccess){*out_copy=time_ms/1000.0f;}else{*out_copy=-1.0f;}
+  }
+#ifdef GPU_FINE_TIMING
+  if(mmul != NULL){
+   err=cudaEventElapsedTime(&time_ms,*evnt4_p,*evnt5_p); //time in miliseconds
+   if(err == cudaSuccess){*mmul=time_ms/1000.0f;}else{*mmul=-1.0f;}
+  }
+#endif
   err=cudaEventElapsedTime(&time_ms,*evnt0_p,*evnt3_p); //time in miliseconds
   if(err == cudaSuccess){time_ms/=1000.0f;}else{time_ms=-1.0f;} //time in seconds
   errc=gpu_activate(cur_gpu);
@@ -1971,6 +2014,11 @@ __host__ float cuda_task_time(const cudaTask_t *cuda_task, float *in_copy, float
  }else{
   return -13.666f; //null task
  }
+}
+
+__host__ float cuda_task_time_(const cudaTask_t *cuda_task, float *in_copy, float *out_copy, float *comp, float *mmul)
+{
+ return cuda_task_time(cuda_task,in_copy,out_copy,comp,mmul);
 }
 
 void cuda_task_print(const cudaTask_t *cuda_task)
@@ -1985,6 +2033,10 @@ void cuda_task_print(const cudaTask_t *cuda_task)
   printf(" CUDA task event_comput handle: %d\n",cuda_task->event_comput_hl);
   printf(" CUDA task event_output handle: %d\n",cuda_task->event_output_hl);
   printf(" CUDA task event_finish handle: %d\n",cuda_task->event_finish_hl);
+#ifdef GPU_FINE_TIMING
+  printf(" CUDA task event_mmbeg handle : %d\n",cuda_task->event_mmbeg_hl);
+  printf(" CUDA task event_mmend handle : %d\n",cuda_task->event_mmend_hl);
+#endif
   printf(" CUDA task coherence_var      : %u\n",cuda_task->coherence);
   printf(" CUDA task num_args           : %u\n",cuda_task->num_args);
   if(cuda_task->num_args <= MAX_TENSOR_OPERANDS){
@@ -3029,6 +3081,9 @@ NOTES:
  void *darg,*larg,*rarg,*alpha_p,*beta_p;
  cudaStream_t *cuda_stream;
  cudaEvent_t *cuda_start,*cuda_comput,*cuda_output,*cuda_finish,*dep_event;
+#ifdef GPU_FINE_TIMING
+ cudaEvent_t *cuda_mmbeg,*cuda_mmend;
+#endif
  cudaError_t err;
  const char *err_msg;
 #ifndef NO_BLAS
@@ -3175,6 +3230,12 @@ NOTES:
  if(cuda_output == NULL){errc=cuda_task_record(cuda_task,coh_ctrl,7); errc=gpu_activate(cur_gpu); return 7;}
  cuda_finish=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_finish_hl);
  if(cuda_finish == NULL){errc=cuda_task_record(cuda_task,coh_ctrl,8); errc=gpu_activate(cur_gpu); return 8;}
+#ifdef GPU_FINE_TIMING
+ cuda_mmbeg=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_mmbeg_hl);
+ if(cuda_mmbeg == NULL){errc=cuda_task_record(cuda_task,coh_ctrl,8); errc=gpu_activate(cur_gpu); return 8;}
+ cuda_mmend=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_mmend_hl);
+ if(cuda_mmend == NULL){errc=cuda_task_record(cuda_task,coh_ctrl,8); errc=gpu_activate(cur_gpu); return 8;}
+#endif
 //Determine the volume and required matricization permutation for each tensor argument:
  get_contr_permutations(lrank,rrank,cptrn,dprm,lprm,rprm,&ncd,&nlu,&nru,&errc); //permutations and numbers of dimensions
  if(errc){i=cuda_task_record(cuda_task,coh_ctrl,9); i=gpu_activate(cur_gpu); return 9;}
@@ -3613,6 +3674,15 @@ NOTES:
   rarg=rtens->dst_rsc->gmem_p;
  }
 //Schedule the appropriate computation kernel:
+#ifdef GPU_FINE_TIMING
+// Record a CUDA event:
+ err=cudaEventRecord(*cuda_mmbeg,*cuda_stream);
+ if(err != cudaSuccess){
+  err_msg=cudaGetErrorString(err);
+  if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_contract_dlf): Unable to record the mmbeg event: %s\n",err_msg);
+  errc=cuda_task_record(cuda_task,coh_ctrl,66); errc=gpu_activate(cur_gpu); return 66;
+ }
+#endif
 // Scalar multiplication:
  if(drank == 0 && lrank == 0 && rrank == 0){
   switch(dtens->data_kind){
@@ -3739,7 +3809,16 @@ NOTES:
   }
 #endif
  }
- gpu_stats[gpu_num].flops+=2*lc*ll*lr;
+#ifdef GPU_FINE_TIMING
+// Record a CUDA event:
+ err=cudaEventRecord(*cuda_mmend,*cuda_stream);
+ if(err != cudaSuccess){
+  err_msg=cudaGetErrorString(err);
+  if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_contract_dlf): Unable to record the mmend event: %s\n",err_msg);
+  errc=cuda_task_record(cuda_task,coh_ctrl,67); errc=gpu_activate(cur_gpu); return 67;
+ }
+#endif
+ gpu_stats[gpu_num].flops+=2.0*((double)(lc))*((double)(ll))*((double)(lr));
 //Schedule the inverse tensor transpose for the destination tensor:
  if(perm_d == YEP){
   if(TRANS_SHMEM == EFF_TRN_ON){

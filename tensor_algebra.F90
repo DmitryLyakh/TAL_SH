@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h"!
-!REVISION: 2016/04/26
+!REVISION: 2016/08/25
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -415,14 +415,15 @@
           type(C_PTR), value:: cuda_task
          end function cuda_task_wait
   !Get the task timing in seconds:
-         real(C_FLOAT) function cuda_task_time(cuda_task,in_copy,out_copy,comp) bind(c,name='cuda_task_time')
+         real(C_FLOAT) function cuda_task_time_(cuda_task,in_copy,out_copy,comp,mmul) bind(c,name='cuda_task_time_')
           import
           implicit none
           type(C_PTR), value, intent(in):: cuda_task
           real(C_FLOAT), intent(out):: in_copy
           real(C_FLOAT), intent(out):: out_copy
           real(C_FLOAT), intent(out):: comp
-         end function cuda_task_time
+          real(C_FLOAT), intent(out):: mmul
+         end function cuda_task_time_
 #endif
         end interface
 
