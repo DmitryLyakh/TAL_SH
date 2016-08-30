@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2016/08/25
+!REVISION: 2016/08/26
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -375,6 +375,7 @@
         public talsh_tensor_shape
         public talsh_tensor_data_kind
         public talsh_tensor_presence
+        public talsh_tensor_get_body_access
         public talsh_tensor_print_info
  !TAL-SH task API:
         public talsh_task_destruct
