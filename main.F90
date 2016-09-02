@@ -40,15 +40,15 @@
 !        write(*,*)''
 #endif
 !Test TAL-SH Fortran API interface:
-        write(*,'("Testing TAL-SH Fortran API ...")')
-        call test_talsh_f(ierr)
-        write(*,'("Done: Status ",i5)') ierr
-        if(ierr.ne.0) stop
-!Benchmark tensor contraction performance:
-!        write(*,'("Benchmarking tensor contraction performance ...")')
-!        call benchmark_tensor_contractions(ierr)
+!        write(*,'("Testing TAL-SH Fortran API ...")')
+!        call test_talsh_f(ierr)
 !        write(*,'("Done: Status ",i5)') ierr
 !        if(ierr.ne.0) stop
+!Benchmark tensor contraction performance:
+        write(*,'("Benchmarking tensor contraction performance ...")')
+        call benchmark_tensor_contractions(ierr)
+        write(*,'("Done: Status ",i5)') ierr
+        if(ierr.ne.0) stop
         stop
         end program main
 !------------------------------------

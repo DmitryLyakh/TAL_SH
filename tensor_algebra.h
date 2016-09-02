@@ -307,8 +307,8 @@ typedef struct{
  int event_output_hl;    //handle of the CUDA event recorded when the CUDA kernels finish (before output to the Host)
  int event_finish_hl;    //handle of the CUDA event recorded at the end of the task (full completion)
 #ifdef GPU_FINE_TIMING
- int event_mmbeg_hl      //handle of the CUDA event recorded before the matrix multiplication starts
- int event_mmend_hl      //handle of the CUDA event recorded after the matrix multiplication finishes
+ int event_mmbeg_hl;     //handle of the CUDA event recorded before the matrix multiplication starts
+ int event_mmend_hl;     //handle of the CUDA event recorded after the matrix multiplication finishes
 #endif
  unsigned int coherence; //coherence control for this task (see COPY_X, COPY_XX, and COPY_XXX constants)
  unsigned int num_args;  //number of tensor arguments participating in the tensor operation
