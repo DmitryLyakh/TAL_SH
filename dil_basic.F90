@@ -1,5 +1,5 @@
 !BASIC FORTRAN PARAMETERS
-!REVISION: 2016-04-17
+!REVISION: 2016/09/01
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -36,7 +36,7 @@
 !DIR$ ATTRIBUTES ALIGN:128:: INTB,INTS,INTD,INTL,REALS,REALD,REALL
 #endif
 
-!TENSOR DATA KINDS (keep consistent with tensor_algebra.h):
+!BASIC DATA KINDS (keep consistent with tensor_algebra.h):
         integer(C_INT), parameter, public:: NO_TYPE=0 !no type/kind
         integer(C_INT), parameter, public:: R4=4      !float tensor data kind
         integer(C_INT), parameter, public:: R8=8      !double tensor data kind
@@ -56,7 +56,7 @@
 !BASIC ALIASES (keep consistent with tensor_algebra.h):
         integer(C_INT), parameter, public:: NOPE=0                  !"NO" answer
         integer(C_INT), parameter, public:: YEP=1                   !"YES" answer
-        integer(C_INT), parameter, public:: SUCCESS=0               !generic success
+        integer(C_INT), parameter, public:: SUCCESS=0               !success status
         integer(C_INT), parameter, public:: GENERIC_ERROR=-666      !generic error
         integer(C_INT), parameter, public:: TRY_LATER=-918273645    !resources are currently busy: KEEP THIS UNIQUE!
         integer(C_INT), parameter, public:: NOT_CLEAN=-192837465    !resource release did not go cleanly but you may continue: KEEP THIS UNIQUE!
@@ -64,6 +64,18 @@
 !DIR$ ATTRIBUTES OFFLOAD:mic:: NOPE,YEP,SUCCESS,GENERIC_ERROR,TRY_LATER,NOT_CLEAN
 !DIR$ ATTRIBUTES ALIGN:128:: NOPE,YEP,SUCCESS,GENERIC_ERROR,TRY_LATER,NOT_CLEAN
 #endif
+
+!DEVICE KINDS (keep consistent with tensor_algebra.h):
+        integer(C_INT), parameter, public:: MAX_GPUS_PER_NODE=8   !max number of NVidia GPUs on a node
+        integer(C_INT), parameter, public:: MAX_MICS_PER_NODE=8   !max number of Intel MICs on a node
+        integer(C_INT), parameter, public:: MAX_AMDS_PER_NODE=8   !max number of AMD GPUs on a node
+        integer(C_INT), parameter, public:: DEV_NULL=-1           !abstract null device
+        integer(C_INT), parameter, public:: DEV_DEFAULT=DEV_NULL  !will allow runtime to choose the device
+        integer(C_INT), parameter, public:: DEV_HOST=0            !multicore CPU Host (includes all self-hosted systems)
+        integer(C_INT), parameter, public:: DEV_NVIDIA_GPU=1      !NVidia GPU
+        integer(C_INT), parameter, public:: DEV_INTEL_MIC=2       !Intel Xeon Phi
+        integer(C_INT), parameter, public:: DEV_AMD_GPU=3         !AMD GPU
+        integer(C_INT), parameter, public:: DEV_MAX=1+MAX_GPUS_PER_NODE+MAX_MICS_PER_NODE+MAX_AMDS_PER_NODE
 
 !BASIC NUMERIC:
         real(4), parameter, public:: EPS4=epsilon(1.0) !single precision epsilon

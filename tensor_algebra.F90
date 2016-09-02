@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h"!
-!REVISION: 2016/08/25
+!REVISION: 2016/09/01
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -32,18 +32,6 @@
 !DIR$ ATTRIBUTES ALIGN:128:: MAX_TENSOR_RANK,MAX_TENSOR_OPERANDS
 #endif
 
-!DEVICE KINDS (keep consistent with tensor_algebra.h):
-        integer(C_INT), parameter, public:: MAX_GPUS_PER_NODE=8   !max number of NVidia GPUs on a node
-        integer(C_INT), parameter, public:: MAX_MICS_PER_NODE=8   !max number of Intel MICs on a node
-        integer(C_INT), parameter, public:: MAX_AMDS_PER_NODE=8   !max number of AMD GPUs on a node
-        integer(C_INT), parameter, public:: DEV_NULL=-1           !abstract null device
-        integer(C_INT), parameter, public:: DEV_DEFAULT=DEV_NULL  !will allow runtime to choose the device
-        integer(C_INT), parameter, public:: DEV_HOST=0            !multicore CPU Host (includes all self-hosted systems)
-        integer(C_INT), parameter, public:: DEV_NVIDIA_GPU=1      !NVidia GPU
-        integer(C_INT), parameter, public:: DEV_INTEL_MIC=2       !Intel Xeon Phi
-        integer(C_INT), parameter, public:: DEV_AMD_GPU=3         !AMD GPU
-        integer(C_INT), parameter, public:: DEV_MAX=1+MAX_GPUS_PER_NODE+MAX_MICS_PER_NODE+MAX_AMDS_PER_NODE
-
 !ALIASES (keep consistent with tensor_algebra.h):
         integer(C_INT), parameter, public:: BLAS_ON=0                   !enables BLAS
         integer(C_INT), parameter, public:: BLAS_OFF=1                  !disables BLAS
@@ -64,10 +52,10 @@
         integer(C_INT), parameter, public:: NO_COPY_BACK=0              !keeps the tensor-result on Accelerator without updating Host
         integer(C_INT), parameter, public:: COPY_BACK=1                 !tensor-result will be copied back from Accelerator to Host (default)
 #ifndef NO_PHI
-!DIR$ ATTRIBUTES OFFLOAD:mic:: BLAS_ON,BLAS_OFF,EFF_TRN_OFF,EFF_TRN_ON,DEVICE_UNABLE,TRY_LATER,NOT_CLEAN
-!DIR$ ATTRIBUTES OFFLOAD:mic:: NOPE,YEP,EVERYTHING,SOURCE,DESTINATION,TEMPORARY,DEV_OFF,DEV_ON,DEV_ON_BLAS,NO_COPY_BACK,COPY_BACK
-!DIR$ ATTRIBUTES ALIGN:128:: BLAS_ON,BLAS_OFF,EFF_TRN_OFF,EFF_TRN_ON,DEVICE_UNABLE,TRY_LATER,NOT_CLEAN
-!DIR$ ATTRIBUTES ALIGN:128:: NOPE,YEP,EVERYTHING,SOURCE,DESTINATION,TEMPORARY,DEV_OFF,DEV_ON,DEV_ON_BLAS,NO_COPY_BACK,COPY_BACK
+!DIR$ ATTRIBUTES OFFLOAD:mic:: BLAS_ON,BLAS_OFF,EFF_TRN_OFF,EFF_TRN_ON,DEVICE_UNABLE,NO_COPY_BACK,COPY_BACK
+!DIR$ ATTRIBUTES OFFLOAD:mic:: EVERYTHING,SOURCE,DESTINATION,TEMPORARY,DEV_OFF,DEV_ON,DEV_ON_BLAS
+!DIR$ ATTRIBUTES ALIGN:128:: BLAS_ON,BLAS_OFF,EFF_TRN_OFF,EFF_TRN_ON,DEVICE_UNABLE,NO_COPY_BACK,COPY_BACK
+!DIR$ ATTRIBUTES ALIGN:128:: EVERYTHING,SOURCE,DESTINATION,TEMPORARY,DEV_OFF,DEV_ON,DEV_ON_BLAS
 #endif
         integer(C_INT), parameter, public:: COPY_D=0
         integer(C_INT), parameter, public:: COPY_M=1
