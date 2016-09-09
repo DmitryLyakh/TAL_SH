@@ -505,22 +505,21 @@
 
  !Schedule the tensor contraction:
           ierr=talsh_tensor_contract(str(1:sl),dtens,ltens,rtens,copy_ctrl=COPY_TTT,dev_id=dev,talsh_task=tsk)
-          if(ierr.ne.TALSH_SUCCESS) then
+          if(ierr.eq.TALSH_SUCCESS) then
+  !Wait for completion:
+           ierr=talsh_task_wait(tsk,sts)
+           if(ierr.ne.TALSH_SUCCESS.or.sts.ne.TALSH_TASK_COMPLETED) then; ierr=7; return; endif
+           ierr=talsh_task_time(tsk,tm,tmc,tmi,tmo,tmm)
+           if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=8; return; endif
+           write(*,'(3x,"Timings (total,compute,mm):",3(F8.4),": GFlop/s = ",F12.4,": Overhead = ",F8.2,"%")')&
+                &tm,tmc,tmm,flops/tmc/dble(1024*1024*1024),max(tmc/tmm-1d0,0d0)*1d2
+           write(*,'(3x,"Compute intensity = ",F12.4)') flops/words
+  !Compute the destination tensor norm:
+           dn1=talshTensorImageNorm1_cpu(dtens); write(*,'(3x,"Destination Norm1 = ",D25.14)') dn1
+          else
            write(*,'("Error ",i11)') ierr
-           if(ierr.ne.TRY_LATER.and.ierr.ne.DEVICE_UNABLE) then
-            ierr=6; return
-           endif
+           if(ierr.ne.DEVICE_UNABLE) then; ierr=6; return; endif
           endif
- !Wait for completion:
-          ierr=talsh_task_wait(tsk,sts)
-          if(ierr.ne.TALSH_SUCCESS.or.sts.ne.TALSH_TASK_COMPLETED) then; ierr=7; return; endif
-          ierr=talsh_task_time(tsk,tm,tmc,tmi,tmo,tmm)
-          if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=8; return; endif
-          write(*,'(3x,"Timings (total,compute,mm):",3(F8.4),": GFlop/s = ",F12.4,": Overhead = ",F8.2,"%")')&
-               &tm,tmc,tmm,flops/tmc/dble(1024*1024*1024),max(tmc/tmm-1d0,0d0)*1d2
-          write(*,'(3x,"Compute intensity = ",F12.4)') flops/words
- !Compute the destination tensor norm:
-          dn1=talshTensorImageNorm1_cpu(dtens); write(*,'(3x,"Destination Norm1 = ",D25.14)') dn1
  !Destruct task handle:
           ierr=talsh_task_destruct(tsk)
           if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=9; return; endif

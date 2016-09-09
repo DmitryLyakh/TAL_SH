@@ -46,12 +46,12 @@ FOR DEVELOPERS ONLY:
 #define GPU_MEM_PART_USED 90         //percentage of free GPU global memory to be actually allocated for GPU argument buffers
 #define MEM_ALIGN GPU_CACHE_LINE_LEN //memory alignment (in bytes) for argument buffers
 //Host argument buffer structure:
-#define BLCK_BUF_DEPTH_HOST 7        //number of distinct tensor block buffer levels on Host
-#define BLCK_BUF_TOP_HOST 3          //number of argument buffer entries of the largest size (level 0) on Host: multiple of 3
+#define BLCK_BUF_DEPTH_HOST 12       //number of distinct tensor block buffer levels on Host
+#define BLCK_BUF_TOP_HOST 1          //number of argument buffer entries of the largest size (level 0) on Host: multiple of 3
 #define BLCK_BUF_BRANCH_HOST 2       //branching factor for each subsequent buffer level on Host
 //GPU argument buffer structure (the total number of entries must be less of equal to MAX_GPU_ARGS):
-#define BLCK_BUF_DEPTH_GPU 4         //number of distinct tensor block buffer levels on GPU
-#define BLCK_BUF_TOP_GPU 3           //number of argument buffer entries of the largest size (level 0) on GPU: multiple of 3
+#define BLCK_BUF_DEPTH_GPU 8         //number of distinct tensor block buffer levels on GPU
+#define BLCK_BUF_TOP_GPU 1           //number of argument buffer entries of the largest size (level 0) on GPU: multiple of 3
 #define BLCK_BUF_BRANCH_GPU 2        //branching factor for each subsequent buffer level on GPU
 
 static int VERBOSE=1; //verbosity (for errors)
