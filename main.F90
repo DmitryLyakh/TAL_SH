@@ -505,7 +505,12 @@
 
  !Schedule the tensor contraction:
           ierr=talsh_tensor_contract(str(1:sl),dtens,ltens,rtens,copy_ctrl=COPY_TTT,dev_id=dev,talsh_task=tsk)
-          if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=6; return; endif
+          if(ierr.ne.TALSH_SUCCESS) then
+           write(*,'("Error ",i11)') ierr
+           if(ierr.ne.TRY_LATER.and.ierr.ne.DEVICE_UNABLE) then
+            ierr=6; return
+           endif
+          endif
  !Wait for completion:
           ierr=talsh_task_wait(tsk,sts)
           if(ierr.ne.TALSH_SUCCESS.or.sts.ne.TALSH_TASK_COMPLETED) then; ierr=7; return; endif
