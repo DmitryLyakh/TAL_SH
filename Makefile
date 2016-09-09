@@ -6,13 +6,13 @@ export WRAP ?= NOWRAP
 #Compiler: [GNU|PGI|INTEL|CRAY]:
 export TOOLKIT ?= GNU
 #Optimization: [DEV|OPT]:
-export BUILD_TYPE ?= DEV
+export BUILD_TYPE ?= OPT
 #MPI Library: [MPICH|OPENMPI]:
 export MPILIB ?= MPICH
 #BLAS: [ATLAS|MKL|ACML]:
 export BLASLIB ?= ATLAS
 #Nvidia GPU via CUDA: [CUDA|NOCUDA]:
-export GPU_CUDA ?= NOCUDA
+export GPU_CUDA ?= CUDA
 #Nvidia GPU architecture (two digits):
 export GPU_SM_ARCH ?= 35
 #Operating system: [LINUX|NO_LINUX]:
@@ -27,7 +27,7 @@ export WITH_CUTT ?= NO
 export FOOL_CUDA ?= NO
 
 #GPU FINE TIMING (for benchmarking only):
-export GPU_FINE_TIMING ?= NO
+export GPU_FINE_TIMING ?= YES
 
 #SET YOUR LOCAL PATHS (for unwrapped builds):
 # MPI path:
