@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API header.
-REVISION: 2016/08/25
+REVISION: 2016/10/11
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -89,6 +89,9 @@ typedef struct{
 #ifdef __cplusplus
 extern "C"{
 #endif
+// TAL-SH helper functions:
+//  Check the validity of a data kind and get its size:
+ int talshValidDataKind(int datk, int * datk_size);
 // TAL-SH control API:
 //  Initialize TAL-SH:
  int talshInit(size_t * host_buf_size,

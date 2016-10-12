@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2016/09/09
+!REVISION: 2016/10/11
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -94,6 +94,14 @@
 !       ...
 !INTERFACES FOR EXTERNAL C/C++ FUNCTIONS:
         interface
+ !TAL-SH helper functions:
+  !Check the validity of a data kind and get its size in bytes:
+         integer(C_INT) function talsh_valid_data_kind(datk,datk_size) bind(c,name='talshValidDataKind')
+          import
+          implicit none
+          integer(C_INT), intent(in), value:: datk
+          integer(C_INT), intent(out):: datk_size
+         end function talsh_valid_data_kind
  !TAL-SH control C/C++ API:
   !Initialize TAL-SH:
          integer(C_INT) function talshInit(host_buf_size,host_arg_max,ngpus,gpu_list,nmics,mic_list,namds,amd_list)&
@@ -356,6 +364,8 @@
          module procedure talsh_tensor_construct_shp
         end interface talsh_tensor_construct
 !VISIBILITY:
+ !TAL-SH helper API:
+        public talsh_valid_data_kind
  !TAL-SH control API:
         public talsh_init
         public talsh_shutdown

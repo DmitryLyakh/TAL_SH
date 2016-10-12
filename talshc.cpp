@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API.
-REVISION: 2016/08/25
+REVISION: 2016/10/11
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -502,6 +502,12 @@ static int talsh_choose_image_for_device(talsh_tens_t * tens, unsigned int coh_c
 }
 
 //EXPORTED FUNCTIONS:
+// TAL-SH helper functions:
+int talshValidDataKind(int datk, int * datk_size)
+/** Returns YEP if <datk> is a valid data kind (also returns its size in bytes in <datk_size>). **/
+{
+ return tens_valid_data_kind(datk,datk_size);
+}
 // TAL-SH control API:
 int talshInit(size_t * host_buf_size,    //inout: Host Argument Buffer size in bytes (in: suggested; out: actual)
               int * host_arg_max,        //out: Max number of arguments that can fit into the Host Argument Buffer
