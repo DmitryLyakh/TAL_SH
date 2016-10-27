@@ -3,13 +3,13 @@ NAME = talsh
 #ADJUST THE FOLLOWING ACCORDINGLY:
 #Cross-compiling wrappers: [WRAP|NOWRAP]:
 export WRAP ?= NOWRAP
-#Compiler: [GNU|PGI|INTEL|CRAY]:
+#Compiler: [GNU|PGI|INTEL|CRAY|IBM]:
 export TOOLKIT ?= GNU
 #Optimization: [DEV|OPT]:
 export BUILD_TYPE ?= OPT
 #MPI Library: [MPICH|OPENMPI|NONE]:
 export MPILIB ?= NONE
-#BLAS: [ATLAS|MKL|ACML|NONE]:
+#BLAS: [ATLAS|MKL|ACML|ESSL|NONE]:
 export BLASLIB ?= ATLAS
 #Nvidia GPU via CUDA: [CUDA|NOCUDA]:
 export GPU_CUDA ?= NOCUDA
@@ -37,6 +37,7 @@ export PATH_OPENMPI ?= /usr/local/openmpi1.10.1
 export PATH_BLAS_ATLAS ?= /usr/lib
 export PATH_BLAS_MKL ?= /ccs/compilers/intel/rh6-x86_64/16.0.0/compilers_and_libraries/linux/mkl/lib
 export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
+export PATH_BLAS_ESSL ?= /sw/summitdev/essl/5.5.0/lib64
 # CUDA lib and include paths (if you build with CUDA):
 export PATH_CUDA_LIB ?= /usr/lib/x86_64-linux-gnu
 export PATH_CUDA_INC ?= /usr/include
@@ -52,6 +53,7 @@ FC_GNU = gfortran
 FC_PGI = pgf90
 FC_INTEL = ifort
 FC_CRAY = ftn
+FC_IBM = xlf2008_r
 FC_MPICH = $(PATH_MPICH)/bin/mpif90
 FC_OPENMPI = $(PATH_OPENMPI)/bin/mpifort
 ifeq ($(MPILIB),NONE)
@@ -66,6 +68,7 @@ CC_GNU = gcc
 CC_PGI = pgcc
 CC_INTEL = icc
 CC_CRAY = cc
+CC_IBM = xlc_r
 CC_MPICH = $(PATH_MPICH)/bin/mpicc
 CC_OPENMPI = $(PATH_OPENMPI)/bin/mpicc
 ifeq ($(MPILIB),NONE)
@@ -80,6 +83,7 @@ CPP_GNU = g++
 CPP_PGI = pgc++
 CPP_INTEL = icc
 CPP_CRAY = CC
+CPP_IBM = xlC_r
 CPP_MPICH = $(PATH_MPICH)/bin/mpic++
 ifeq ($(EXA_OS),LINUX)
 CPP_OPENMPI = $(PATH_OPENMPI)/bin/mpic++
@@ -101,6 +105,7 @@ INC_GNU = -I.
 INC_PGI = -I.
 INC_INTEL = -I.
 INC_CRAY = -I.
+INC_IBM = -I.
 INC_NOWRAP = $(INC_$(TOOLKIT))
 INC_WRAP = -I.
 INC = $(INC_$(WRAP))
@@ -110,6 +115,7 @@ LIB_GNU = -L.
 LIB_PGI = -L.
 LIB_INTEL = -L.
 LIB_CRAY = -L.
+LIB_IBM = -L.
 LIB_NOWRAP = $(LIB_$(TOOLKIT))
 LIB_WRAP = -L.
 ifeq ($(TOOLKIT),PGI)
@@ -148,6 +154,7 @@ else
 LA_LINK_MKL = -L$(PATH_BLAS_MKL) -lmkl_intel_lp64 -lmkl_core -lmkl_intel_thread -lpthread -lm -ldl
 endif
 LA_LINK_ACML = -L$(PATH_BLAS_ACML) -lacml_mp
+LA_LINK_ESSL = -L$(PATH_BLAS_ESSL) -lesslsmp
 ifeq ($(BLASLIB),NONE)
 LA_LINK_NOWRAP = -L.
 else
@@ -230,6 +237,8 @@ FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fch
 FFLAGS_GNU_OPT = -c -fopenmp -O3 $(NO_ACCEL)
 FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -g $(NO_ACCEL)
 FFLAGS_PGI_OPT = -c -mp -Mcache_align -Mstandard -O3 $(NO_ACCEL)
+FFLAGS_IBM_DEV = -c -qsmp=omp $(NO_ACCEL)
+FFLAGS_IBM_OPT = -c -qsmp=omp -O3 $(NO_ACCEL)
 ifeq ($(BLASLIB),NONE)
 FFLAGS = $(FFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) -D$(EXA_OS) -D NO_BLAS
 else
@@ -241,6 +250,7 @@ LTHREAD_GNU   = -lgomp
 LTHREAD_PGI   = -lpthread
 LTHREAD_INTEL = -liomp5
 LTHREAD_CRAY  = -L.
+LTHREAD_IBM   = -L.
 LTHREAD = $(LTHREAD_$(TOOLKIT))
 
 #LINKING:
