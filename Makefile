@@ -276,6 +276,7 @@ else
 endif
 
 ./OBJ/dil_basic.o: dil_basic.F90
+	mkdir -p ./OBJ
 	$(FCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(FFLAGS) dil_basic.F90 -o ./OBJ/dil_basic.o
 
 ./OBJ/stsubs.o: stsubs.F90
