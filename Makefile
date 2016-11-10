@@ -31,8 +31,8 @@ export GPU_FINE_TIMING ?= NO
 
 #SET YOUR LOCAL PATHS (for unwrapped builds):
 # MPI path (whichever you have chosen above):
-export PATH_MPICH ?= /usr/local/mpich3.2
-export PATH_OPENMPI ?= /usr/local/openmpi1.10.1
+export PATH_MPICH ?= /usr/local/mpi/mpich-3.2
+export PATH_OPENMPI ?= /usr/local/mpi/openmpi-1.10.4
 # BLAS lib path (whichever you have chosen above):
 export PATH_BLAS_ATLAS ?= /usr/lib
 export PATH_BLAS_MKL ?= /ccs/compilers/intel/rh6-x86_64/16.0.0/compilers_and_libraries/linux/mkl/lib
@@ -40,10 +40,10 @@ export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
 export PATH_BLAS_ESSL ?= /sw/summitdev/essl/5.5.0/lib64
 export PATH_BLAS_ESSL_DEP ?= /sw/summitdev/xl/161005/lib
 # CUDA lib and include paths (if you build with CUDA):
-export PATH_CUDA_LIB ?= /usr/lib/x86_64-linux-gnu
-export PATH_CUDA_INC ?= /usr/include
+export PATH_CUDA_LIB ?= /usr/local/cuda/lib64
+export PATH_CUDA_INC ?= /usr/local/cuda/include
 # cuTT path (if you use cuTT library):
-export PATH_CUTT ?= /home/dima/src/cutt
+export PATH_CUTT ?= /home/div/src/cutt
 
 #YOU ARE DONE!
 

@@ -1,3 +1,7 @@
+!Timing services (threadsafe).
+!AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
+!REVISION: 2016/11/10
+
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
 
@@ -16,10 +20,6 @@
 !You should have received a copy of the GNU Lesser General Public License
 !along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 
-       module timers
-!Timing services (threadsafe).
-!AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2015/07/30
 !PUBLIC FUNCTIONS:
 ! # integer timer_start(real8:time_set, integer:time_handle);
 ! # logical time_is_off(integer:time_handle, integer:ierr[, logical:destroy]);
@@ -31,6 +31,8 @@
 ! # -D USE_OMP_MOD: Use OpenMP Fortran module;
 ! # -D USE_GNU: Switch to the GNU Fortran timing (secnds);
 ! # -D NO_PHI: Ignore Intel MIC;
+
+       module timers
 #ifndef NO_OMP
 #ifdef USE_OMP_MOD
         use omp_lib
