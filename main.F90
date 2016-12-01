@@ -234,6 +234,7 @@
          integer, parameter:: MAX_GEN_DIMS=4           !max number of large dimensions per tensor
          integer, parameter:: SMALL_DIM_EXT=8          !extent of small dimensions
          integer, parameter:: MAX_REPEATS=64           !number of repeated tensor contractions that differ in index mapping
+         logical, parameter:: DO_TWICE=.FALSE.         !if .TRUE., each tensor contraction will be executed twice
          real(C_DOUBLE), parameter:: CMP_ZERO=1d-4     !comparison threshold (relative)
          !----------------------------------------
          integer(C_INT):: i,j,k,l,m,n,num_gpus,host_arg_max,sts,rd,rl,rr,mnc,nc,ncl,ncs,nul,nus,cptrn(1:MAX_TENS_RANK*2)
@@ -248,7 +249,7 @@
          type(talsh_task_t):: tsk
          complex(8):: cval
          real(C_DOUBLE):: flops,tm,tmc,tmi,tmo,tmm,gn1,cn1
-         logical:: transpose
+         logical:: transpose,repeat
 
          interface
           real(C_DOUBLE) function talshTensorImageNorm1_cpu(talsh_tens) bind(c,name='talshTensorImageNorm1_cpu')
@@ -376,6 +377,7 @@
   !Contract tensors:
               if(transpose) then
                n=n+1 !tensor contraction number
+               if(n.ne.2933.and.n.ne.2934.and.n.ne.2935) cycle ploop !debug
    !Get the symbolic contraction pattern:
                call get_contr_pattern_sym(rl,rr,cptrn,cptrn_sym,l,ierr); if(ierr.ne.0) then; ierr=5; return; endif
                do i=1,l; str(i:i)=cptrn_sym(i); enddo
@@ -384,6 +386,7 @@
                write(*,'(") * (",16(1x,i8))',ADVANCE='NO') rdims(1:rr)
                call printl(6,'): '//str(1:l),adv=.FALSE.)
 !              write(*,'(":",32(1x,i3))',ADVANCE='NO') cptrn(1:rl+rr)
+               repeat=DO_TWICE
    !Construct tensor blocks:
                cval=(1d-1,0d0); ierr=talsh_tensor_construct(dtens,TENS_DATA_KIND,ddims(1:rd),in_hab=YEP,init_val=cval)
                if(ierr.ne.TALSH_SUCCESS) then; ierr=6; return; endif
@@ -392,42 +395,44 @@
                cval=(1d-3,0d0); ierr=talsh_tensor_construct(rtens,TENS_DATA_KIND,rdims(1:rr),in_hab=YEP,init_val=cval)
                if(ierr.ne.TALSH_SUCCESS) then; ierr=8; return; endif
 #ifndef NO_GPU
+               dloop: do
    !Schedule tensor contraction on GPU:
-               ierr=talsh_tensor_contract(str(1:l),dtens,ltens,rtens,&
-                                         &copy_ctrl=COPY_TTT,dev_id=talsh_flat_dev_id(DEV_NVIDIA_GPU,0),talsh_task=tsk)
-               if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=9; return; endif
+                ierr=talsh_tensor_contract(str(1:l),dtens,ltens,rtens,&
+                                          &copy_ctrl=COPY_TTT,dev_id=talsh_flat_dev_id(DEV_NVIDIA_GPU,0),talsh_task=tsk)
+                if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=9; return; endif
    !Wait for GPU completion:
-               ierr=talsh_task_wait(tsk,sts); if(ierr.ne.TALSH_SUCCESS.or.sts.ne.TALSH_TASK_COMPLETED) then; ierr=10; return; endif
-               ierr=talsh_task_time(tsk,tm,tmc,tmi,tmo,tmm)
-               if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=11; return; endif
-               write(*,'(": ",D9.3)',ADVANCE='NO') flops/dble(words) !compute (arithmetic) intensity
-               write(10,'(i8,4(1x,D9.3))',ADVANCE='NO') n,dble(vd),dble(vl),dble(vr),flops/dble(words)
-               if(tmm.gt.0d0) then
-                write(*,'(1x,D9.3)',ADVANCE='NO') flops/tmm !GPU matrix multiplication Flop/s
-                write(10,'(1x,D9.3)',ADVANCE='NO') flops/tmm !GPU matrix multiplication Flop/s
-               else
-                write(*,'(" ???")',ADVANCE='NO')
-                write(10,'(" ???")',ADVANCE='NO')
-               endif
-               if(tmc.gt.0d0) then
-                write(*,'(1x,D9.3)',ADVANCE='NO') flops/tmc !GPU tensor contraction Flop/s
-                write(10,'(1x,D9.3)',ADVANCE='NO') flops/tmc !GPU tensor contraction Flop/s
-               else
-                write(*,'(" ???")',ADVANCE='NO')
-                write(10,'(" ???")',ADVANCE='NO')
-               endif
-               if(tm.gt.0d0) then
-                write(*,'(1x,D9.3)',ADVANCE='NO') flops/tm !Effective tensor contraction performance with data transfers, Flop/s
-                write(10,'(1x,D9.3)',ADVANCE='NO') flops/tm !Effective tensor contraction performance with data transfers, Flop/s
-               else
-                write(*,'(" ???")',ADVANCE='NO')
-                write(10,'(" ???")',ADVANCE='NO')
-               endif
-               write(*,'()')
-               write(10,'()')
-               gn1=talshTensorImageNorm1_cpu(dtens)!; write(*,'(1x,"Destination Norm1 (GPU) = ",D25.14)') gn1
+                ierr=talsh_task_wait(tsk,sts); if(ierr.ne.TALSH_SUCCESS.or.sts.ne.TALSH_TASK_COMPLETED) then; ierr=10; return; endif
+                ierr=talsh_task_time(tsk,tm,tmc,tmi,tmo,tmm)
+                if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=11; return; endif
+                write(*,'(": ",D9.3)',ADVANCE='NO') flops/dble(words) !compute (arithmetic) intensity
+                write(10,'(i8,4(1x,D9.3))',ADVANCE='NO') n,dble(vd),dble(vl),dble(vr),flops/dble(words)
+                if(tmm.gt.0d0) then
+                 write(*,'(1x,D9.3)',ADVANCE='NO') flops/tmm !GPU matrix multiplication Flop/s
+                 write(10,'(1x,D9.3)',ADVANCE='NO') flops/tmm !GPU matrix multiplication Flop/s
+                else
+                 write(*,'(" ???")',ADVANCE='NO')
+                 write(10,'(" ???")',ADVANCE='NO')
+                endif
+                if(tmc.gt.0d0) then
+                 write(*,'(1x,D9.3)',ADVANCE='NO') flops/tmc !GPU tensor contraction Flop/s
+                 write(10,'(1x,D9.3)',ADVANCE='NO') flops/tmc !GPU tensor contraction Flop/s
+                else
+                 write(*,'(" ???")',ADVANCE='NO')
+                 write(10,'(" ???")',ADVANCE='NO')
+                endif
+                if(tm.gt.0d0) then
+                 write(*,'(1x,D9.3)',ADVANCE='NO') flops/tm !Effective tensor contraction performance with data transfers, Flop/s
+                 write(10,'(1x,D9.3)',ADVANCE='NO') flops/tm !Effective tensor contraction performance with data transfers, Flop/s
+                else
+                 write(*,'(" ???")',ADVANCE='NO')
+                 write(10,'(" ???")',ADVANCE='NO')
+                endif
+                write(*,'()')
+                write(10,'()')
    !Destruct task handle:
-               ierr=talsh_task_destruct(tsk); if(ierr.ne.TALSH_SUCCESS) then; ierr=12; return; endif
+                ierr=talsh_task_destruct(tsk); if(ierr.ne.TALSH_SUCCESS) then; ierr=12; return; endif
+   !Compute the destination tensor norm:
+                !gn1=talshTensorImageNorm1_cpu(dtens)!; write(*,'(1x,"Destination Norm1 (GPU) = ",D25.14)') gn1
    !Destruct the destination tensor:
 !               ierr=talsh_tensor_destruct(dtens); if(ierr.ne.TALSH_SUCCESS) then; ierr=13; return; endif
 !               cval=(1d-1,0d0); ierr=talsh_tensor_construct(dtens,TENS_DATA_KIND,ddims(1:rd),init_val=cval)
@@ -454,6 +459,8 @@
 !               endif
 !#endif
 !               ierr=talsh_task_destruct(tsk); if(ierr.ne.TALSH_SUCCESS) then; ierr=19; return; endif
+                if(repeat) then; repeat=.FALSE.; else; exit dloop; endif
+               enddo dloop
    !Destruct tensor blocks:
                ierr=talsh_tensor_destruct(dtens); if(ierr.ne.TALSH_SUCCESS) then; ierr=20; return; endif
                ierr=talsh_tensor_destruct(ltens); if(ierr.ne.TALSH_SUCCESS) then; ierr=21; return; endif
