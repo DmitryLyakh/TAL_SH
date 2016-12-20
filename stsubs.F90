@@ -1,6 +1,6 @@
 !Standard procedures often used by me.
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISON: 2015/12/08
+!REVISON: 2016/12/02
 
 !Copyright (C) 2005-2016 Dmitry I. Lyakh (Liakh)
 
@@ -36,6 +36,7 @@
 	public:: IFCL        !calculates factorial
 	public:: IS_IT_NUMBER!checks if the character is an ASCII number
 	public:: IS_IT_LETTER!checks if the character is an ASCII letter
+	public:: ALPHANUMERIC!checks if the character is alphanumeric
 	public:: ITRSIGN     !determines a sign of a given transposition
 	public:: LONGNUMCHAR !converts a long integer number to the character representation
 	public:: MARKCHF     !counts how many non-blank fields a string contains
@@ -377,6 +378,19 @@
 	 endif
 	 return
 	end function is_it_letter
+!----------------------------------------
+	logical function alphanumeric(ch)
+!Returns TRUE if the character is ASCII alphanumeric, FALSE otherwise.
+	 implicit none
+	 character(1), intent(in):: ch
+	 alphanumeric=.FALSE.
+	 if(is_it_letter(ch).gt.0) then
+	  alphanumeric=.TRUE.
+	 else
+	  if(is_it_number(ch).ge.0) alphanumeric=.TRUE.
+	 endif
+	 return
+	end function alphanumeric
 !--------------------------------
 	subroutine itrsign(N,ITR)
 !Reorders a given permutation into an ascending order and returns the permutation sign in ITR(0).

@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h"!
-!REVISION: 2016/09/01
+!REVISION: 2016/12/07
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -30,6 +30,15 @@
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: MAX_TENSOR_RANK,MAX_TENSOR_OPERANDS
 !DIR$ ATTRIBUTES ALIGN:128:: MAX_TENSOR_RANK,MAX_TENSOR_OPERANDS
+#endif
+
+!MEMORY ALLOCATION POLICY (keep consistent with tensor_algebra.h):
+        integer(C_INT), parameter, public:: MEM_ALLOC_REGULAR=0 !all large memory allocations are done via the regular Fortran allocator
+        integer(C_INT), parameter, public:: MEM_ALLOC_TMP_BUF=1 !large temporary memory allocations are done via the Host argument buffer
+        integer(C_INT), parameter, public:: MEM_ALLOC_ALL_BUF=2 !all large memory allocations are done via the Host argument buffer
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: MEM_ALLOC_REGULAR,MEM_ALLOC_TMP_BUF,MEM_ALLOC_ALL_BUF
+!DIR$ ATTRIBUTES ALIGN:128:: MEM_ALLOC_REGULAR,MEM_ALLOC_TMP_BUF,MEM_ALLOC_ALL_BUF
 #endif
 
 !ALIASES (keep consistent with tensor_algebra.h):
@@ -193,6 +202,13 @@
 
 !C FUNCTION INTERFACES (for Fortran):
         interface
+ !Device management:
+         integer(C_INT) function encode_device_id(dev_kind,dev_num) bind(c,name='encode_device_id')
+          import
+          implicit none
+          integer(C_INT), intent(in), value:: dev_kind
+          integer(C_INT), intent(in), value:: dev_num
+         end function encode_device_id
  !Argument buffer memory management:
   !Initialize all argument buffers on Host and all Devices (GPU constant+global, MICs, etc):
          integer(C_INT) function arg_buf_allocate(host_mem,arg_max,gpu_beg,gpu_end) bind(c,name='arg_buf_allocate')
@@ -270,6 +286,13 @@
           integer(C_INT), value, intent(in):: entry_num
          end function free_buf_entry_gpu
 #endif
+  !Get the argument buffer entry number for pointers located in the TAL-SH argument buffer:
+         integer(C_INT) function get_buf_entry_from_address(dev_id,addr) bind(c,name='get_buf_entry_from_address')
+          import
+          implicit none
+          integer(C_INT), value, intent(in):: dev_id
+          type(C_PTR), value, intent(in):: addr
+         end function get_buf_entry_from_address
   !Query the free buffer space in bytes on a given device:
          integer(C_INT) function mem_free_left(dev_id,free_mem) bind(c,name='mem_free_left')
           import

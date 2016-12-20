@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2016/10/11
+!REVISION: 2016/12/18
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -412,12 +412,14 @@
 
        contains
 !INTERNAL FUNCTIONS:
-!-------------------------------------------------------------------------------------------------------------------------------
-        integer(C_INT) function talsh_get_contr_ptrn_str2dig(c_str,dig_ptrn,dig_len) bind(c,name='talsh_get_contr_ptrn_str2dig')
+!----------------------------------------------------------------------------------------------
+        integer(C_INT) function talsh_get_contr_ptrn_str2dig(c_str,dig_ptrn,dig_len,conj_bits)&
+                       &bind(c,name='talsh_get_contr_ptrn_str2dig')
          implicit none
          character(C_CHAR), intent(in):: c_str(1:*)  !in: C-string (NULL terminated) containing the mnemonic contraction pattern
          integer(C_INT), intent(out):: dig_ptrn(1:*) !out: digitial tensor contraction pattern
          integer(C_INT), intent(out):: dig_len       !out: length of the digital tensor contraction pattern
+         integer(C_INT), intent(out):: conj_bits     !out: argument complex conjugation flags (Bit 0 -> Destination, Bit 1 - > Left, Bit 2 -> Right)
          integer, parameter:: MAX_CONTR_STR_LEN=1024 !max length of the tensor contraction string
          integer:: dgp(MAX_TENSOR_RANK*2),dgl,csl,ierr
          character(MAX_CONTR_STR_LEN):: contr_str
@@ -434,7 +436,7 @@
          csl=csl-1
 !Call converter from CP-TAL:
          if(csl.gt.0) then
-          call get_contr_pattern(contr_str(1:csl),dgp,dgl,ierr)
+          call get_contr_pattern(contr_str(1:csl),dgp,dgl,ierr,conj_bits)
           if(ierr.eq.0) then
            dig_len=dgl; if(dgl.gt.0) dig_ptrn(1:dgl)=dgp(1:dgl)
           else
@@ -623,7 +625,21 @@
          endif
          return
         end function talsh_update_f_scalar
-!-----------------------------------------
+!--------------------------------------------------------------------------------------------------------------------------
+        subroutine talsh_set_mem_alloc_policy_host(mem_policy,fallback,ierr) bind(c,name='talsh_set_mem_alloc_policy_host')
+!Wrapper for CP-TAL set_mem_alloc_policy() for C/C++.
+         implicit none
+         integer(C_INT), intent(in), value:: mem_policy !in: CPU memory allocation policy for CP-TAL
+         integer(C_INT), intent(in), value:: fallback   !in: fallback to regular allocation
+         integer(C_INT), intent(out):: ierr             !out: error code
+         integer:: mem_pol,errc
+         logical:: fb
+
+         mem_pol=mem_policy; fb=(fallback.ne.0)
+         call set_mem_alloc_policy(mem_pol,errc,fb); ierr=errc
+         return
+        end subroutine talsh_set_mem_alloc_policy_host
+!-----------------------------------------------------
 !FORTRAN TAL-SH API DEFINITIONS:
  !TAL-SH control API:
 !----------------------------------------------------------------------------------------------
@@ -1066,8 +1082,8 @@
          endif
          return
         end function talsh_tensor_contract
-!-------------------------------------------------------------------------------------------------------------------
-        integer(C_INT) function cpu_tensor_block_contract(contr_ptrn,ltens_p,rtens_p,dtens_p,scale_real,scale_imag)&
+!----------------------------------------------------------------------------------------------------------------------------
+        integer(C_INT) function cpu_tensor_block_contract(contr_ptrn,ltens_p,rtens_p,dtens_p,scale_real,scale_imag,arg_conj)&
                                                          &bind(c,name='cpu_tensor_block_contract')
          implicit none
          integer(C_INT), intent(in):: contr_ptrn(*) !in: digital tensor contraction pattern
@@ -1076,17 +1092,18 @@
          type(C_PTR), value:: dtens_p               !inout: destination tensor argument
          real(C_DOUBLE), value:: scale_real         !in: scaling prefactor (real part)
          real(C_DOUBLE), value:: scale_imag         !in: scaling prefactor (imaginary part)
+         integer(C_INT), value:: arg_conj           !in: argument complex conjugation bits (0:D,1:L,2:R)
          type(tensor_block_t), pointer:: dtp,ltp,rtp
-         integer:: ierr
+         integer:: conj_bits,ierr
 
-         cpu_tensor_block_contract=0
+         cpu_tensor_block_contract=0; conj_bits=arg_conj
          if(dabs(scale_real-1d0).gt.ZERO_THRESH.or.dabs(scale_imag-0d0).gt.ZERO_THRESH) then !`Scaling prefactor should be accounted for
           cpu_tensor_block_contract=TALSH_NOT_IMPLEMENTED; return !`Implement
          endif
          if(c_associated(dtens_p).and.c_associated(ltens_p).and.c_associated(rtens_p)) then
           call c_f_pointer(dtens_p,dtp); call c_f_pointer(ltens_p,ltp); call c_f_pointer(rtens_p,rtp)
           if(associated(dtp).and.associated(ltp).and.associated(rtp)) then
-           call tensor_block_contract(contr_ptrn,ltp,rtp,dtp,ierr)
+           call tensor_block_contract(contr_ptrn,ltp,rtp,dtp,ierr,arg_conj=conj_bits)
            cpu_tensor_block_contract=ierr
           else
            cpu_tensor_block_contract=-2

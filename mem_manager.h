@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Memory management API header.
-REVISION: 2016/04/28
+REVISION: 2016/12/06
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -52,6 +52,7 @@ extern "C"{
  int free_buf_entry_gpu(int gpu_num, int entry_num); //NVidia GPU only
  int const_args_entry_get(int gpu_num, int *entry_num); //NVidia GPU only
  int const_args_entry_free(int gpu_num, int entry_num); //NVidia GPU only
+ int get_buf_entry_from_address(int dev_id, const void * addr); //generic
  int mem_free_left(int dev_id, size_t * free_mem); //generic
  int mem_print_stats(int dev_id); //generic
  int slab_create(slab_t ** slab);
@@ -72,9 +73,9 @@ extern "C"{
 #ifndef NO_GPU
  int gpu_mem_alloc(void **dev_ptr, size_t tsize, int gpu_id = -1); //NVidia GPU only
  int gpu_mem_free(void *dev_ptr, int gpu_id = -1); //NVidia GPU only
-#endif
+#endif /*NO_GPU*/
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif /*_MEM_MANAGER_H*/

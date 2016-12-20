@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API.
-REVISION: 2016/10/11
+REVISION: 2016/12/18
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -88,13 +88,15 @@ typedef struct{
 extern "C"{
 #endif
 // CPU tensor contraction:
-int cpu_tensor_block_contract(const int * contr_ptrn, void * lftr, void * rftr, void * dftr, double scale_real, double scale_imag);
+int cpu_tensor_block_contract(const int * contr_ptrn, void * lftr, void * rftr, void * dftr, double scale_real, double scale_imag, int arg_conj);
 // Contraction pattern conversion:
-int talsh_get_contr_ptrn_str2dig(const char * c_str, int * dig_ptrn, int * dig_len);
+int talsh_get_contr_ptrn_str2dig(const char * c_str, int * dig_ptrn, int * dig_len, int * conj_bits);
 // Fortran tensor block aliasing:
 int talsh_tensor_f_assoc(const talsh_tens_t * talsh_tens, int image_id, void ** tensF);
 int talsh_tensor_f_dissoc(void * tensF);
 int talsh_update_f_scalar(void * tensF, int data_kind, void * gmem_p);
+// Host memory allocation policy in CP-TAL:
+void talsh_set_mem_alloc_policy_host(int mem_policy, int fallback, int * ierr);
 #ifdef __cplusplus
 }
 #endif
@@ -545,7 +547,7 @@ int talshInit(size_t * host_buf_size,    //inout: Host Argument Buffer size in b
  }
 #endif
 //Intel Xeon Phi accelerators:
-#ifndef NO_MIC
+#ifndef NO_PHI
  if(nmics > 0){
   printf("#FATAL(TALSH::talshInit): Intel Xeon Phi is not fully supported yet!");
   return TALSH_NOT_IMPLEMENTED; //`Future
@@ -559,6 +561,13 @@ int talshInit(size_t * host_buf_size,    //inout: Host Argument Buffer size in b
  }
 #endif
  errc=arg_buf_allocate(host_buf_size,host_arg_max,gpu_beg,gpu_end); if(errc) return TALSH_FAILURE;
+ if(*host_buf_size >= TALSH_CPTAL_MIN_BUF_SIZE){ //Host argument buffer is big enough to be used in CP-TAL
+  talsh_set_mem_alloc_policy_host(TALSH_MEM_ALLOC_POLICY_HOST,TALSH_MEM_ALLOC_FALLBACK_HOST,&errc);
+  if(errc != 0){
+   printf("#FATAL(TALSH::talshInit): Host memory allocation policy setting failed: Error %d",errc);
+   return TALSH_FAILURE;
+  }
+ }
 #ifndef NO_GPU
  for(i=0;i<ngpus;i++){
   j=gpu_list[i]; if(j < 0 || j >= MAX_GPUS_PER_NODE) return TALSH_INVALID_ARGS;
@@ -577,6 +586,7 @@ int talshShutdown()
 
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  errc=arg_buf_deallocate(talsh_gpu_beg,talsh_gpu_end);
+ talsh_set_mem_alloc_policy_host(TALSH_MEM_ALLOC_POLICY_HOST,TALSH_MEM_ALLOC_FALLBACK_HOST,&i);
  talsh_gpu_beg=0; talsh_gpu_end=-1; talsh_on=0;
  talsh_cpu=DEV_OFF;
  for(i=0;i<MAX_GPUS_PER_NODE;i++) talsh_gpu[i]=DEV_OFF;
@@ -1912,7 +1922,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
 /** Tensor contraction dispatcher. **/
 {
  int j,devid,dvk,dvn,dimg,limg,rimg,dcp,lcp,rcp,errc;
- int contr_ptrn[MAX_TENSOR_RANK*2],cpl;
+ int contr_ptrn[MAX_TENSOR_RANK*2],cpl,conj_bits;
  unsigned int coh_ctrl,coh,cohd,cohl,cohr;
  talsh_task_t * tsk;
  host_task_t * host_task;
@@ -1940,7 +1950,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
   tsk->task_error=102; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
  }
  //Check and parse the index contraction pattern:
- errc=talsh_get_contr_ptrn_str2dig(cptrn,contr_ptrn,&cpl);
+ errc=talsh_get_contr_ptrn_str2dig(cptrn,contr_ptrn,&cpl,&conj_bits);
  if(errc){tsk->task_error=103; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_INVALID_ARGS;}
  //Determine the execution device (devid:[dvk,dvn]):
  if(dev_kind == DEV_DEFAULT){ //device kind is not specified explicitly
@@ -2047,7 +2057,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
    if(cohd == COPY_D || (cohd == COPY_M && dtens->dev_rsc[dimg].dev_id != devid)) dtens->avail[dimg] = NOPE;
    //Schedule the tensor operation via the device-specific runtime:
    ctm=clock();
-   errc=cpu_tensor_block_contract(contr_ptrn,lftr,rftr,dftr,scale_real,scale_imag); //blocking call
+   errc=cpu_tensor_block_contract(contr_ptrn,lftr,rftr,dftr,scale_real,scale_imag,conj_bits); //blocking call
    if(talshTensorRank(dtens) == 0){ //an explicit update is needed for scalar destinations
     j=talsh_update_f_scalar(dftr,dtens->data_kind[dimg],dtens->dev_rsc[dimg].gmem_p);
     if(j) errc=TALSH_FAILURE;

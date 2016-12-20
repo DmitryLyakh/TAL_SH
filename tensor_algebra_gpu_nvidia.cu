@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2016/08/25
+REVISION: 2016/12/05
 
 Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -87,27 +87,12 @@ TO BE FIXED:
 #include <stdlib.h>
 #include <time.h>
 
-#ifndef NO_GPU
-
-#include <cuda.h>
-#include <cuda_runtime.h>
-
-#ifndef NO_BLAS
-#include <cublas_v2.h>
-#endif
-
-#endif
-
-#include "tensor_algebra.h"
-
-#ifdef USE_CUTT
-#include "cutt.h"
-#endif
+#include "tensor_algebra.h" /*includes mem_manager.h*/
 
 #ifndef NO_GPU
 //PARAMETERS:
 #define GPU_DEBUG_DUMP_SIZE 128 //size of the GPU debug dump (int array)
-#endif
+#endif /*NO_GPU*/
 //----------------------------------------------------------------------
 //FUNCTION PROTOTYPES:
 // IMPORTED:
@@ -163,7 +148,7 @@ __global__ void gpu_matrix_multiply_tn_r4__(size_t ll, size_t lr, size_t lc, con
                                             const float* __restrict__ arg2, float* __restrict__ arg0);
 __global__ void gpu_matrix_multiply_tn_r8__(size_t ll, size_t lr, size_t lc, const double* __restrict__ arg1,
                                             const double* __restrict__ arg2, double* __restrict__ arg0);
-#endif
+#endif /*NO_GPU*/
 //------------------------------------------------------------------------------------------------------
 //PARAMETERS:
 static int VERBOSE=1; //verbosity for error messages
@@ -177,7 +162,7 @@ static talsh_stats_t gpu_stats[MAX_GPUS_PER_NODE]; //runtime statistics for all 
 #ifndef NO_BLAS
 // Infrastructure for CUBLAS:
 static cublasHandle_t cublas_handle[MAX_GPUS_PER_NODE]; //each GPU present on a node obtains its own cuBLAS context handle
-#endif
+#endif /*NO_BLAS*/
 // Slabs for the GPU asynchronous resources:
 //  CUDA stream handles:
 static cudaStream_t CUDAStreamBank[MAX_GPUS_PER_NODE][MAX_CUDA_TASKS]; //pre-allocated CUDA stream handles (for each CUDA device)
@@ -200,13 +185,13 @@ static int PRINT_TIMING=1; //non-zero value enables time printing statements
 static int TRANS_SHMEM=EFF_TRN_ON_CUTT; //switch between shared-memory tensor transpose and scatter tensor transpose
 #else
 static int TRANS_SHMEM=EFF_TRN_ON; //switch between shared-memory tensor transpose and scatter tensor transpose
-#endif
+#endif /*USE_CUTT*/
 // Infrastructure for <gpu_tensor_block_contract_dlf> (non-blocking):
 #ifndef NO_BLAS
 static int DISABLE_BLAS=0; //non-zero value will disable cuBLAS usage (if it had been cuBLAS compiled/linked)
 #else
 static int DISABLE_BLAS=1; //non-zero value will disable cuBLAS usage (if it had been cuBLAS compiled/linked)
-#endif
+#endif /*NO_BLAS*/
 static cudaTask_t * LastTask[MAX_GPUS_PER_NODE]; //last CUDA task successfully scheduled on each GPU
 __device__ __constant__ static float sgemm_alpha=1.0f;                //default alpha constant for SGEMM
 __device__ __constant__ static float sgemm_beta=1.0f;                 //default beta constant SGEMM
@@ -228,7 +213,7 @@ __device__ __constant__ static cuDoubleComplex zgemm_beta_;  //beta constant ZGE
 __device__ static int norm2_wr_lock=0; //write lock shared by all <gpu_array_norm2_XX> running on GPU
 // Infrastructure for kernels <gpu_array_dot_product__>:
 __device__ static int dot_product_wr_lock=0; //write lock shared by all <gpu_array_dot_product__> running on GPU
-#endif
+#endif /*NO_GPU*/
 //-------------------------------------------------------------------------------------------------------------------
 //CUDA runtime (for Fortran):
 #ifndef NO_GPU
@@ -238,7 +223,7 @@ int cuda_get_device_count(int * dev_count)
  if(cuda_err != cudaSuccess){*dev_count=-1; return 1;}
  return 0;
 }
-#endif
+#endif /*NO_GPU*/
 //GENERIC:
 int tens_valid_data_kind(int datk, int * datk_size)
 /** Returns YEP if the data kind <datk> is valid in TAL-SH, NOPE otherwise.
@@ -357,7 +342,7 @@ __host__ int gpu_get_debug_dump(int *dump)
  cudaError_t err=cudaMemcpyFromSymbol((void*)dump,gpu_debug_dump,sizeof(int)*GPU_DEBUG_DUMP_SIZE,0,cudaMemcpyDeviceToHost);
  if(err == cudaSuccess){return GPU_DEBUG_DUMP_SIZE;}else{return -1;}
 }
-#endif
+#endif /*NO_GPU*/
 
 //AUXILIARY FUNCTIONS:
 static int prmn_convert(int n, const int *o2n, int *n2o)
@@ -1102,7 +1087,7 @@ __host__ int gpu_print_stats(int gpu_num)
  }
  return 0;
 }
-#endif
+#endif /*NO_GPU*/
 
 //TENSOR BLOCK API:
 int tensShape_create(talsh_tens_shape_t ** tshape)
@@ -2872,7 +2857,7 @@ NOTES:
  }
  return 0;
 }
-#endif
+#endif /*DEAD*/
 //--------------------------------------------------------------------------------------------------------------
 // TENSOR BODY CLONING (non-blocking):
 __host__ int gpu_tensor_block_place(tensBlck_t *ctens, int gpu_id, unsigned int coh_ctrl, cudaTask_t *cuda_task)
@@ -3401,7 +3386,7 @@ NOTES:
   printf("\n#END OF DEBUG\n");
  }
 //DEBUG end.
-#endif
+#endif /*DEBUG_GPU*/
 //Start scheduling CUDA calls:
  err=cudaEventRecord(*cuda_start,*cuda_stream);
  if(err != cudaSuccess){
@@ -3791,7 +3776,7 @@ NOTES:
    }
    if(err_cublas != CUBLAS_STATUS_SUCCESS){errc=cuda_task_record(cuda_task,coh_ctrl,52); errc=gpu_activate(cur_gpu); return 52;}
   }else{ //BLAS is disabled
-#endif
+#endif /*NO_BLAS*/
    bx=1+(vol_l-1)/MAT_MULT_TILE_DIMX; by=1+(vol_r-1)/MAT_MULT_TILE_DIMY; limit_cuda_blocks2d(MAX_CUDA_BLOCKS,&bx,&by);
    //if(DEBUG) printf("\n#DEBUG(tensor_algebra_gpu_nvidia:gpu_tensor_block_contract_dlf): CUDA exec conf: %d %d %d %d\n",bx,by,MAT_MULT_TILE_DIMX,MAT_MULT_TILE_DIMY); //debug
    dim3 blcks(bx,by); dim3 thrds(MAT_MULT_TILE_DIMX,MAT_MULT_TILE_DIMY);
@@ -4310,7 +4295,7 @@ NOTES:
   gpu_debug_dump[j++]=err_code; gpu_debug_dump[j++]=-1;
  }
 //DEBUG RECORD end.
-#endif
+#endif /*DEBUG_GPU*/
  __syncthreads();
 
 //Proceed:
@@ -4645,7 +4630,7 @@ MIN REGISTER USE (bytes) per thread =
   gpu_debug_dump[j++]=err_code; gpu_debug_dump[j++]=-1;
  }
 //DEBUG RECORD end.
-#endif
+#endif /*DEBUG_GPU*/
  __syncthreads();
 
 //Proceed:
@@ -4846,7 +4831,7 @@ OUTPUT:
    gpu_debug_dump[j++]=vol; gpu_debug_dump[j++]=-1;
   }
 //DEBUG RECORD end.
-#endif
+#endif /*DEBUG_GPU*/
   __syncthreads();
   _vol=vol;
   if(n2o[0] >= dim_num){ //trivial permutation
@@ -4936,7 +4921,7 @@ OUTPUT:
    gpu_debug_dump[j++]=vol; gpu_debug_dump[j++]=-1;
   }
 //DEBUG RECORD end.
-#endif
+#endif /*DEBUG_GPU*/
   __syncthreads();
   _vol=vol;
   if(n2o[0] >= dim_num){ //trivial permutation
@@ -5061,5 +5046,4 @@ NOTES:
  }
  return;
 }
-//-D NO_GPU
-#endif
+#endif /*NO_GPU*/
