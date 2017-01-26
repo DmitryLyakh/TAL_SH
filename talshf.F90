@@ -1,8 +1,8 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2016/12/18
+!REVISION: 2017/01/23
 
-!Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -36,7 +36,7 @@
  !Generic:
         integer(INTD), private:: CONS_OUT=6 !default output device for this module
         integer(INTD), private:: DEBUG=0    !debugging mode for this module
-        logical, private:: VERBOSE=.true.   !verbosity for errors
+        logical, private:: VERBOSE=.TRUE.   !verbosity for errors
  !Errors (keep consistent with "talsh.h"):
         integer(C_INT), parameter, public:: TALSH_SUCCESS=0                   !success
         integer(C_INT), parameter, public:: TALSH_FAILURE=-666                !generic failure
@@ -241,6 +241,12 @@
           implicit none
           type(talsh_tens_t), intent(in):: tens_block
          end subroutine talsh_tensor_print_info
+  ![DEBUG]: Compute the 1-norm of a tensor on Host CPU:
+         real(C_DOUBLE) function talshTensorImageNorm1_cpu(talsh_tens) bind(c,name='talshTensorImageNorm1_cpu')
+          import
+          implicit none
+          type(talsh_tens_t), intent(in):: talsh_tens
+         end function talshTensorImageNorm1_cpu
  !TAL-SH task C/C++ API:
   !Destruct a TAL-SH task:
          integer(C_INT) function talshTaskDestruct(talsh_task) bind(c,name='talshTaskDestruct')
@@ -320,20 +326,48 @@
           integer(C_INT), value, intent(in):: dev_id
           integer(C_INT), value, intent(in):: dev_kind
          end function talshTensorDiscard_
+  !Tensor initialization:
+         integer(C_INT) function talshTensorInit_(dtens,val_real,val_imag,dev_id,dev_kind,copy_ctrl,talsh_task)&
+                                                 &bind(c,name='talshTensorInit_')
+          import
+          implicit none
+          type(talsh_tens_t), intent(inout):: dtens
+          real(C_DOUBLE), value, intent(in):: val_real
+          real(C_DOUBLE), value, intent(in):: val_imag
+          integer(C_INT), value, intent(in):: dev_id
+          integer(C_INT), value, intent(in):: dev_kind
+          integer(C_INT), value, intent(in):: copy_ctrl
+          type(talsh_task_t), intent(inout):: talsh_task
+         end function talshTensorInit_
+  !Tensor addition:
+         integer(C_INT) function talshTensorAdd_(cptrn,dtens,ltens,scale_real,scale_imag,dev_id,dev_kind,&
+                                                &copy_ctrl,talsh_task) bind(c,name='talshTensorAdd_')
+          import
+          implicit none
+          character(C_CHAR), intent(in):: cptrn(*)
+          type(talsh_tens_t), intent(inout):: dtens
+          type(talsh_tens_t), intent(inout):: ltens
+          real(C_DOUBLE), value, intent(in):: scale_real
+          real(C_DOUBLE), value, intent(in):: scale_imag
+          integer(C_INT), value, intent(in):: dev_id
+          integer(C_INT), value, intent(in):: dev_kind
+          integer(C_INT), value, intent(in):: copy_ctrl
+          type(talsh_task_t), intent(inout):: talsh_task
+         end function talshTensorAdd_
   !Tensor contraction:
-         integer(C_INT) function talshTensorContract_(cptrn,dtens,ltens,rtens,copy_ctrl,scale_real,scale_imag,&
-                                                     &dev_id,dev_kind,talsh_task) bind(c,name='talshTensorContract_')
+         integer(C_INT) function talshTensorContract_(cptrn,dtens,ltens,rtens,scale_real,scale_imag,dev_id,dev_kind,&
+                                                     &copy_ctrl,talsh_task) bind(c,name='talshTensorContract_')
           import
           implicit none
           character(C_CHAR), intent(in):: cptrn(*)
           type(talsh_tens_t), intent(inout):: dtens
           type(talsh_tens_t), intent(inout):: ltens
           type(talsh_tens_t), intent(inout):: rtens
-          integer(C_INT), value, intent(in):: copy_ctrl
           real(C_DOUBLE), value, intent(in):: scale_real
           real(C_DOUBLE), value, intent(in):: scale_imag
           integer(C_INT), value, intent(in):: dev_id
           integer(C_INT), value, intent(in):: dev_kind
+          integer(C_INT), value, intent(in):: copy_ctrl
           type(talsh_task_t), intent(inout):: talsh_task
          end function talshTensorContract_
  !Internal TAL-SH C/C++ API:
@@ -383,11 +417,13 @@
         public talsh_tensor_destruct
         public talsh_tensor_rank
         public talsh_tensor_volume
+        public talsh_tensor_dimensions
         public talsh_tensor_shape
         public talsh_tensor_data_kind
         public talsh_tensor_presence
         public talsh_tensor_get_body_access
         public talsh_tensor_print_info
+        public talshTensorImageNorm1_cpu
  !TAL-SH task API:
         public talsh_task_destruct
         public talsh_task_dev_id
@@ -400,12 +436,12 @@
  !TAL-SH tensor operations API:
         public talsh_tensor_place
         public talsh_tensor_discard
-!        public talsh_tensor_init
+        public talsh_tensor_init
 !        public talsh_tensor_scale
 !        public talsh_tensor_norm1
 !        public talsh_tensor_norm2
 !        public talsh_tensor_copy
-!        public talsh_tensor_add
+        public talsh_tensor_add
         public talsh_tensor_contract
  !CUDA runtime:
         public cuda_get_device_count
@@ -423,17 +459,31 @@
          integer, parameter:: MAX_CONTR_STR_LEN=1024 !max length of the tensor contraction string
          integer:: dgp(MAX_TENSOR_RANK*2),dgl,csl,ierr
          character(MAX_CONTR_STR_LEN):: contr_str
+         integer(INTD):: i,star_pos
 
-         talsh_get_contr_ptrn_str2dig=0; dig_len=0
+         talsh_get_contr_ptrn_str2dig=0; dig_len=0; conj_bits=0
 !Convert C-string to a Fortran string:
-         csl=1
+         csl=1; star_pos=0
          do while(iachar(c_str(csl)).ne.0)
           if(csl.gt.MAX_CONTR_STR_LEN) then
            talsh_get_contr_ptrn_str2dig=-1; return
           endif
+          if(c_str(csl).eq.'*'.and.star_pos.eq.0) star_pos=csl
           contr_str(csl:csl)=c_str(csl); csl=csl+1
          enddo
          csl=csl-1
+!Add a fake third argument in case of addition:
+         if(star_pos.gt.0) then !check for possible scalar multiplication
+          i=index(contr_str(star_pos:csl),'(')+star_pos-1
+          if(i.lt.star_pos) then
+           csl=star_pos-1; star_pos=0 !remove scalar multiplication
+           if(csl.le.0) then; talsh_get_contr_ptrn_str2dig=-2; return; endif
+           if(contr_str(csl:csl).ne.')') then; talsh_get_contr_ptrn_str2dig=-3; return; endif
+          endif
+         endif
+         if(star_pos.eq.0) then !this is not a contraction (less than three arguments)
+          i=len('*R()'); contr_str(csl+1:csl+i)='*R()'; csl=csl+i !add a fake third argument (cast as a contraction)
+         endif
 !Call converter from CP-TAL:
          if(csl.gt.0) then
           call get_contr_pattern(contr_str(1:csl),dgp,dgl,ierr,conj_bits)
@@ -872,6 +922,25 @@
          vol=talshTensorVolume(tens_block)
          return
         end function talsh_tensor_volume
+!------------------------------------------------------------------------------------
+        function talsh_tensor_dimensions(tens_block,tens_rank,tens_dims) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                         !out: error code (0:success)
+         type(talsh_tens_t), intent(in):: tens_block   !in: tensor block
+         integer(INTD), intent(out):: tens_rank        !out: tensor rank
+         integer(INTD), intent(inout):: tens_dims(1:*) !out: tensor dimension extents
+         type(talsh_tens_shape_t):: tens_shape
+         integer(INTD), pointer:: tdims(:)
+         ierr=talshTensorShape(tens_block,tens_shape)
+         if(ierr.eq.TALSH_SUCCESS) then
+          tens_rank=tens_shape%num_dim
+          if(tens_rank.gt.0) then
+           call c_f_pointer(tens_shape%dims,tdims,(/tens_rank/))
+           tens_dims(1:tens_rank)=tdims(1:tens_rank)
+          endif
+         endif
+         return
+        end function talsh_tensor_dimensions
 !----------------------------------------------------------------------
         function talsh_tensor_shape(tens_block,tens_shape) result(ierr)
          implicit none
@@ -1038,18 +1107,91 @@
          ierr=talshTensorDiscard_(tens,dev_id,dvk)
          return
         end function talsh_tensor_discard
+!----------------------------------------------------------------------------------------------
+        function talsh_tensor_init(dtens,val,dev_id,dev_kind,copy_ctrl,talsh_task) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                            !out: error code (0:success)
+         type(talsh_tens_t), intent(inout):: dtens        !inout: destination tensor block
+         complex(8), intent(in), optional:: val           !in: initialization value, defaults to 0
+         integer(C_INT), intent(in), optional:: dev_id    !in: device id (flat or kind-specific)
+         integer(C_INT), intent(in), optional:: dev_kind  !in: device kind (if present, <dev_id> is kind-specific)
+         integer(C_INT), intent(in), optional:: copy_ctrl !in: copy control (COPY_XXX), defaults to COPY_MT
+         type(talsh_task_t), intent(inout), optional:: talsh_task !inout: TAL-SH task (must be clean)
+         integer(C_INT):: coh_ctrl,devn,devk,sts
+         real(C_DOUBLE):: val_real,val_imag
+         type(talsh_task_t):: tsk
+
+         ierr=TALSH_SUCCESS
+         if(present(copy_ctrl)) then; coh_ctrl=copy_ctrl; else; coh_ctrl=COPY_M; endif
+         if(present(val)) then; val_real=dble(val); val_imag=dimag(val); else; val_real=0d0; val_imag=0d0; endif
+         if(present(dev_id)) then; devn=dev_id; else; devn=DEV_DEFAULT; endif
+         if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_DEFAULT; endif
+         if(present(talsh_task)) then
+          ierr=talshTensorInit_(dtens,val_real,val_imag,devn,devk,coh_ctrl,talsh_task)
+         else
+          ierr=talshTensorInit_(dtens,val_real,val_imag,devn,devk,coh_ctrl,tsk)
+          if(ierr.eq.TALSH_SUCCESS) then
+           ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
+          endif
+          sts=talsh_task_destruct(tsk)
+         endif
+         return
+        end function talsh_tensor_init
+!-----------------------------------------------------------------------------------------------------------
+        function talsh_tensor_add(cptrn,dtens,ltens,scale,dev_id,dev_kind,copy_ctrl,talsh_task) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                            !out: error code (0:success)
+         character(*), intent(in):: cptrn                 !in: symbolic addition pattern, e.g. "D(a,b,c,d)+=L(c,d,b,a)"
+         type(talsh_tens_t), intent(inout):: dtens        !inout: destination tensor block
+         type(talsh_tens_t), intent(inout):: ltens        !inout: left source tensor block
+         complex(8), intent(in), optional:: scale         !in: scaling factor, defaults to 1
+         integer(C_INT), intent(in), optional:: dev_id    !in: device id (flat or kind-specific)
+         integer(C_INT), intent(in), optional:: dev_kind  !in: device kind (if present, <dev_id> is kind-specific)
+         integer(C_INT), intent(in), optional:: copy_ctrl !in: copy control (COPY_XXX), defaults to COPY_MT
+         type(talsh_task_t), intent(inout), optional:: talsh_task !inout: TAL-SH task (must be clean)
+         character(C_CHAR):: contr_ptrn(1:1024) !contraction pattern as a C-string
+         integer(C_INT):: coh_ctrl,devn,devk,sts
+         integer:: l
+         real(C_DOUBLE):: scale_real,scale_imag
+         type(talsh_task_t):: tsk
+
+         ierr=TALSH_SUCCESS; l=len_trim(cptrn)
+         if(l.gt.0) then
+          if(present(copy_ctrl)) then; coh_ctrl=copy_ctrl; else; coh_ctrl=COPY_MT; endif
+          if(present(scale)) then; scale_real=dble(scale); scale_imag=dimag(scale); else; scale_real=1d0; scale_imag=0d0; endif
+          if(present(dev_id)) then; devn=dev_id; else; devn=DEV_DEFAULT; endif
+          if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_DEFAULT; endif
+          call string2array(cptrn(1:l),contr_ptrn,l,ierr); l=l+1; contr_ptrn(l:l)=achar(0) !C-string
+          if(ierr.eq.0) then
+           if(present(talsh_task)) then
+            ierr=talshTensorAdd_(contr_ptrn,dtens,ltens,scale_real,scale_imag,devn,devk,coh_ctrl,talsh_task)
+           else
+            ierr=talshTensorAdd_(contr_ptrn,dtens,ltens,scale_real,scale_imag,devn,devk,coh_ctrl,tsk)
+            if(ierr.eq.TALSH_SUCCESS) then
+             ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
+            endif
+            sts=talsh_task_destruct(tsk)
+           endif
+          else
+           ierr=TALSH_INVALID_ARGS
+          endif
+         else
+          ierr=TALSH_INVALID_ARGS
+         endif
+         return
+        end function talsh_tensor_add
 !----------------------------------------------------------------------------------------------------------------------
-        function talsh_tensor_contract(cptrn,dtens,ltens,rtens,copy_ctrl,scale,dev_id,dev_kind,talsh_task) result(ierr)
+        function talsh_tensor_contract(cptrn,dtens,ltens,rtens,scale,dev_id,dev_kind,copy_ctrl,talsh_task) result(ierr)
          implicit none
          integer(C_INT):: ierr                            !out: error code (0:success)
          character(*), intent(in):: cptrn                 !in: symbolic contraction pattern, e.g. "D(a,b,c,d)+=L(c,i,j,a)*R(b,j,d,i)"
          type(talsh_tens_t), intent(inout):: dtens        !inout: destination tensor block
          type(talsh_tens_t), intent(inout):: ltens        !inout: left source tensor block
          type(talsh_tens_t), intent(inout):: rtens        !inout: right source tensor block
-         integer(C_INT), intent(in), optional:: copy_ctrl !in: copy control (COPY_XXX), defaults to COPY_MTT
-         complex(8), intent(in), optional:: scale         !in: scaling value, defaults to 1
+         complex(8), intent(in), optional:: scale         !in: scaling factor, defaults to 1
          integer(C_INT), intent(in), optional:: dev_id    !in: device id (flat or kind-specific)
          integer(C_INT), intent(in), optional:: dev_kind  !in: device kind (if present, <dev_id> is kind-specific)
+         integer(C_INT), intent(in), optional:: copy_ctrl !in: copy control (COPY_XXX), defaults to COPY_MTT
          type(talsh_task_t), intent(inout), optional:: talsh_task !inout: TAL-SH task (must be clean)
          character(C_CHAR):: contr_ptrn(1:1024) !contraction pattern as a C-string
          integer(C_INT):: coh_ctrl,devn,devk,sts
@@ -1066,9 +1208,9 @@
           call string2array(cptrn(1:l),contr_ptrn,l,ierr); l=l+1; contr_ptrn(l:l)=achar(0) !C-string
           if(ierr.eq.0) then
            if(present(talsh_task)) then
-            ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,coh_ctrl,scale_real,scale_imag,devn,devk,talsh_task)
+            ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,coh_ctrl,talsh_task)
            else
-            ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,coh_ctrl,scale_real,scale_imag,devn,devk,tsk)
+            ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,coh_ctrl,tsk)
             if(ierr.eq.TALSH_SUCCESS) then
              ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
             endif
@@ -1082,6 +1224,78 @@
          endif
          return
         end function talsh_tensor_contract
+![CP-TAL]=====================================================================================================================
+        integer(C_INT) function cpu_tensor_block_init(dtens_p,val_real,val_imag,arg_conj) bind(c,name='cpu_tensor_block_init')
+         implicit none
+         type(C_PTR), value:: dtens_p               !inout: destination tensor argument
+         real(C_DOUBLE), value:: val_real           !in: scaling prefactor (real part)
+         real(C_DOUBLE), value:: val_imag           !in: scaling prefactor (imaginary part)
+         integer(C_INT), value:: arg_conj           !in: argument complex conjugation bits (0:D)
+         type(tensor_block_t), pointer:: dtp
+         character(2):: dtk
+         complex(8):: val
+         integer:: ierr
+
+         cpu_tensor_block_init=0
+         if(c_associated(dtens_p)) then
+          call c_f_pointer(dtens_p,dtp)
+          if(associated(dtp)) then
+           dtk=tensor_master_data_kind(dtp,ierr)
+           if(ierr.eq.0) then
+            val=cmplx(val_real,val_imag,8); if(mod(arg_conj,2_C_INT).ne.0) val=conjg(val)
+            call tensor_block_init(dtk,dtp,ierr,val_c8=val)
+           endif
+           cpu_tensor_block_init=ierr
+          else
+           cpu_tensor_block_init=-2
+          endif
+         else
+          cpu_tensor_block_init=-1
+         endif
+         return
+        end function cpu_tensor_block_init
+!---------------------------------------------------------------------------------------------------------------
+        integer(C_INT) function cpu_tensor_block_add(contr_ptrn,ltens_p,dtens_p,scale_real,scale_imag,arg_conj)&
+                                                    &bind(c,name='cpu_tensor_block_add')
+         implicit none
+         integer(C_INT), intent(in):: contr_ptrn(*) !in: digital tensor addition pattern
+         type(C_PTR), value:: ltens_p               !in: left tensor argument
+         type(C_PTR), value:: dtens_p               !inout: destination tensor argument
+         real(C_DOUBLE), value:: scale_real         !in: scaling prefactor (real part)
+         real(C_DOUBLE), value:: scale_imag         !in: scaling prefactor (imaginary part)
+         integer(C_INT), value:: arg_conj           !in: argument complex conjugation bits (0:D,1:L)
+         type(tensor_block_t), pointer:: dtp,ltp
+         complex(8):: scale_fac
+         integer:: i,conj_bits,ierr
+         logical:: permute
+
+         cpu_tensor_block_add=0; conj_bits=arg_conj
+         if(c_associated(dtens_p).and.c_associated(ltens_p)) then
+          call c_f_pointer(dtens_p,dtp); call c_f_pointer(ltens_p,ltp)
+          if(associated(dtp).and.associated(ltp)) then
+           permute=.FALSE.
+           do i=1,dtp%tensor_shape%num_dim
+            if(contr_ptrn(i).ne.i) then; permute=.TRUE.; exit; endif
+           enddo
+           if(permute) then !`Add this feature
+            write(CONS_OUT,'("#FATAL(talshf:cpu_tensor_block_add): addition with permutation is not implemented for CPU target!")')
+            stop
+           endif
+           if(dabs(scale_real-1d0).gt.ZERO_THRESH.or.dabs(scale_imag-0d0).gt.ZERO_THRESH) then
+            scale_fac=cmplx(scale_real,scale_imag,8)
+            call tensor_block_add(dtp,ltp,ierr,scale_fac,conj_bits)
+           else
+            call tensor_block_add(dtp,ltp,ierr,arg_conj=conj_bits)
+           endif
+           cpu_tensor_block_add=ierr
+          else
+           cpu_tensor_block_add=-2
+          endif
+         else
+          cpu_tensor_block_add=-1
+         endif
+         return
+        end function cpu_tensor_block_add
 !----------------------------------------------------------------------------------------------------------------------------
         integer(C_INT) function cpu_tensor_block_contract(contr_ptrn,ltens_p,rtens_p,dtens_p,scale_real,scale_imag,arg_conj)&
                                                          &bind(c,name='cpu_tensor_block_contract')

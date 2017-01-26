@@ -161,7 +161,11 @@ LA_LINK_NOWRAP = -L.
 else
 LA_LINK_NOWRAP = $(LA_LINK_$(BLASLIB))
 endif
+ifeq ($(BLASLIB),MKL)
+LA_LINK_WRAP = $(LA_LINK_MKL)
+else
 LA_LINK_WRAP = -L.
+endif
 LA_LINK = $(LA_LINK_$(WRAP))
 
 #CUDA INCLUDES:
@@ -262,7 +266,7 @@ OBJS =  ./OBJ/dil_basic.o ./OBJ/stsubs.o ./OBJ/combinatoric.o ./OBJ/symm_index.o
 	./OBJ/mem_manager.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/talshf.o ./OBJ/talshc.o
 
 $(NAME): lib$(NAME).a ./OBJ/test.o ./OBJ/main.o
-	$(FCOMP) ./OBJ/main.o ./OBJ/test.o lib$(NAME).a $(LFLAGS) -o $(NAME).x
+	$(FCOMP) ./OBJ/main.o ./OBJ/test.o lib$(NAME).a $(LFLAGS) -o test_$(NAME).x
 
 lib$(NAME).a: $(OBJS)
 ifeq ($(WITH_CUTT),YES)

@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h"!
-!REVISION: 2016/12/07
+!REVISION: 2017/01/24
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -66,6 +66,7 @@
 !DIR$ ATTRIBUTES ALIGN:128:: BLAS_ON,BLAS_OFF,EFF_TRN_OFF,EFF_TRN_ON,DEVICE_UNABLE,NO_COPY_BACK,COPY_BACK
 !DIR$ ATTRIBUTES ALIGN:128:: EVERYTHING,SOURCE,DESTINATION,TEMPORARY,DEV_OFF,DEV_ON,DEV_ON_BLAS
 #endif
+!Coherence (copy) control parameters (Senior bits: Destination -> Left -> Right: Junior bits):
         integer(C_INT), parameter, public:: COPY_D=0
         integer(C_INT), parameter, public:: COPY_M=1
         integer(C_INT), parameter, public:: COPY_T=2

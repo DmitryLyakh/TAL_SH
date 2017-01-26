@@ -2,10 +2,10 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2016/12/07
+REVISION: 2017/01/24
 
-Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -200,6 +200,7 @@ FOR DEVELOPERS ONLY:
 #define NO_COPY_BACK 0
 #define COPY_BACK 1
 
+//Coherence (copy) control parameters (Senior bits: D -> L -> R: Junior bits):
 #define COPY_D 0
 #define COPY_M 1
 #define COPY_T 2
@@ -288,6 +289,7 @@ FOR DEVELOPERS ONLY:
 //MACRO FUNCTIONS:
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
+#define ABS(x) ((x)>=0?(x):(-x))
 
 //BASIC TYPES:
 // Complex number:
@@ -468,21 +470,16 @@ int cuda_get_device_count(int * dev_count);
  float cuda_task_time_(const cudaTask_t *cuda_task, float *in_copy, float *out_copy, float *comp, float *mmul);
  void cuda_task_print(const cudaTask_t *cuda_task);
 //  NV-TAL tensor operations:
- int gpu_array_norm2_r4(size_t size, const float *arr, float *norm2);
- int gpu_array_norm2_r8(size_t size, const double *arr, double *norm2);
- int gpu_matrix_multiply_tn_r4(size_t ll, size_t lr, size_t lc, const float *lmat, const float *rmat, float *dmat);
- int gpu_matrix_multiply_tn_r8(size_t ll, size_t lr, size_t lc, const double *lmat, const double *rmat, double *dmat);
- int gpu_tensor_block_init(tensBlck_t *ctens, double val, int copy_back, cudaTask_t *cuda_task);
- int gpu_tensor_block_scale(tensBlck_t *ctens, double val, int copy_back, cudaTask_t *cuda_task);
- int gpu_tensor_block_add_dlf(tensBlck_t *ctens0, tensBlck_t *ctens1, double val, int copy_back, cudaTask_t *cuda_task);
- int gpu_tensor_block_copy_dlf(const int *dim_trn, tensBlck_t *tens_in, tensBlck_t *tens_out,
-                               int copy_back, cudaTask_t *cuda_task);
  int gpu_tensor_block_place(tensBlck_t *ctens, int gpu_id, unsigned int coh_ctrl, cudaTask_t *cuda_task);
+ int gpu_tensor_block_init(tensBlck_t *dtens, double val, unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1);
+ int gpu_tensor_block_add(const int *cptrn, tensBlck_t *ltens, tensBlck_t *dtens,
+                          unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1, double alpha = 1.0, double beta = 1.0);
  int gpu_tensor_block_contract_dlf(const int *cptrn, tensBlck_t *ltens, tensBlck_t *rtens, tensBlck_t *dtens, unsigned int coh_ctrl,
                                    cudaTask_t *cuda_task, int gpu_id = -1, double alpha = 1.0, double beta = 1.0);
 #endif /*NO_GPU */
 #ifdef __cplusplus
 }
+template <typename T> int gpu_matrix_multiply_tn(size_t ll, size_t lr, size_t lc, const T * lmat, const T * rmat, T * dmat);
 #endif
 
 #endif /*END _TENSOR_ALGEBRA_H*/
