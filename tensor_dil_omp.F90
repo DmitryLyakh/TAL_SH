@@ -1028,7 +1028,7 @@
 	  select case(ker1)
 	  case(0)
 !SCHEME 0:
-	   cr=min(dr,max(core_slope*nthr,min_distr_seg_size))
+	   cr=min(dr,int(max(core_slope*nthr,min_distr_seg_size),int8_kind))
 	   cc=min(dc,max(arg_cache_size*cdim_stretch/cr,1_8))
 	   cl=min(dl,min(max(arg_cache_size/cc,1_8),max(arg_cache_size/cr,1_8)))
 !	   write(*,'("DEBUG(tensor_algebra_dil::tensor_block_pcontract): cl,cr,cc,dl,dr,dc:",6(1x,i9))') cl,cr,cc,dl,dr,dc !debug

@@ -2,10 +2,10 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2016/12/22
+REVISION: 2017/02/01
 
-Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -706,7 +706,7 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
   default:
    return -3; //invalid device kind
  }
- if(buf_offset >= 0 && buf_offset < buf_size){ //address is in the buffer space
+ if(buf_offset < buf_size){ //address is in the buffer space
   lev=0;
   while(lev < ab_conf->buf_depth){
    if(buf_offset%blck_sz[lev] == 0){

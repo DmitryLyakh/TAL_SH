@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API.
-REVISION: 2017/01/25
+REVISION: 2017/02/09
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -1006,6 +1006,7 @@ int talshTensorConstruct(talsh_tens_t * tens_block,     //inout: empty tensor bl
       init_method(tens_block->dev_rsc[0].gmem_p,data_kind,tens_rank,tens_dims,&errc);
       if(errc) errc=NOT_CLEAN; //initialization failed, tensor block value is undefined, but one may continue
      }else{
+      //printf("\n#DBG\n %llu",tvol); //debug
       switch(data_kind){
        case R4:
         fval = (float)init_val_real;
@@ -1025,6 +1026,7 @@ int talshTensorConstruct(talsh_tens_t * tens_block,     //inout: empty tensor bl
         for(size_t l=0; l < tvol; l++) cfp[l]=cfv;
         break;
        case C8:
+        //printf("\n#DBG\n %llu",tvol); //debug
         cdv = talshComplex8Set(init_val_real,init_val_imag);
         cdp = (talshComplex8*)(tens_block->dev_rsc[0].gmem_p);
 #pragma omp parallel for schedule(guided)
@@ -1360,14 +1362,14 @@ static int talshTaskConstruct(talsh_task_t * talsh_task, int dev_kind, int coh_c
 #else
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   case DEV_AMD_GPU:
 #ifndef NO_AMD
    return TALSH_NOT_IMPLEMENTED; //`Future
 #else
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   default:
    return TALSH_INVALID_ARGS;
  }
@@ -1408,7 +1410,9 @@ static int talshTaskFinalize(talsh_task_t * talsh_task, int task_status)
  unsigned int coh,cc;
  talsh_tens_t * talsh_tens;
  host_task_t * host_task;
+#ifndef NO_GPU
  cudaTask_t * cuda_task;
+#endif
 
  if(talsh_task == NULL) return TALSH_INVALID_ARGS;
  if(talshTaskIsEmpty(talsh_task) != NOPE) return TALSH_OBJECT_IS_EMPTY;
@@ -1476,14 +1480,14 @@ static int talshTaskFinalize(talsh_task_t * talsh_task, int task_status)
 #else
         return TALSH_NOT_AVAILABLE;
 #endif
-        break;
+        //break;
        case DEV_AMD_GPU:
 #ifndef NO_AMD
         return TALSH_NOT_IMPLEMENTED; //`Future
 #else
         return TALSH_NOT_AVAILABLE;
 #endif
-        break;
+        //break;
        default:
         errc=TALSH_FAILURE;
       }
@@ -1555,14 +1559,14 @@ int talshTaskDestruct(talsh_task_t * talsh_task)
 #else
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   case DEV_AMD_GPU:
 #ifndef NO_AMD
    return TALSH_NOT_IMPLEMENTED; //`Future
 #else
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   case DEV_NULL: //defined-empty task
    break;
   default:
@@ -1611,14 +1615,14 @@ int talshTaskDevId(talsh_task_t * talsh_task, int * dev_kind)
 #else
    return DEV_NULL;
 #endif
-   break;
+   //break;
   case DEV_AMD_GPU:
 #ifndef NO_AMD
    return DEV_NULL; //`Future
 #else
    return DEV_NULL;
 #endif
-   break;
+   //break;
   default:
    return DEV_NULL;
  }
@@ -1642,7 +1646,9 @@ int talshTaskStatus(talsh_task_t * talsh_task)
 {
  int i,errc;
  host_task_t *host_task_p;
+#ifndef NO_GPU
  cudaTask_t *cuda_task_p;
+#endif
 
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(talsh_task == NULL) return TALSH_INVALID_ARGS;
@@ -1683,14 +1689,14 @@ int talshTaskStatus(talsh_task_t * talsh_task)
 #else
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   case DEV_AMD_GPU:
 #ifndef NO_AMD
    return TALSH_NOT_IMPLEMENTED; //`Future
 #else
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   default:
    return TALSH_INVALID_ARGS;
  }
@@ -1706,7 +1712,9 @@ int talshTaskComplete(talsh_task_t * talsh_task, int * stats, int * ierr)
 {
  int i,errc;
  host_task_t *host_task_p;
+#ifndef NO_GPU
  cudaTask_t *cuda_task_p;
+#endif
 
  errc=NOPE;
  if(ierr == NULL) return TALSH_INVALID_ARGS;
@@ -1803,7 +1811,9 @@ int talshTaskTime(talsh_task_t * talsh_task, double * total, double * comput, do
 {
  int sts,errc;
  float tot_tm,in_tm,out_tm,comp_tm,mmul_tm;
+#ifndef NO_GPU
  cudaTask_t *cuda_task_p;
+#endif
 
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(talsh_task == NULL || total == NULL) return TALSH_INVALID_ARGS;
@@ -1832,14 +1842,14 @@ int talshTaskTime(talsh_task_t * talsh_task, double * total, double * comput, do
 #else
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   case DEV_AMD_GPU:
 #ifndef NO_AMD
    return TALSH_NOT_IMPLEMENTED; //`Future
 #else
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   default:
    return TALSH_INVALID_ARGS;
  }
@@ -1889,8 +1899,10 @@ int talshTensorPlace(talsh_tens_t * tens, int dev_id, int dev_kind, int copy_ctr
  int i,j,dn,dk,errc,devid,dvk,dvn,image_id,host_image,runtime;
  talsh_task_t * tsk;
  host_task_t * host_task;
+#ifndef NO_GPU
  cudaTask_t * cuda_task;
  tensBlck_t * ctens;
+#endif
 
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  //Create a TAL-SH task:
@@ -2002,7 +2014,7 @@ int talshTensorPlace(talsh_tens_t * tens, int dev_id, int dev_kind, int copy_ctr
    tsk->task_error=117; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   case DEV_AMD_GPU:
 #ifndef NO_AMD
    tsk->task_error=118; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
@@ -2011,7 +2023,7 @@ int talshTensorPlace(talsh_tens_t * tens, int dev_id, int dev_kind, int copy_ctr
    tsk->task_error=119; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   default:
    tsk->task_error=120; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
    return TALSH_INVALID_ARGS;
@@ -2069,10 +2081,12 @@ int talshTensorInit(talsh_tens_t * dtens, double val_real, double val_imag, int 
  unsigned int coh_ctrl,coh,cohd;
  talsh_task_t * tsk;
  host_task_t * host_task;
- cudaTask_t * cuda_task;
- tensBlck_t *dctr;
  void *dftr;
  clock_t ctm;
+#ifndef NO_GPU
+ cudaTask_t * cuda_task;
+ tensBlck_t *dctr;
+#endif
 
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  //Create a TAL-SH task:
@@ -2230,7 +2244,7 @@ int talshTensorInit(talsh_tens_t * dtens, double val_real, double val_imag, int 
    tsk->task_error=129; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   case DEV_AMD_GPU:
 #ifndef NO_AMD
    tsk->task_error=130; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
@@ -2239,7 +2253,7 @@ int talshTensorInit(talsh_tens_t * dtens, double val_real, double val_imag, int 
    tsk->task_error=131; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   default:
   tsk->task_error=132; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
  }
@@ -2261,10 +2275,12 @@ int talshTensorAdd(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * lten
  unsigned int coh_ctrl,coh,cohd,cohl;
  talsh_task_t * tsk;
  host_task_t * host_task;
- cudaTask_t * cuda_task;
- tensBlck_t *dctr,*lctr;
  void *dftr,*lftr;
  clock_t ctm;
+#ifndef NO_GPU
+ cudaTask_t * cuda_task;
+ tensBlck_t *dctr,*lctr;
+#endif
 
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  //Create a TAL-SH task:
@@ -2464,7 +2480,7 @@ int talshTensorAdd(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * lten
    tsk->task_error=129; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   case DEV_AMD_GPU:
 #ifndef NO_AMD
    tsk->task_error=130; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
@@ -2473,7 +2489,7 @@ int talshTensorAdd(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * lten
    tsk->task_error=131; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   default:
   tsk->task_error=132; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
  }
@@ -2503,10 +2519,12 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
  unsigned int coh_ctrl,coh,cohd,cohl,cohr;
  talsh_task_t * tsk;
  host_task_t * host_task;
- cudaTask_t * cuda_task;
- tensBlck_t *dctr,*lctr,*rctr;
  void *dftr,*lftr,*rftr;
  clock_t ctm;
+#ifndef NO_GPU
+ cudaTask_t * cuda_task;
+ tensBlck_t *dctr,*lctr,*rctr;
+#endif
 
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  //Create a TAL-SH task:
@@ -2739,7 +2757,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
    tsk->task_error=129; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   case DEV_AMD_GPU:
 #ifndef NO_AMD
    tsk->task_error=130; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
@@ -2748,7 +2766,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
    tsk->task_error=131; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
+   //break;
   default:
   tsk->task_error=132; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
  }

@@ -468,7 +468,7 @@
              flops=dsqrt(dble(vd)*dble(vl)*dble(vr))*2d0 !number of floating point operations (FMA = 2 Flops)
  !Benchmark different index mappings:
              max_perm=(int(noid(rl,nc),8)*int(noid(rr,nc),8)*factorial(rd)) !max number of possible permutations
-             ploop: do m=1,min(max_perm,MAX_REPEATS) !explore different index mappings (permutations)
+             ploop: do m=1,int(min(max_perm,int(MAX_REPEATS,8)),C_INT) !explore different index mappings (permutations)
   !Select large contracted dimensions in the input tensors:
               if(ncl.gt.0) then
                call random_composition(.TRUE.,min(rl,MAX_GEN_DIMS),ncl,pll) !left large contracted indices

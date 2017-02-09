@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2017/01/24
+REVISION: 2017/02/09
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -75,9 +75,7 @@ FOR DEVELOPERS ONLY:
 #include <cuda.h>
 #include <cuda_runtime.h>
 
-#ifndef NO_BLAS
 #include <cublas_v2.h>
-#endif
 
 #ifdef USE_CUTT
 #include "cutt.h"
@@ -290,6 +288,8 @@ FOR DEVELOPERS ONLY:
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 #define ABS(x) ((x)>=0?(x):(-x))
+#define ENTERED(x) printf("\n#DEBUG: ENTERED %s\n",#x);
+#define EXITED(x) printf("\n#DEBUG: EXITED %s\n",#x);
 
 //BASIC TYPES:
 // Complex number:
@@ -301,14 +301,8 @@ typedef cuDoubleComplex talshComplex8;
 typedef std::complex<float> talshComplex4;
 typedef std::complex<double> talshComplex8;
 #else
-typedef struct{
- float real;
- float imag;
-} talshComplex4;
-typedef struct{
- double real;
- double imag;
-} talshComplex8;
+typedef struct{float real; float imag;} talshComplex4;
+typedef struct{double real; double imag;} talshComplex8;
 #endif
 #endif /*NO_GPU*/
 

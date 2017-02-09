@@ -1,8 +1,8 @@
 !Standard procedures often used by me.
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISON: 2016/12/02
+!REVISON: 2017/01/27
 
-!Copyright (C) 2005-2016 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2005-2017 Dmitry I. Lyakh (Liakh)
 
 !This file is part of ExaTensor.
 
@@ -37,6 +37,7 @@
 	public:: IS_IT_NUMBER!checks if the character is an ASCII number
 	public:: IS_IT_LETTER!checks if the character is an ASCII letter
 	public:: ALPHANUMERIC!checks if the character is alphanumeric
+	public:: ALPHANUMERIC_STRING !checks if the string is alphanumeric_
 	public:: ITRSIGN     !determines a sign of a given transposition
 	public:: LONGNUMCHAR !converts a long integer number to the character representation
 	public:: MARKCHF     !counts how many non-blank fields a string contains
@@ -391,6 +392,27 @@
 	 endif
 	 return
 	end function alphanumeric
+!------------------------------------------------
+	logical function alphanumeric_string(str)
+!Returns TRUE if the string only contains ASCII alphanumeric + underscore,
+!FALSE otherwise. An empty string is not considered alphanumeric_.
+	 implicit none
+	 character(*), intent(in):: str
+	 integer:: i,l
+	 alphanumeric_string=.TRUE.
+	 l=len(str)
+	 if(l.gt.0) then
+	  do i=1,l
+	   if(.not.alphanumeric(str(i:i))) then
+	    alphanumeric_string=.FALSE.
+	    exit
+	   endif
+	  enddo
+	 else
+	  alphanumeric_string=.FALSE.
+	 endif
+	 return
+	end function alphanumeric_string
 !--------------------------------
 	subroutine itrsign(N,ITR)
 !Reorders a given permutation into an ascending order and returns the permutation sign in ITR(0).
@@ -437,7 +459,7 @@
 	endif
 	L=IOSL
 	do while(K.NE.0)
-	 K1=mod(K,10); K=K/10
+	 K1=mod(K,10_8); K=K/10_8
 	 L=L+1; OS(L:L)=A(K1)
 	enddo
 	K1=L-IOSL; if(mod(K1,2).eq.1) K1=K1-1; K1=K1/2
