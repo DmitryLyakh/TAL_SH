@@ -1006,7 +1006,7 @@ int talshTensorConstruct(talsh_tens_t * tens_block,     //inout: empty tensor bl
       init_method(tens_block->dev_rsc[0].gmem_p,data_kind,tens_rank,tens_dims,&errc);
       if(errc) errc=NOT_CLEAN; //initialization failed, tensor block value is undefined, but one may continue
      }else{
-      //printf("\n#DBG\n %llu",tvol); //debug
+      //printf("\n#DBG\n %p\n %llu\n %llu",&tvol,*(&tvol),tvol); //debug
       switch(data_kind){
        case R4:
         fval = (float)init_val_real;
@@ -1026,7 +1026,7 @@ int talshTensorConstruct(talsh_tens_t * tens_block,     //inout: empty tensor bl
         for(size_t l=0; l < tvol; l++) cfp[l]=cfv;
         break;
        case C8:
-        //printf("\n#DBG\n %llu",tvol); //debug
+        //printf("\n#DBG\n %p\n %llu\n %llu",&tvol,*(&tvol),tvol); //debug
         cdv = talshComplex8Set(init_val_real,init_val_imag);
         cdp = (talshComplex8*)(tens_block->dev_rsc[0].gmem_p);
 #pragma omp parallel for schedule(guided)
