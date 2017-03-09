@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2017/01/24
+REVISION: 2017/03/03
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -236,6 +236,30 @@ int tens_valid_data_kind(int datk, int * datk_size)
  }
  if(datk_size != NULL) *datk_size=datk_sz;
  return ans;
+}
+
+size_t tens_elem_offset_f(unsigned int num_dim, const unsigned int * dims, const unsigned int * mlndx)
+/** Returns the offset of a tensor element specified by its multi-index with Fortran storage layout.
+    Each index in the multi-index has lower bound of zero. **/
+{
+ unsigned int i;
+ size_t offset;
+
+ offset=0;
+ for(i=num_dim-1;i>0;--i){offset+=mlndx[i]; offset*=dims[i-1];};
+ offset+=mlndx[0];
+ return offset;
+}
+
+void tens_elem_mlndx_f(size_t offset, unsigned int num_dim, const unsigned int * dims, unsigned int * mlndx)
+/** Returns the multi-index of a tensor element specified by its offset with Fortran storage layout.
+    Each index in the multi-index has lower bound of zero. **/
+{
+ unsigned int i;
+ size_t d;
+
+ for(i=0;i<num_dim;++i){d=offset/dims[i]; mlndx[i]=offset-d*dims[i]; offset=d;};
+ return;
 }
 
 unsigned int argument_coherence_get_value(unsigned int coh_ctrl, unsigned int tot_args, unsigned int arg_num)

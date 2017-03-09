@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2017/02/01
+REVISION: 2017/02/17
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -108,6 +108,7 @@ static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, siz
 static int free_buf_entry(ab_conf_t ab_conf, size_t *ab_occ, size_t ab_occ_size, const size_t *blck_sizes, int entry_num);
 static void ab_conf_print(ab_conf_t ab_conf);
 static int mi_entry_init();
+static int mi_entry_stop();
 //------------------------------------------------------------------------------------------------------------------------
 
 //FUNCTION DEFINITIONS:
@@ -310,7 +311,7 @@ int arg_buf_deallocate(int gpu_beg, int gpu_end)
   if(abg_occ[i] != NULL) free(abg_occ[i]); abg_occ[i]=NULL; abg_occ_size[i]=0; max_args_gpu[i]=0;
  }
  arg_buf_host_size=0; num_args_host=0; occ_size_host=0; args_size_host=0; //clear Host memory statistics
- miFFE=0; //deactivate multi-index bank
+ i=mi_entry_stop(); if(i != 0) err_code+=10000; //deactivate multi-index bank
 #ifndef NO_GPU
  err=cudaFreeHost(arg_buf_host);
  if(err != cudaSuccess){
@@ -953,8 +954,12 @@ int host_mem_free_pin(void *host_ptr){
 
 int host_mem_register(void *host_ptr, size_t tsize){
 #ifndef NO_GPU
- cudaError_t err=cudaHostRegister(host_ptr,tsize,cudaHostAllocPortable);
- if(err != cudaSuccess) return 1;
+ cudaError_t err = cudaHostRegister(host_ptr,tsize,cudaHostAllocPortable);
+ if(err != cudaSuccess){
+  const char * err_msg = cudaGetErrorString(err);
+  printf("\n#ERROR(TALSH:mem_manager:host_mem_register): %s",err_msg);
+  return 1;
+ }
  return 0;
 #else
  return 0; //`Cannot register the Host memory without CUDA
@@ -963,8 +968,12 @@ int host_mem_register(void *host_ptr, size_t tsize){
 
 int host_mem_unregister(void *host_ptr){
 #ifndef NO_GPU
- cudaError_t err=cudaHostUnregister(host_ptr);
- if(err != cudaSuccess) return 1;
+ cudaError_t err = cudaHostUnregister(host_ptr);
+ if(err != cudaSuccess){
+  const char * err_msg = cudaGetErrorString(err);
+  printf("\n#ERROR(TALSH:mem_manager:host_mem_unregister): %s",err_msg);
+  return 1;
+ }
  return 0;
 #else
  return 0; //`Cannot register the Host memory without CUDA
@@ -982,6 +991,18 @@ static int mi_entry_init()
  if(errc != 0){
   miFFE=0;
   if(VERBOSE) printf("#ERROR(mem_manager:mi_entry_init): Unable to register the multi-index bank: Error %d\n",errc);
+  return -1;
+ }
+ return 0;
+}
+
+static int mi_entry_stop()
+{
+ int errc;
+ miFFE=0;
+ errc=host_mem_unregister(&miBank[0][0]);
+ if(errc != 0){
+  if(VERBOSE) printf("#ERROR(mem_manager:mi_entry_stop): Unable to unregister the multi-index bank: Error %d\n",errc);
   return -1;
  }
  return 0;

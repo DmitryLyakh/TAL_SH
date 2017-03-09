@@ -1,8 +1,8 @@
 !BASIC FORTRAN PARAMETERS
-!REVISION: 2016/09/01
+!REVISION: 2017/03/01
 
-!Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -36,6 +36,32 @@
 !DIR$ ATTRIBUTES ALIGN:128:: INTB,INTS,INTD,INTL,REALS,REALD,REALL
 #endif
 
+!BASIC ALIASES (keep consistent with tensor_algebra.h):
+        integer(C_INT), parameter, public:: NOPE=0                  !"NO" answer
+        integer(C_INT), parameter, public:: YEP=1                   !"YES" answer
+        integer(C_INT), parameter, public:: SUCCESS=0               !success status
+        integer(C_INT), parameter, public:: GENERIC_ERROR=-666      !generic error
+        integer(C_INT), parameter, public:: TRY_LATER=-918273645    !resources are currently busy: KEEP THIS UNIQUE!
+        integer(C_INT), parameter, public:: NOT_CLEAN=-192837465    !resource release did not go cleanly but you may continue: KEEP THIS UNIQUE!
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: NOPE,YEP,SUCCESS,GENERIC_ERROR,TRY_LATER,NOT_CLEAN
+!DIR$ ATTRIBUTES ALIGN:128:: NOPE,YEP,SUCCESS,GENERIC_ERROR,TRY_LATER,NOT_CLEAN
+#endif
+
+!COMPARISON:
+        integer(INTD), parameter, public:: CMP_EQ=0             !equivalence
+        integer(INTD), parameter, public:: CMP_LT=-1            !less than
+        integer(INTD), parameter, public:: CMP_GT=+1            !greater than
+        integer(INTD), parameter, public:: CMP_IN=-2            !contained (in) -> less
+        integer(INTD), parameter, public:: CMP_CN=+2            !contains -> greater
+        integer(INTD), parameter, public:: CMP_OV=-5            !overlaps
+        integer(INTD), parameter, public:: CMP_NC=-6            !not comparable
+        integer(INTD), parameter, public:: CMP_ER=GENERIC_ERROR !error
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: CMP_EQ,CMP_LT,CMP_GT,CMP_IN,CMP_CN,CMP_OV,CMP_NC,CMP_ER
+!DIR$ ATTRIBUTES ALIGN:128:: CMP_EQ,CMP_LT,CMP_GT,CMP_IN,CMP_CN,CMP_OV,CMP_NC,CMP_ER
+#endif
+
 !BASIC DATA KINDS (keep consistent with tensor_algebra.h):
         integer(C_INT), parameter, public:: NO_TYPE=0 !no type/kind
         integer(C_INT), parameter, public:: R4=4      !float tensor data kind
@@ -51,18 +77,6 @@
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: NO_TYPE,R4,R8,C4,C8,R4_,R8_,C4_,C8_
 !DIR$ ATTRIBUTES ALIGN:128:: NO_TYPE,R4,R8,C4,C8,R4_,R8_,C4_,C8_
-#endif
-
-!BASIC ALIASES (keep consistent with tensor_algebra.h):
-        integer(C_INT), parameter, public:: NOPE=0                  !"NO" answer
-        integer(C_INT), parameter, public:: YEP=1                   !"YES" answer
-        integer(C_INT), parameter, public:: SUCCESS=0               !success status
-        integer(C_INT), parameter, public:: GENERIC_ERROR=-666      !generic error
-        integer(C_INT), parameter, public:: TRY_LATER=-918273645    !resources are currently busy: KEEP THIS UNIQUE!
-        integer(C_INT), parameter, public:: NOT_CLEAN=-192837465    !resource release did not go cleanly but you may continue: KEEP THIS UNIQUE!
-#ifndef NO_PHI
-!DIR$ ATTRIBUTES OFFLOAD:mic:: NOPE,YEP,SUCCESS,GENERIC_ERROR,TRY_LATER,NOT_CLEAN
-!DIR$ ATTRIBUTES ALIGN:128:: NOPE,YEP,SUCCESS,GENERIC_ERROR,TRY_LATER,NOT_CLEAN
 #endif
 
 !DEVICE KINDS (keep consistent with tensor_algebra.h):

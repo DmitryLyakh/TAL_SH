@@ -21,8 +21,8 @@
         program main
         use, intrinsic:: ISO_C_BINDING
         implicit none
-        logical, parameter:: TEST_NVTAL=.FALSE.
-        logical, parameter:: TEST_TALSH=.FALSE.
+        logical, parameter:: TEST_NVTAL=.TRUE.
+        logical, parameter:: TEST_TALSH=.TRUE.
         logical, parameter:: TEST_COMPLEX=.TRUE.
         logical, parameter:: BENCH_TALSH_RND=.FALSE.
         logical, parameter:: BENCH_TALSH_CUSTOM=.FALSE.
@@ -266,41 +266,45 @@
         prod=(1d0,0d0)
         write(*,'(1x,"Constructing TAL-SH tensors: Statuses: ")',ADVANCE='NO')
         cval=(+1.234d-3,-3.985d-4); ierr=talsh_tensor_construct(ltens,C8,(/DIM_EXT,DIM_EXT,DIM_EXT,DIM_EXT/),init_val=cval)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=3; return; endif
         prod=prod*cval
         cval=(-2.768d-4,+6.731d-3); ierr=talsh_tensor_construct(rtens,C8,(/DIM_EXT,DIM_EXT,DIM_EXT,DIM_EXT/),init_val=cval)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=4; return; endif
         prod=prod*conjg(cval)
         cval=(0d0,0d0); ierr=talsh_tensor_construct(ctens,C8,(/DIM_EXT,DIM_EXT,DIM_EXT,DIM_EXT/),init_val=cval)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=5; return; endif
         cval=(0d0,0d0); ierr=talsh_tensor_construct(dtens,C8,(/DIM_EXT,DIM_EXT,DIM_EXT,DIM_EXT/),init_val=cval)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=6; return; endif
         cval=(+1d0,0d0); ierr=talsh_tensor_construct(ptens,C8,shp(1:0),init_val=cval)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=7; return; endif
         cval=(-1d0,0d0); ierr=talsh_tensor_construct(ntens,C8,shp(1:0),init_val=cval)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=8; return; endif
         write(*,'()')
+        cnrm=talshTensorImageNorm1_cpu(ltens); dnrm=talshTensorImageNorm1_cpu(rtens)
+        write(*,'(1x,"Initial tensor 1-norms: ",D25.14,1x,D25.14)') cnrm,dnrm
+        ierr=talsh_tensor_get_scalar(ntens,cval); if(ierr.ne.TALSH_SUCCESS) then; ierr=9; return; endif
+        write(*,*) cval
 
 !Contract tensors:
         write(*,'(1x,"Scheduling two tensor contractions: Statuses: ")',ADVANCE='NO')
         ierr=talsh_tensor_contract('D(a,b,i,j)+=L+(j,k,c,i)*R(c,b,k,a)',ctens,ltens,rtens,&
                                   &dev_id=talsh_flat_dev_id(DEV_HOST,0),talsh_task=tsk0)
-        write(*,'(i11,1x)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=9; return; endif
+        write(*,'(i11,1x)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=10; return; endif
         ierr=talsh_tensor_contract('D(a,b,i,j)+=L(j,k,c,i)*R+(c,b,k,a)',dtens,ltens,rtens,&
                                   &dev_id=talsh_flat_dev_id(DEV_HOST,0),talsh_task=tsk1)
-        write(*,'(i11)') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=9; return; endif
+        write(*,'(i11)') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
         write(*,'(1x,"Waiting upon completion of tensor contraction 1 ... ")',ADVANCE='NO')
         ierr=talsh_task_wait(tsk0,sts); write(*,'("Status ",i11," Completion = ",i8)') ierr,sts
-        if(ierr.ne.TALSH_SUCCESS) then; ierr=10; return; endif
+        if(ierr.ne.TALSH_SUCCESS) then; ierr=12; return; endif
         write(*,'(1x,"Waiting upon completion of tensor contraction 2 ... ")',ADVANCE='NO')
         ierr=talsh_task_wait(tsk1,sts); write(*,'("Status ",i11," Completion = ",i8)') ierr,sts
-        if(ierr.ne.TALSH_SUCCESS) then; ierr=10; return; endif
+        if(ierr.ne.TALSH_SUCCESS) then; ierr=13; return; endif
 !Destruct TAL-SH task handles:
         write(*,'(1x,"Destructing task handles: Statuses: ")',ADVANCE='NO')
         ierr=talsh_task_destruct(tsk1)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=14; return; endif
         ierr=talsh_task_destruct(tsk0)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=15; return; endif
         write(*,'()')
 !Check 1-norms of the resulting tensors:
         cnrm=talshTensorImageNorm1_cpu(ctens); dnrm=talshTensorImageNorm1_cpu(dtens)
@@ -347,27 +351,27 @@
 !Destruct tensors:
         write(*,'(1x,"Destructing tensors: Statuses: ")',ADVANCE='NO')
         ierr=talsh_tensor_destruct(ntens)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=16; return; endif
         ierr=talsh_tensor_destruct(ptens)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=17; return; endif
         ierr=talsh_tensor_destruct(dtens)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=18; return; endif
         ierr=talsh_tensor_destruct(ctens)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=19; return; endif
         ierr=talsh_tensor_destruct(rtens)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=20; return; endif
         ierr=talsh_tensor_destruct(ltens)
-        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
+        write(*,'(i11)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=21; return; endif
         write(*,'()')
 
 !Print run-time statistics:
         ierr=talsh_stats()
-        if(ierr.ne.TALSH_SUCCESS) then; ierr=13; return; endif
+        if(ierr.ne.TALSH_SUCCESS) then; ierr=22; return; endif
 !Shutdown TALSH:
         write(*,'(1x,"Shutting down TALSH ... ")',ADVANCE='NO')
         ierr=talsh_shutdown()
         write(*,'("Status ",i11)') ierr
-        if(ierr.ne.TALSH_SUCCESS) then; ierr=14; return; endif
+        if(ierr.ne.TALSH_SUCCESS) then; ierr=23; return; endif
         return
 
         end subroutine test_talsh_cmplx_f

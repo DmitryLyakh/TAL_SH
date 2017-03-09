@@ -240,7 +240,7 @@ NO_PHI = -DNO_PHI
 #C FLAGS:
 ifeq ($(TOOLKIT),PGI)
 CFLAGS_DEV = -c -g -D_DEBUG -silent -w
-CFLAGS_OPT = -c -O3 -silent -w
+CFLAGS_OPT = -c -O3 -silent -w -Mnovect
 else
 CFLAGS_DEV = -c -g -D_DEBUG
 CFLAGS_OPT = -c -O3

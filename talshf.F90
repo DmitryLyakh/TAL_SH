@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2017/01/23
+!REVISION: 2017/03/03
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -62,6 +62,8 @@
         integer(C_INT), parameter, public:: TALSH_TASK_COMPLETED=2000005
  !Host argument buffer:
         integer(C_SIZE_T), parameter, private:: HAB_SIZE_DEFAULT=1048576 !default size of the Host argument buffer in bytes
+ !CP-TAL:
+        integer(C_INT), parameter, private:: CPTAL_MAX_TMP_FTENS=48      !max number of simultaneously existing temporary Fortran tensors for CP-TAL
 !DERIVED TYPES:
  !TAL-SH tensor block:
         type, public, bind(C):: talsh_tens_t
@@ -91,7 +93,10 @@
          real(C_DOUBLE):: exec_time=0d0     !execution time in seconds (information)
         end type talsh_task_t
 !GLOBALS:
-!       ...
+ !Temporary Fortran tensors for CP-TAL:
+        integer(INTD), private:: ftens_len=0
+        type(tensor_block_t), target, private:: ftensor(1:CPTAL_MAX_TMP_FTENS)
+
 !INTERFACES FOR EXTERNAL C/C++ FUNCTIONS:
         interface
  !TAL-SH helper functions:
@@ -235,12 +240,28 @@
           integer(C_INT), intent(in), value:: dev_id
           integer(C_INT), intent(in), value:: dev_kind
          end function talshTensorGetBodyAccess_
+  !Get the scalar value of the rank-0 tensor:
+         integer(C_INT) function talshTensorGetScalar_(tens_block,scalar_real,scalar_imag)&
+                                 &bind(c,name='talshTensorGetScalar_')
+          import
+          implicit none
+          type(talsh_tens_t), intent(inout):: tens_block
+          real(C_DOUBLE), intent(out):: scalar_real
+          real(C_DOUBLE), intent(out):: scalar_imag
+         end function talshTensorGetScalar_
   !Print information about a TAL-SH tensor:
          subroutine talsh_tensor_print_info(tens_block) bind(c,name='talshTensorPrintInfo')
           import
           implicit none
           type(talsh_tens_t), intent(in):: tens_block
          end subroutine talsh_tensor_print_info
+  !Print tensor elements larger by absolute value than some threshold:
+         subroutine talsh_tensor_print_body(tens_block,thresh) bind(c,name='talshTensorPrintBody')
+          import
+          implicit none
+          type(talsh_tens_t), intent(in):: tens_block
+          real(C_DOUBLE), intent(in), value:: thresh
+         end subroutine talsh_tensor_print_body
   ![DEBUG]: Compute the 1-norm of a tensor on Host CPU:
          real(C_DOUBLE) function talshTensorImageNorm1_cpu(talsh_tens) bind(c,name='talshTensorImageNorm1_cpu')
           import
@@ -422,7 +443,9 @@
         public talsh_tensor_data_kind
         public talsh_tensor_presence
         public talsh_tensor_get_body_access
+        public talsh_tensor_get_scalar
         public talsh_tensor_print_info
+        public talsh_tensor_print_body
         public talshTensorImageNorm1_cpu
  !TAL-SH task API:
         public talsh_task_destruct
@@ -495,35 +518,68 @@
          endif
          return
         end function talsh_get_contr_ptrn_str2dig
+!------------------------------------------
+        subroutine get_f_tensor(ftens,ierr)
+         implicit none
+         type(tensor_block_t), intent(out), pointer:: ftens
+         integer(INTD), intent(out):: ierr
+
+         ierr=0
+!$OMP CRITICAL (CPTAL_TMP_FTENS)
+         if(ftens_len.lt.CPTAL_MAX_TMP_FTENS) then
+          ftens_len=ftens_len+1
+          ftens=>ftensor(ftens_len)
+         else
+          ftens=>NULL(); ierr=-1
+         endif
+!$OMP END CRITICAL (CPTAL_TMP_FTENS)
+         return
+        end subroutine get_f_tensor
+!---------------------------------------------
+        subroutine return_f_tensor(ftens,ierr)
+         implicit none
+         type(tensor_block_t), intent(in), pointer:: ftens
+         integer(INTD), intent(out):: ierr
+         type(tensor_block_t), pointer:: ft
+         integer(INTD):: i
+
+         ierr=0
+!$OMP CRITICAL (CPTAL_TMP_FTENS)
+         if(associated(ftens)) then
+          do i=ftens_len,1,-1
+           ft=>ftensor(i)
+           if(associated(ft,ftens)) then; exit; else; ft=>NULL(); endif
+          enddo
+          if(associated(ft).and.(i.ge.1.and.i.le.ftens_len)) then
+           if(i.ne.ftens_len) ftensor(i)=ftensor(ftens_len) !move tensor_block_t (it has no allocatable components)
+           ftens_len=ftens_len-1
+          else
+           ierr=-2
+          endif
+         else
+          ierr=-1
+         endif
+!$OMP END CRITICAL (CPTAL_TMP_FTENS)
+         return
+        end subroutine return_f_tensor
 !------------------------------------------------------------------------------------------------------------------
         integer(C_INT) function talsh_tensor_f_assoc(talsh_tens,image_id,tensF) bind(c,name='talsh_tensor_f_assoc')
 !Returns a C pointer <tensF> to a <tensor_block_t> object instantiated with the tensor body image <image_id>.
 !A return status TALSH_NOT_ALLOWED indicates that the requested tensor body image
 !is no longer available (to be discarded by runtime).
          implicit none
-         type(talsh_tens_t), intent(in):: talsh_tens  !in: TAL-SH tensor
-         integer(C_INT), value, intent(in):: image_id !in: tensor body image id
-         type(C_PTR), intent(out):: tensF             !out: C pointer to <tensor_block_t> associated with the TAL-SH tensor image
-         type(tensor_block_t), pointer:: ftens
-         talsh_tensor_f_assoc=talsh_tensor_f_assoc_(talsh_tens,image_id,ftens)
-         if(talsh_tensor_f_assoc.eq.TALSH_SUCCESS) then; tensF=c_loc(ftens); else; tensF=C_NULL_PTR; endif
-         return
-        end function talsh_tensor_f_assoc
-!-------------------------------------------------------------------------------
-        integer(C_INT) function talsh_tensor_f_assoc_(talsh_tens,image_id,ftens)
-!An auxiliary function for <talsh_tensor_f_assoc()>.
-         implicit none
          type(talsh_tens_t), intent(in):: talsh_tens        !in: TAL-SH tensor
-         integer(C_INT), intent(in):: image_id              !in: tensor body image id
-         type(tensor_block_t), pointer, intent(out):: ftens !out: pointer to a newly allocated <tensor_block_t>
+         integer(C_INT), value, intent(in):: image_id       !in: tensor body image id
+         type(C_PTR), intent(out):: tensF                   !out: C pointer to <tensor_block_t> associated with the TAL-SH tensor image
+         type(tensor_block_t), pointer:: ftens
          type(talsh_tens_shape_t), pointer:: tens_shape
          type(tensor_shape_t):: tshape
          integer(C_INT), pointer, contiguous:: dims(:),divs(:),grps(:)
          integer(C_INT):: devid,dtk,buf_entry,errc
          type(C_PTR):: gmem_p
-         integer:: n,ierr
+         integer(INTD):: n,ierr
 
-         talsh_tensor_f_assoc_=TALSH_SUCCESS
+         talsh_tensor_f_assoc=TALSH_SUCCESS
          if(.not.talsh_tensor_is_empty(talsh_tens)) then
           if(image_id.ge.0.and.image_id.lt.talsh_tens%ndev) then
            if(c_associated(talsh_tens%dev_rsc).and.c_associated(talsh_tens%data_kind).and.c_associated(talsh_tens%avail).and.&
@@ -531,7 +587,7 @@
             call c_f_pointer(talsh_tens%shape_p,tens_shape)
             n=tens_shape%num_dim
             if(n.ge.0) then
-             allocate(ftens,STAT=ierr)
+             call get_f_tensor(ftens,ierr)
              if(ierr.eq.0) then
               if(n.gt.0) then
                if(c_associated(tens_shape%dims)) then
@@ -557,44 +613,44 @@
                errc=talsh_tensor_image_info(talsh_tens,image_id,devid,dtk,gmem_p,buf_entry)
                if(errc.eq.0) then
                 call tensor_block_assoc(ftens,tshape,dtk,gmem_p,errc)
-                if(errc.ne.0) talsh_tensor_f_assoc_=TALSH_FAILURE
+                if(errc.ne.0) talsh_tensor_f_assoc=TALSH_FAILURE
                else
                 if(errc.eq.TALSH_NOT_ALLOWED) then
-                 talsh_tensor_f_assoc_=TALSH_NOT_ALLOWED !requested image is not available (to be discarded)
+                 talsh_tensor_f_assoc=TALSH_NOT_ALLOWED !requested image is not available (to be discarded)
                 else
-                 talsh_tensor_f_assoc_=TALSH_FAILURE
+                 talsh_tensor_f_assoc=TALSH_FAILURE
                 endif
                endif
               else
-               talsh_tensor_f_assoc_=TALSH_FAILURE
+               talsh_tensor_f_assoc=TALSH_FAILURE
               endif
-              if(talsh_tensor_f_assoc_.ne.TALSH_SUCCESS) then
+              if(talsh_tensor_f_assoc.eq.TALSH_SUCCESS) then
+               tensF=c_loc(ftens)
+              else
                call tensor_block_destroy(ftens,ierr)
-               deallocate(ftens)
+               call return_f_tensor(ftens,ierr); if(ierr.ne.0) talsh_tensor_f_assoc=TALSH_FAILURE
+               tensF=C_NULL_PTR
               endif
              else
-              talsh_tensor_f_assoc_=TRY_LATER
+              talsh_tensor_f_assoc=TRY_LATER
              endif
             else
-             talsh_tensor_f_assoc_=TALSH_FAILURE
+             talsh_tensor_f_assoc=TALSH_FAILURE
             endif
            else
-            talsh_tensor_f_assoc_=TALSH_FAILURE
+            talsh_tensor_f_assoc=TALSH_FAILURE
            endif
           else
-           talsh_tensor_f_assoc_=TALSH_INVALID_ARGS
+           talsh_tensor_f_assoc=TALSH_INVALID_ARGS
           endif
          else
-          talsh_tensor_f_assoc_=TALSH_OBJECT_IS_EMPTY
+          talsh_tensor_f_assoc=TALSH_OBJECT_IS_EMPTY
          endif
          return
-        end function talsh_tensor_f_assoc_
+        end function talsh_tensor_f_assoc
 !------------------------------------------------------------------------------------------------
         integer(C_INT) function talsh_tensor_f_dissoc(tensF) bind(c,name='talsh_tensor_f_dissoc')
 !Destroys a temporary <tensor_block_t> object associated with a specific image of some TAL-SH tensor.
-!`PROBLEM: Even though <tensF> is a generic C pointer to a dynamically allocated <tensor_block_t> object,
-!          the back association of <tensF> into a <tensor_block_t> Fortran pointer may lose the information
-!          about dynamic allocation, causing failure with some compilers (Cray).
          implicit none
          type(C_PTR), value:: tensF !in: C pointer to a dynamically allocated <tensor_block_t> object by <talsh_tensor_f_assoc()>
          type(tensor_block_t), pointer:: ftens
@@ -613,7 +669,7 @@
               talsh_tensor_f_dissoc=TALSH_FAILURE
              endif
             endif
-            deallocate(ftens,STAT=ierr) !``May fail with some compilers because the allocation status can be lost
+            call return_f_tensor(ftens,ierr)
             if(ierr.ne.0.and.talsh_tensor_f_dissoc.eq.TALSH_SUCCESS) talsh_tensor_f_dissoc=TALSH_FAILURE
            else
             talsh_tensor_f_dissoc=TALSH_FAILURE
@@ -992,6 +1048,18 @@
          ierr=talshTensorGetBodyAccess_(tens_block,body_p,data_kind,dev_id,devk)
          return
         end function talsh_tensor_get_body_access
+!-------------------------------------------------------------------------------
+        function talsh_tensor_get_scalar(tens_block,scalar_complex) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                          !out: error code
+         type(talsh_tens_t), intent(inout):: tens_block !in: tensor block (rank-0)
+         complex(8), intent(out):: scalar_complex       !out: complex scalar value
+         real(C_DOUBLE):: sreal,simag
+
+         ierr=talshTensorGetScalar_(tens_block,sreal,simag)
+         if(ierr.eq.TALSH_SUCCESS) scalar_complex=cmplx(sreal,simag,8)
+         return
+        end function talsh_tensor_get_scalar
 !------------------------------------------------------------
         function talsh_task_destruct(talsh_task) result(ierr)
          implicit none

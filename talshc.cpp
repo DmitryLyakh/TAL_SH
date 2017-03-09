@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API.
-REVISION: 2017/02/09
+REVISION: 2017/03/03
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -1006,7 +1006,6 @@ int talshTensorConstruct(talsh_tens_t * tens_block,     //inout: empty tensor bl
       init_method(tens_block->dev_rsc[0].gmem_p,data_kind,tens_rank,tens_dims,&errc);
       if(errc) errc=NOT_CLEAN; //initialization failed, tensor block value is undefined, but one may continue
      }else{
-      //printf("\n#DBG\n %p\n %llu\n %llu",&tvol,*(&tvol),tvol); //debug
       switch(data_kind){
        case R4:
         fval = (float)init_val_real;
@@ -1026,7 +1025,7 @@ int talshTensorConstruct(talsh_tens_t * tens_block,     //inout: empty tensor bl
         for(size_t l=0; l < tvol; l++) cfp[l]=cfv;
         break;
        case C8:
-        //printf("\n#DBG\n %p\n %llu\n %llu",&tvol,*(&tvol),tvol); //debug
+        //printf("\n#DBG\n %llu",tvol); //debug
         cdv = talshComplex8Set(init_val_real,init_val_imag);
         cdp = (talshComplex8*)(tens_block->dev_rsc[0].gmem_p);
 #pragma omp parallel for schedule(guided)
@@ -1230,6 +1229,91 @@ int talshTensorGetBodyAccess_(talsh_tens_t * tens_block, void ** body_p, int dat
  return talshTensorGetBodyAccess(tens_block,body_p,data_kind,dev_id,dev_kind);
 }
 
+int talshTensorGetBodyAccessConst(const talsh_tens_t * tens_block,
+                                  const void ** body_p,
+                                  int data_kind,
+                                  int dev_id,
+                                  int dev_kind)
+/** Based on the requested data kind and device, returns a constant pointer to the body
+    of the matching tensor image (if any). If no match, TALSH_NOT_FOUND is returned. **/
+{
+ int i,errc;
+
+ if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
+ if(tens_block == NULL || body_p == NULL) return TALSH_INVALID_ARGS;
+ errc=TALSH_SUCCESS; *body_p=NULL;
+ if(talshTensorIsEmpty(tens_block) != NOPE) return TALSH_OBJECT_IS_EMPTY;
+ if(talshTensorIsHealthy(tens_block) != YEP) return TALSH_FAILURE;
+ if(talshTensorInUse(tens_block) != NOPE) return TALSH_NOT_ALLOWED;
+ if(dev_kind != DEV_NULL) dev_id=talshFlatDevId(dev_kind,dev_id);
+ if(dev_id >= 0 && dev_id < DEV_MAX){
+  for(i=0;i<tens_block->ndev;++i){
+   if(tens_block->dev_rsc[i].dev_id == dev_id && tens_block->data_kind[i] == data_kind){
+    *body_p=tens_block->dev_rsc[i].gmem_p;
+    return errc;
+   }
+  }
+ }else{
+  return TALSH_INVALID_ARGS;
+ }
+ return TALSH_NOT_FOUND;
+}
+
+int talshTensorGetScalar(talsh_tens_t * tens_block, talshComplex8 * scalar_complex)
+{
+ int errc;
+ double sreal,simag;
+
+ errc=talshTensorGetScalar_(tens_block,&sreal,&simag);
+ if(errc == TALSH_SUCCESS) *scalar_complex = talshComplex8Set(sreal,simag);
+ return errc;
+}
+
+int talshTensorGetScalar_(talsh_tens_t * tens_block, double * scalar_real, double * scalar_imag)
+{
+ int errc,i,j,n,dh,dev[TALSH_MAX_DEV_PRESENT],dtk[TALSH_MAX_DEV_PRESENT];
+ void * body_p;
+ talshComplex4 cx4;
+ talshComplex8 cx8;
+
+ if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
+ if(tens_block == NULL || scalar_real == NULL || scalar_imag == NULL) return TALSH_INVALID_ARGS;
+ if(talshTensorIsEmpty(tens_block) != NOPE) return TALSH_OBJECT_IS_EMPTY;
+ if(talshTensorIsHealthy(tens_block) != YEP) return TALSH_FAILURE;
+ if(talshTensorRank(tens_block) != 0) return TALSH_INVALID_ARGS;
+ dh=talshFlatDevId(DEV_HOST,0); j=-1;
+ errc=talshTensorPresence(tens_block,&n,dev,dtk);
+ if(errc == TALSH_SUCCESS && n > 0){
+  for(i=0; i<n; ++i){if(dev[i] == dh){j=i; break;}}
+  if(j < 0){
+   errc=talshTensorPlace(tens_block,0,DEV_HOST);
+   if(errc == TALSH_SUCCESS){
+    errc=talshTensorPresence(tens_block,&n,dev,dtk);
+    if(errc == TALSH_SUCCESS && n > 0){
+     for(i=0; i<n; ++i){if(dev[i] == dh){j=i; break;}}
+     if(j < 0) errc=TALSH_FAILURE;
+    }else{
+     errc=TALSH_FAILURE;
+    }
+   }
+  }
+  if(errc == TALSH_SUCCESS){
+   errc=talshTensorGetBodyAccess(tens_block,&body_p,dtk[j],0,DEV_HOST);
+   if(errc == TALSH_SUCCESS){
+    switch(dtk[j]){
+     case R4: *scalar_real = (double)(*((float*)body_p)); *scalar_imag = 0.0; break;
+     case R8: *scalar_real = *((double*)body_p); *scalar_imag = 0.0; break;
+     case C4: cx4 = *((talshComplex4*)body_p); *scalar_real = (double)talshComplex4Real(cx4); *scalar_imag = (double)talshComplex4Imag(cx4); break;
+     case C8: cx8 = *((talshComplex8*)body_p); *scalar_real = talshComplex8Real(cx8); *scalar_imag = talshComplex8Imag(cx8); break;
+    }
+   }
+  }
+ }else{
+  errc=TALSH_FAILURE;
+ }
+ return errc;
+}
+
 static int talshTensorIsHealthy(const talsh_tens_t * talsh_tens)
 /** Returns YEP is the TAL-SH tensor is fine, NOPE otherwise. A return
     status TALSH_OBJECT_IS_EMPTY indicates that the tensor is empty.
@@ -1273,6 +1357,108 @@ void talshTensorPrintInfo(const talsh_tens_t * tens_block)
   printf("\n#END OF MESSAGE\n");
  }else{
   printf("\n#WARNING(talshc:talshTensorPrintInfo): NULL pointer!\n");
+ }
+ return;
+}
+
+void talshTensorPrintBody(const talsh_tens_t * tens_block, double thresh)
+/** Prints tensor elements larger by absolute value than some threshold.
+    Only CPU resident tensor images can be printed.  **/
+{
+ int errc,n,devs[TALSH_MAX_DEV_PRESENT],dtks[TALSH_MAX_DEV_PRESENT];
+ unsigned int mlndx[MAX_TENSOR_RANK],i,nd;
+ unsigned int * tdims;
+ const void * body_p;
+ size_t l,vol;
+ talsh_tens_shape_t tshape;
+ const float * bpr4;
+ const double * bpr8;
+ const talshComplex4 * bpc4;
+ const talshComplex8 * bpc8;
+
+ printf("\n#MSG: Printing tensor body:");
+ if(tens_block != NULL){
+  if(talshTensorIsEmpty(tens_block) == NOPE){
+   errc=talshTensorPresence(tens_block,&n,devs,dtks,DEV_HOST);
+   if(errc == TALSH_SUCCESS && n > 0){
+    errc=talshTensorGetBodyAccessConst(tens_block,&body_p,dtks[0],0,DEV_HOST);
+    printf("ERROR CODE = %d",errc); //debug
+    if(errc == TALSH_SUCCESS){
+     vol=talshTensorVolume(tens_block);
+     errc=tensShape_clean(&tshape);
+     errc=talshTensorShape(tens_block,&tshape);
+     if(errc == TALSH_SUCCESS){
+      nd=(unsigned int)(tshape.num_dim);
+      tdims=(unsigned int *)(tshape.dims);
+      switch(dtks[0]){
+       case R4:
+        bpr4=(const float *)body_p;
+        if(nd > 0){
+         for(l=0;l<vol;++l){
+          if((double)(ABS(bpr4[l])) >= thresh){
+           tens_elem_mlndx_f(l,nd,tdims,mlndx);
+           printf("\n%E",bpr4[l]); for(i=0;i<nd;++i) printf(" %u",mlndx[i]);
+          }
+         }
+        }else{ //scalar
+         if((double)(ABS(bpr4[0])) >= thresh) printf("\n%E",bpr4[0]);
+        }
+        break;
+       case R8:
+        bpr8=(const double *)body_p;
+        if(nd > 0){
+         for(l=0;l<vol;++l){
+          if(ABS(bpr8[l]) >= thresh){
+           tens_elem_mlndx_f(l,nd,tdims,mlndx);
+           printf("\n%E",bpr8[l]); for(i=0;i<nd;++i) printf(" %u",mlndx[i]);
+          }
+         }
+        }else{ //scalar
+         if(ABS(bpr8[0]) >= thresh) printf("\n%E",bpr8[0]);
+        }
+        break;
+       case C4:
+        bpc4=(const talshComplex4 *)body_p;
+        if(nd > 0){
+         for(l=0;l<vol;++l){
+          if((double)(talshComplex4Abs(bpc4[l])) >= thresh){
+           tens_elem_mlndx_f(l,nd,tdims,mlndx);
+           printf("\n(%E,%E)",talshComplex4Real(bpc4[l]),talshComplex4Imag(bpc4[l])); for(i=0;i<nd;++i) printf(" %u",mlndx[i]);
+          }
+         }
+        }else{ //scalar
+         if(talshComplex4Abs(bpc4[0]) >= thresh) printf("\n(%E,%E)",talshComplex4Real(bpc4[0]),talshComplex4Imag(bpc4[0]));
+        }
+        break;
+       case C8:
+        bpc8=(const talshComplex8 *)body_p;
+        if(nd > 0){
+         for(l=0;l<vol;++l){
+          if(talshComplex8Abs(bpc8[l]) >= thresh){
+           tens_elem_mlndx_f(l,nd,tdims,mlndx);
+           printf("\n(%E,%E)",talshComplex8Real(bpc8[l]),talshComplex8Imag(bpc8[l])); for(i=0;i<nd;++i) printf(" %u",mlndx[i]);
+          }
+         }
+        }else{ //scalar
+         if((double)(talshComplex8Abs(bpc8[0])) >= thresh) printf("\n(%E,%E)",talshComplex8Real(bpc8[0]),talshComplex8Imag(bpc8[0]));
+        }
+        break;
+      }
+      printf("\n#END MSG\n");
+     }else{
+      printf("\n#WARNING(talshc:talshTensorPrintBody): Failed to obtain tensor shape!\n");
+     }
+    }else{
+     printf("\n#WARNING(talshc:talshTensorPrintBody): No tensor body access!\n");
+    }
+   }else{
+    printf("\n#WARNING(talshc:talshTensorPrintBody): No tensor image found on Host!\n");
+   }
+  }else{
+   printf("\n#WARNING(talshc:talshTensorPrintBody): Empty tensor!\n");
+  }
+ }else{
+  printf("\n#WARNING(talshc:talshTensorPrintBody): NULL pointer!\n");
  }
  return;
 }
