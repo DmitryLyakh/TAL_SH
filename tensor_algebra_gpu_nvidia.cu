@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2017/03/09
+REVISION: 2017/03/14
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -214,6 +214,7 @@ __device__ static int dot_product_wr_lock=0; //write lock shared by all <gpu_arr
 //CUDA runtime (for Fortran):
 #ifndef NO_GPU
 int cuda_get_device_count(int * dev_count)
+/** Returns the total number of NVIDIA GPUs found on the node. **/
 {
  const char *err_msg;
  cudaError_t cuda_err = cudaGetDeviceCount(dev_count);

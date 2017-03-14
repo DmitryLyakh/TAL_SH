@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2017/03/03
+!REVISION: 2017/03/14
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -127,6 +127,13 @@
           import
           implicit none
          end function talshShutdown
+  !Get on-node device count for a specific device kind:
+         integer(C_INT) function talsh_get_device_count(dev_kind,dev_count) bind(c,name='talshGetDeviceCount')
+          import
+          implicit none
+          integer(C_INT), value, intent(in):: dev_kind
+          integer(C_INT), intent(out):: dev_count
+         end function talsh_get_device_count
   !Get the flat device Id:
          integer(C_INT) function talshFlatDevId(dev_kind,dev_num) bind(c,name='talshFlatDevId')
           import

@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2017/03/03
+REVISION: 2017/03/14
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -404,7 +404,7 @@ extern "C"{
  int tensDevRsc_destroy(talsh_dev_rsc_t * drsc);
 #ifndef NO_GPU
 // CUDA runtime:
-//  Get on-node device count:
+//  Get on-node NVIDIA GPU count:
 int cuda_get_device_count(int * dev_count);
 // NVidia GPU operations (NV-TAL):
 //  NV-TAL debugging:

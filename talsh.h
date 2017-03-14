@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API header.
-REVISION: 2017/03/03
+REVISION: 2017/03/14
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -121,6 +121,9 @@ extern "C"{
                int amd_list[]);
 //  Shutdown TAL-SH:
  int talshShutdown();
+//  Get on-node device count:
+ int talshGetDeviceCount(int dev_kind,
+                         int * dev_count);
 //  Get the flat device Id:
  int talshFlatDevId(int dev_kind,
                     int dev_num);
