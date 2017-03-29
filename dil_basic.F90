@@ -1,5 +1,5 @@
-!BASIC FORTRAN PARAMETERS
-!REVISION: 2017/03/01
+!BASIC FORTRAN PARAMETERS (Fortran-2003)
+!REVISION: 2017/03/20
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -23,6 +23,7 @@
         use, intrinsic:: ISO_C_BINDING
         implicit none
         public
+
 !BASIC TYPE KINDS:
         integer(C_INT), parameter, public:: INTB=1   !byte integer size
         integer(C_INT), parameter, public:: INTS=2   !short integer size
@@ -48,21 +49,7 @@
 !DIR$ ATTRIBUTES ALIGN:128:: NOPE,YEP,SUCCESS,GENERIC_ERROR,TRY_LATER,NOT_CLEAN
 #endif
 
-!COMPARISON:
-        integer(INTD), parameter, public:: CMP_EQ=0             !equivalence
-        integer(INTD), parameter, public:: CMP_LT=-1            !less than
-        integer(INTD), parameter, public:: CMP_GT=+1            !greater than
-        integer(INTD), parameter, public:: CMP_IN=-2            !contained (in) -> less
-        integer(INTD), parameter, public:: CMP_CN=+2            !contains -> greater
-        integer(INTD), parameter, public:: CMP_OV=-5            !overlaps
-        integer(INTD), parameter, public:: CMP_NC=-6            !not comparable
-        integer(INTD), parameter, public:: CMP_ER=GENERIC_ERROR !error
-#ifndef NO_PHI
-!DIR$ ATTRIBUTES OFFLOAD:mic:: CMP_EQ,CMP_LT,CMP_GT,CMP_IN,CMP_CN,CMP_OV,CMP_NC,CMP_ER
-!DIR$ ATTRIBUTES ALIGN:128:: CMP_EQ,CMP_LT,CMP_GT,CMP_IN,CMP_CN,CMP_OV,CMP_NC,CMP_ER
-#endif
-
-!BASIC DATA KINDS (keep consistent with tensor_algebra.h):
+!BASIC NUMERIC DATA KINDS (keep consistent with tensor_algebra.h):
         integer(C_INT), parameter, public:: NO_TYPE=0 !no type/kind
         integer(C_INT), parameter, public:: R4=4      !float tensor data kind
         integer(C_INT), parameter, public:: R8=8      !double tensor data kind
@@ -79,6 +66,39 @@
 !DIR$ ATTRIBUTES ALIGN:128:: NO_TYPE,R4,R8,C4,C8,R4_,R8_,C4_,C8_
 #endif
 
+!BASIC ERROR CLASSES:
+        integer(INTD), parameter, public:: ERR_INVALID_ARGS=-1       !invalid procedure arguments
+        integer(INTD), parameter, public:: ERR_INVALID_REQUEST=-2    !invalid request (in a context)
+        integer(INTD), parameter, public:: ERR_INVALID_OBJECT=-3     !invalid object (in a context)
+        integer(INTD), parameter, public:: ERR_CORRUPTED_DATA=-4     !corrupted data detected
+        integer(INTD), parameter, public:: ERR_UNABLE_TO_COMPLETE=-5 !unable to complete the action/request
+        integer(INTD), parameter, public:: ERR_MEM_ALLOC_FAIL=-6     !memory allocation failed
+        integer(INTD), parameter, public:: ERR_MEM_FREE_FAIL=-7      !memory deallocation failed
+        integer(INTD), parameter, public:: ERR_RESOURCE_UNAVAIL=-8   !resource shortage
+        integer(INTD), parameter, public:: ERR_FILE_IO_FAIL=-9       !file I/O failed
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: ERR_INVALID_ARGS,ERR_INVALID_REQUEST,ERR_INVALID_OBJECT,ERR_CORRUPTED_DATA
+!DIR$ ATTRIBUTES OFFLOAD:mic:: ERR_UNABLE_TO_COMPLETE,ERR_MEM_ALLOC_FAIL,ERR_MEM_FREE_FAIL
+!DIR$ ATTRIBUTES OFFLOAD:mic:: ERR_RESOURCE_UNAVAIL,ERR_FILE_IO_FAIL
+!DIR$ ATTRIBUTES ALIGN:128:: ERR_INVALID_ARGS,ERR_INVALID_REQUEST,ERR_INVALID_OBJECT,ERR_CORRUPTED_DATA
+!DIR$ ATTRIBUTES ALIGN:128:: ERR_UNABLE_TO_COMPLETE,ERR_MEM_ALLOC_FAIL,ERR_MEM_FREE_FAIL
+!DIR$ ATTRIBUTES ALIGN:128:: ERR_RESOURCE_UNAVAIL,ERR_FILE_IO_FAIL
+#endif
+
+!COMPARISON RESULTS:
+        integer(INTD), parameter, public:: CMP_EQ=0             !equivalence
+        integer(INTD), parameter, public:: CMP_LT=-1            !less than
+        integer(INTD), parameter, public:: CMP_GT=+1            !greater than
+        integer(INTD), parameter, public:: CMP_IN=-2            !contained (in) -> less
+        integer(INTD), parameter, public:: CMP_CN=+2            !contains -> greater
+        integer(INTD), parameter, public:: CMP_OV=-5            !overlaps
+        integer(INTD), parameter, public:: CMP_NC=-6            !not comparable
+        integer(INTD), parameter, public:: CMP_ER=GENERIC_ERROR !error
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: CMP_EQ,CMP_LT,CMP_GT,CMP_IN,CMP_CN,CMP_OV,CMP_NC,CMP_ER
+!DIR$ ATTRIBUTES ALIGN:128:: CMP_EQ,CMP_LT,CMP_GT,CMP_IN,CMP_CN,CMP_OV,CMP_NC,CMP_ER
+#endif
+
 !DEVICE KINDS (keep consistent with tensor_algebra.h):
         integer(C_INT), parameter, public:: MAX_GPUS_PER_NODE=8   !max number of NVidia GPUs on a node
         integer(C_INT), parameter, public:: MAX_MICS_PER_NODE=8   !max number of Intel MICs on a node
@@ -86,12 +106,12 @@
         integer(C_INT), parameter, public:: DEV_NULL=-1           !abstract null device
         integer(C_INT), parameter, public:: DEV_DEFAULT=DEV_NULL  !will allow runtime to choose the device
         integer(C_INT), parameter, public:: DEV_HOST=0            !multicore CPU Host (includes all self-hosted systems)
-        integer(C_INT), parameter, public:: DEV_NVIDIA_GPU=1      !NVidia GPU
+        integer(C_INT), parameter, public:: DEV_NVIDIA_GPU=1      !NVIDIA GPU
         integer(C_INT), parameter, public:: DEV_INTEL_MIC=2       !Intel Xeon Phi
         integer(C_INT), parameter, public:: DEV_AMD_GPU=3         !AMD GPU
         integer(C_INT), parameter, public:: DEV_MAX=1+MAX_GPUS_PER_NODE+MAX_MICS_PER_NODE+MAX_AMDS_PER_NODE
 
-!BASIC NUMERIC:
+!BASIC NUMERIC CONSTANTS:
         real(4), parameter, public:: EPS4=epsilon(1.0) !single precision epsilon
         real(8), parameter, public:: EPS8=epsilon(1d0) !double precision epsilon
         real(8), parameter, public:: ZERO_THRESH=1d-11 !numerical comparison threshold: should account for possible round-off errors

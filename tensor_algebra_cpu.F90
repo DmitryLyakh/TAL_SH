@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2017/01/20
+!REVISION: 2017/03/29
 
 !Copyright (C) 2013-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -2943,8 +2943,8 @@
 	endif
 	return
 	end subroutine tensor_block_add
-!------------------------------------------------------------------------------------------------------
-	subroutine tensor_block_contract(contr_ptrn,ltens,rtens,dtens,ierr,arg_conj,data_kind,ord_rest) !PARALLEL
+!------------------------------------------------------------------------------------------------------------
+	subroutine tensor_block_contract(contr_ptrn,ltens,rtens,dtens,ierr,alpha,arg_conj,data_kind,ord_rest) !PARALLEL
 !This subroutine contracts two tensor blocks and accumulates the result into another tensor block:
 !dtens(:)+=ltens(:)*rtens(:)
 !Author: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
@@ -2962,6 +2962,7 @@
 ! - ltens - left tensor argument (tensor block);
 ! - rtens - right tensor argument (tensor block);
 ! - dtens - initialized! destination tensor argument (tensor block);
+! - alpha - BLAS alpha (complex);
 ! - arg_conj - argument complex conjugation flags: Bit 0 -> Destination, Bit 1 -> Left, Bit 2 -> Right tensor argument;
 ! - data_kind - (optional) requested data kind, one of {'r4','r8','c8'};
 ! - ord_rest(1:left_rank+right_rank) - (optional) index ordering restrictions (for contracted indices only);
@@ -2976,6 +2977,7 @@
         type(tensor_block_t), intent(inout), target:: ltens,rtens !inout: left and right tensors: (out) because of <tensor_block_layout> because of <tensor_block_shape_ok>
         type(tensor_block_t), intent(inout), target:: dtens       !inout: destination tensor
         integer, intent(inout):: ierr                             !out: error code
+        complex(8), intent(in), optional:: alpha                  !in: BLAS alpha
         integer, intent(in), optional:: arg_conj                  !in: argument complex conjugation (Bit 0 -> Destination, Bit 1 -> Left, Bit 2 -> Right)
         character(2), intent(in), optional:: data_kind
         integer, intent(in), optional:: ord_rest(1:*)
@@ -2996,7 +2998,7 @@
         character(1):: ltrm,rtrm
         real(4):: d_r4
         real(8):: d_r8,start_gemm
-        complex(8):: d_c8,l_c8,r_c8
+        complex(8):: d_c8,l_c8,r_c8,alf
         logical:: contr_ok,ltransp,rtransp,dtransp,transp,lconj,rconj,dconj
 
         ierr=0
@@ -3162,46 +3164,47 @@
          if(l0.ne.lld.or.l1.ne.lcd.or.l2.ne.lrd) then; ierr=15; goto 999; endif
          if(rtrm.eq.'C') then; l2=lrd; else; l2=lcd; endif !leading dimension for the right matrix
  !Multiply two matrices (dtp += ltp * rtp):
+         if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
 !	 start_gemm=thread_wtime() !debug
 	 select case(contr_case)
 	 case(PARTIAL_CONTRACTION) !destination is an array
 	  select case(dtk)
 	  case('r4','R4')
 #ifdef NO_BLAS
-	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real4,rtp%data_real4,dtp%data_real4,ierr)
+	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real4,rtp%data_real4,dtp%data_real4,ierr,real(alf,4))
 	   if(ierr.ne.0) then; ierr=16; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
-	    call sgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),1.0,ltp%data_real4,int(lcd,4),rtp%data_real4,int(l2,4),1.0,&
-	              &dtp%data_real4,int(lld,4))
+	    call sgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),real(alf,4),ltp%data_real4,int(lcd,4),rtp%data_real4,int(l2,4),&
+	              &1.0,dtp%data_real4,int(lld,4))
 	   else
-	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real4,rtp%data_real4,dtp%data_real4,ierr)
+	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real4,rtp%data_real4,dtp%data_real4,ierr,real(alf,4))
 	    if(ierr.ne.0) then; ierr=17; goto 999; endif
 	   endif
 #endif
 	  case('r8','R8')
 #ifdef NO_BLAS
-	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real8,rtp%data_real8,dtp%data_real8,ierr)
+	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real8,rtp%data_real8,dtp%data_real8,ierr,real(alf,8))
 	   if(ierr.ne.0) then; ierr=18; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
-	    call dgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),1d0,ltp%data_real8,int(lcd,4),rtp%data_real8,int(l2,4),1d0,&
-	              &dtp%data_real8,int(lld,4))
+	    call dgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),real(alf,8),ltp%data_real8,int(lcd,4),rtp%data_real8,int(l2,4),&
+	              &1d0,dtp%data_real8,int(lld,4))
 	   else
-	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real8,rtp%data_real8,dtp%data_real8,ierr)
+	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real8,rtp%data_real8,dtp%data_real8,ierr,real(alf,8))
 	    if(ierr.ne.0) then; ierr=19; goto 999; endif
 	   endif
 #endif
 	  case('c8','C8')
 #ifdef NO_BLAS
-	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx8,rtp%data_cmplx8,dtp%data_cmplx8,ierr)
+	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx8,rtp%data_cmplx8,dtp%data_cmplx8,ierr,alf)
 	   if(ierr.ne.0) then; ierr=20; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
-	    call zgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),1d0,ltp%data_cmplx8,int(lcd,4),rtp%data_cmplx8,int(l2,4),1d0,&
-	              &dtp%data_cmplx8,int(lld,4))
+	    call zgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),alf,ltp%data_cmplx8,int(lcd,4),rtp%data_cmplx8,int(l2,4),&
+	              &(1d0,0d0),dtp%data_cmplx8,int(lld,4))
 	   else
-	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx8,rtp%data_cmplx8,dtp%data_cmplx8,ierr)
+	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx8,rtp%data_cmplx8,dtp%data_cmplx8,ierr,alf)
 	    if(ierr.ne.0) then; ierr=21; goto 999; endif
 	   endif
 #endif
@@ -3210,17 +3213,17 @@
 	  select case(dtk)
 	  case('r4','R4')
 	   d_r4=0.0
-	   call tensor_block_fcontract_dlf(lcd,ltp%data_real4,rtp%data_real4,d_r4,ierr)
+	   call tensor_block_fcontract_dlf(lcd,ltp%data_real4,rtp%data_real4,d_r4,ierr,real(alf,4))
 	   if(ierr.ne.0) then; ierr=22; goto 999; endif
 	   dtp%scalar_value=dtp%scalar_value+cmplx(d_r4,0d0,8)
 	  case('r8','R8')
 	   d_r8=0d0
-	   call tensor_block_fcontract_dlf(lcd,ltp%data_real8,rtp%data_real8,d_r8,ierr)
+	   call tensor_block_fcontract_dlf(lcd,ltp%data_real8,rtp%data_real8,d_r8,ierr,real(alf,8))
 	   if(ierr.ne.0) then; ierr=23; goto 999; endif
 	   dtp%scalar_value=dtp%scalar_value+cmplx(d_r8,0d0,8)
 	  case('c8','C8')
 	   d_c8=cmplx(0d0,0d0,8)
-	   call tensor_block_fcontract_dlf(lcd,ltp%data_cmplx8,rtp%data_cmplx8,d_c8,ierr)
+	   call tensor_block_fcontract_dlf(lcd,ltp%data_cmplx8,rtp%data_cmplx8,d_c8,ierr,alf)
 	   if(ierr.ne.0) then; ierr=24; goto 999; endif
 	   dtp%scalar_value=dtp%scalar_value+d_c8
 	  end select
@@ -3228,12 +3231,12 @@
 	  if(ltb.ne.scalar_tensor.and.rtb.eq.scalar_tensor) then
 	   if(lconj) then; k=1*2+0; else; k=0; endif !bit 0 -> D; bit 1 -> L
 	   if(rconj) then; d_c8=conjg(rtp%scalar_value); else; d_c8=rtp%scalar_value; endif
-	   call tensor_block_add(dtp,ltp,ierr,scale_fac=d_c8,arg_conj=k,data_kind=dtk)
+	   call tensor_block_add(dtp,ltp,ierr,scale_fac=d_c8*alf,arg_conj=k,data_kind=dtk)
 	   if(ierr.ne.0) then; ierr=25; goto 999; endif
 	  elseif(ltb.eq.scalar_tensor.and.rtb.ne.scalar_tensor) then
 	   if(rconj) then; k=1*2+0; else; k=0; endif !bit 0 -> D; bit 1 -> L
 	   if(lconj) then; d_c8=conjg(ltp%scalar_value); else; d_c8=ltp%scalar_value; endif
-	   call tensor_block_add(dtp,rtp,ierr,scale_fac=d_c8,arg_conj=k,data_kind=dtk)
+	   call tensor_block_add(dtp,rtp,ierr,scale_fac=d_c8*alf,arg_conj=k,data_kind=dtk)
 	   if(ierr.ne.0) then; ierr=26; goto 999; endif
 	  else
 	   ierr=27; goto 999
@@ -3241,7 +3244,7 @@
 	 case(MULTIPLY_SCALARS)
 	  if(lconj) then; l_c8=conjg(ltp%scalar_value); else; l_c8=ltp%scalar_value; endif
 	  if(rconj) then; r_c8=conjg(rtp%scalar_value); else; r_c8=rtp%scalar_value; endif
-	  dtp%scalar_value=dtp%scalar_value+l_c8*r_c8
+	  dtp%scalar_value=dtp%scalar_value+l_c8*r_c8*alf
 	 end select
 !	 write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): GEMM time: ",F10.4)') thread_wtime(start_gemm) !debug
  !Transpose the matrix-result back into the output tensor:
@@ -6310,13 +6313,13 @@
 !        thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_copy_scatter_dlf_c8
-!--------------------------------------------------------------------------
+!--------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_fcontract_dlf_r4
 #endif
-	subroutine tensor_block_fcontract_dlf_r4(dc,ltens,rtens,dtens,ierr) !PARALLEL
+	subroutine tensor_block_fcontract_dlf_r4(dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
 !This subroutine fully reduces two vectors derived from the corresponding tensors by index permutations:
-!dtens+=ltens(0:dc-1)*rtens(0:dc-1), where dtens is a scalar.
+!dtens+=ltens(0:dc-1)*rtens(0:dc-1)*alpha, where dtens is a scalar.
 	implicit none
 !---------------------------------------
 	integer, parameter:: real_kind=4 !real data kind
@@ -6324,9 +6327,10 @@
 	integer(LONGINT), intent(in):: dc
 	real(real_kind), intent(in):: ltens(0:*),rtens(0:*) !true tensors
 	real(real_kind), intent(inout):: dtens !scalar
-	integer, intent(inout):: ierr
+	integer, intent(inout):: ierr !error code
+	real(real_kind), intent(in), optional:: alpha !BLAS alpha
 	integer i,j,k,l,m,n
-	real(real_kind) val
+	real(real_kind) val,alf
 	integer(LONGINT) l0
 	real(8) time_beg,tm
 #ifndef NO_PHI
@@ -6337,10 +6341,11 @@
 	ierr=0
 !	time_beg=thread_wtime() !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_r4): dc: ",i9)') dc !debug
+	if(present(alpha)) then; alf=alpha; else; alf=1.0; endif
 	if(dc.gt.0_LONGINT) then
 	 val=0.0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val)
-	 do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(l0)*rtens(l0); enddo
+	 do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(l0)*rtens(l0)*alf; enddo
 !$OMP END PARALLEL DO
 	 dtens=dtens+val
 	else
@@ -6351,13 +6356,13 @@
 !        tm,dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_fcontract_dlf_r4
-!--------------------------------------------------------------------------
+!--------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_fcontract_dlf_r8
 #endif
-	subroutine tensor_block_fcontract_dlf_r8(dc,ltens,rtens,dtens,ierr) !PARALLEL
+	subroutine tensor_block_fcontract_dlf_r8(dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
 !This subroutine fully reduces two vectors derived from the corresponding tensors by index permutations:
-!dtens+=ltens(0:dc-1)*rtens(0:dc-1), where dtens is a scalar.
+!dtens+=ltens(0:dc-1)*rtens(0:dc-1)*alpha, where dtens is a scalar.
 	implicit none
 !---------------------------------------
 	integer, parameter:: real_kind=8 !real data kind
@@ -6365,9 +6370,10 @@
 	integer(LONGINT), intent(in):: dc
 	real(real_kind), intent(in):: ltens(0:*),rtens(0:*) !true tensors
 	real(real_kind), intent(inout):: dtens !scalar
-	integer, intent(inout):: ierr
+	integer, intent(inout):: ierr !error code
+	real(real_kind), intent(in), optional:: alpha !BLAS alpha
 	integer i,j,k,l,m,n
-	real(real_kind) val
+	real(real_kind) val,alf
 	integer(LONGINT) l0
 	real(8) time_beg,tm
 #ifndef NO_PHI
@@ -6378,10 +6384,11 @@
 	ierr=0
 !	time_beg=thread_wtime() !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_r8): dc: ",i9)') dc !debug
+	if(present(alpha)) then; alf=alpha; else; alf=1d0; endif
 	if(dc.gt.0_LONGINT) then
 	 val=0d0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val)
-	 do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(l0)*rtens(l0); enddo
+	 do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(l0)*rtens(l0)*alf; enddo
 !$OMP END PARALLEL DO
 	 dtens=dtens+val
 	else
@@ -6392,13 +6399,13 @@
 !        tm,dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_fcontract_dlf_r8
-!--------------------------------------------------------------------------
+!--------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_fcontract_dlf_c8
 #endif
-	subroutine tensor_block_fcontract_dlf_c8(dc,ltens,rtens,dtens,ierr) !PARALLEL
+	subroutine tensor_block_fcontract_dlf_c8(dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
 !This subroutine fully reduces two vectors derived from the corresponding tensors by index permutations:
-!dtens+=ltens(0:dc-1)*rtens(0:dc-1), where dtens is a scalar.
+!dtens+=ltens(0:dc-1)*rtens(0:dc-1)*alpha, where dtens is a scalar.
 	implicit none
 !---------------------------------------
 	integer, parameter:: real_kind=8 !real data kind
@@ -6406,9 +6413,10 @@
 	integer(LONGINT), intent(in):: dc
 	complex(real_kind), intent(in):: ltens(0:*),rtens(0:*) !true tensors
 	complex(real_kind), intent(inout):: dtens !scalar
-	integer, intent(inout):: ierr
+	integer, intent(inout):: ierr !error code
+	complex(real_kind), intent(in), optional:: alpha
 	integer i,j,k,l,m,n
-	complex(real_kind) val
+	complex(real_kind) val,alf
 	integer(LONGINT) l0
 	real(8) time_beg,tm
 #ifndef NO_PHI
@@ -6419,10 +6427,11 @@
 	ierr=0
 !	time_beg=thread_wtime() !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_c8): dc: ",i9)') dc !debug
+	if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
 	if(dc.gt.0_LONGINT) then
 	 val=cmplx(0d0,0d0,real_kind)
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val)
-	 do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(l0)*rtens(l0); enddo
+	 do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(l0)*rtens(l0)*alf; enddo
 !$OMP END PARALLEL DO
 	 dtens=dtens+val
 	else
@@ -6433,13 +6442,13 @@
 !        tm,dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_fcontract_dlf_c8
-!--------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_pcontract_dlf_r4
 #endif
-	subroutine tensor_block_pcontract_dlf_r4(dl,dr,dc,ltens,rtens,dtens,ierr) !PARALLEL
+	subroutine tensor_block_pcontract_dlf_r4(dl,dr,dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
 !This subroutine multiplies two matrices derived from the corresponding tensors by index permutations:
-!dtens(0:dl-1,0:dr-1)+=ltens(0:dc-1,0:dl-1)*rtens(0:dc-1,0:dr-1)
+!dtens(0:dl-1,0:dr-1)+=ltens(0:dc-1,0:dl-1)*rtens(0:dc-1,0:dr-1)*alpha
 !The result is a matrix as well (cannot be a scalar, see tensor_block_fcontract).
 	implicit none
 !---------------------------------------
@@ -6462,9 +6471,10 @@
 	real(real_kind), intent(in):: ltens(0:*),rtens(0:*) !input arguments
 	real(real_kind), intent(inout):: dtens(0:*) !output argument
 	integer, intent(inout):: ierr !error code
+	real(real_kind), intent(in), optional:: alpha !BLAS alpha
 	integer i,j,k,l,m,n,nthr
 	integer(LONGINT) ll,lr,ld,l0,l1,l2,b0,b1,b2,e0r,e0,e1,e2,ls,lf,cl,cr,cc,chunk
-	real(real_kind) vec(0:7),redm(0:red_mat_size-1,0:red_mat_size-1),val !`thread private (redm)?
+	real(real_kind) vec(0:7),redm(0:red_mat_size-1,0:red_mat_size-1),val,alf !`thread private (redm)?
 	real(8) time_beg,tm
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind,red_mat_size,arg_cache_size,min_distr_seg_size,cdim_stretch,core_slope,ker1,ker2,ker3
@@ -6475,6 +6485,7 @@
 
 	ierr=0
 !	time_beg=thread_wtime() !debug
+	if(present(alpha)) then; alf=alpha; else; alf=1.0; endif
 	if(dl.gt.0_LONGINT.and.dr.gt.0_LONGINT.and.dc.gt.0_LONGINT) then
 #ifndef NO_OMP
 	 nthr=omp_get_max_threads()
@@ -6505,18 +6516,18 @@
 	       do l1=b1,e1
 	        ll=l1*dc+b0; lr=l2*dc+b0; vec(:)=0E0_real_kind
 	        do l0=b0,e0-e0r,8_LONGINT
-	         vec(0)=vec(0)+ltens(ll)*rtens(lr)
-	         vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)
-	         vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)
-	         vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)
-	         vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)
-	         vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)
-	         vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)
-	         vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)
+	         vec(0)=vec(0)+ltens(ll)*rtens(lr)*alf
+	         vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)*alf
+	         vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)*alf
+	         vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)*alf
+	         vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)*alf
+	         vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)*alf
+	         vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)*alf
+	         vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)*alf
 	         ll=ll+8_LONGINT; lr=lr+8_LONGINT
 	        enddo
 	        do l0=0_LONGINT,e0r-1_LONGINT
-	         vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)
+	         vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)*alf
 	        enddo
 	        vec(0)=vec(0)+vec(4)
 	        vec(1)=vec(1)+vec(5)
@@ -6545,7 +6556,7 @@
 	     do l1=ls,lf
 	      ll=l1*dc
 	      val=dtens(ld+l1)
-	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	      dtens(ld+l1)=val
 	     enddo
 	    enddo
@@ -6567,7 +6578,7 @@
 	     do l1=b1,min(b1+chunk-1_LONGINT,dl-1_LONGINT)
 	      ll=l1*dc
 	      val=dtens(ld+l1)
-	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	      dtens(ld+l1)=val
 	     enddo
 	    enddo
@@ -6582,7 +6593,7 @@
 	    do l1=0_LONGINT,dl-1_LONGINT
 	     ll=l1*dc
 	     val=dtens(ld+l1)
-	     do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	     do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	     dtens(ld+l1)=val
 	    enddo
 	   enddo
@@ -6605,18 +6616,18 @@
 	     do l1=0_LONGINT,dl-1_LONGINT
 	      ll=l1*dc; lr=b2; vec(:)=0E0_real_kind
 	      do l0=0_LONGINT,dc-1_LONGINT-e0r,8_LONGINT
-	       vec(0)=vec(0)+ltens(ll)*rtens(lr)
-	       vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)
-	       vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)
-	       vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)
-	       vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)
-	       vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)
-	       vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)
-	       vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)
+	       vec(0)=vec(0)+ltens(ll)*rtens(lr)*alf
+	       vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)*alf
+	       vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)*alf
+	       vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)*alf
+	       vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)*alf
+	       vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)*alf
+	       vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)*alf
+	       vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)*alf
 	       ll=ll+8_LONGINT; lr=lr+8_LONGINT
 	      enddo
 	      do l0=0_LONGINT,e0r-1_LONGINT
-	       vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)
+	       vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)*alf
 	      enddo
 	      vec(0)=vec(0)+vec(4)
 	      vec(1)=vec(1)+vec(5)
@@ -6634,7 +6645,7 @@
 	     do l1=0_LONGINT,dl-1_LONGINT
 	      ll=l1*dc; lr=l2*dc
 	      val=dtens(l2*dl+l1)
-	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	      dtens(l2*dl+l1)=val
 	     enddo
 	    enddo
@@ -6664,7 +6675,7 @@
 !$OMP END MASTER
 !$OMP BARRIER
 !$OMP DO SCHEDULE(GUIDED) REDUCTION(+:val)
-	         do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	         do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 !$OMP END DO
 !$OMP MASTER
 		 redm(l1,l2)=val
@@ -6692,7 +6703,7 @@
 	      do l1=0_LONGINT,dl-1_LONGINT
 	       ll=l1*dc; lr=l2*dc
 	       val=dtens(l2*dl+l1)
-	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	       dtens(l2*dl+l1)=val
 	      enddo
 	     enddo
@@ -6705,7 +6716,7 @@
 	      do l1=0_LONGINT,dl-1_LONGINT
 	       ll=l1*dc
 	       val=dtens(ld+l1)
-	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	       dtens(ld+l1)=val
 	      enddo
 	     enddo
@@ -6721,13 +6732,13 @@
 !        tm,dble(dr*dl*dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_pcontract_dlf_r4
-!--------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_pcontract_dlf_r8
 #endif
-	subroutine tensor_block_pcontract_dlf_r8(dl,dr,dc,ltens,rtens,dtens,ierr) !PARALLEL
+	subroutine tensor_block_pcontract_dlf_r8(dl,dr,dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
 !This subroutine multiplies two matrices derived from the corresponding tensors by index permutations:
-!dtens(0:dl-1,0:dr-1)+=ltens(0:dc-1,0:dl-1)*rtens(0:dc-1,0:dr-1)
+!dtens(0:dl-1,0:dr-1)+=ltens(0:dc-1,0:dl-1)*rtens(0:dc-1,0:dr-1)*alpha
 !The result is a matrix as well (cannot be a scalar, see tensor_block_fcontract).
 	implicit none
 !---------------------------------------
@@ -6750,9 +6761,10 @@
 	real(real_kind), intent(in):: ltens(0:*),rtens(0:*) !input arguments
 	real(real_kind), intent(inout):: dtens(0:*) !output argument
 	integer, intent(inout):: ierr !error code
+	real(real_kind), intent(in), optional:: alpha !BLAS alpha
 	integer i,j,k,l,m,n,nthr
 	integer(LONGINT) ll,lr,ld,l0,l1,l2,b0,b1,b2,e0r,e0,e1,e2,ls,lf,cl,cr,cc,chunk
-	real(real_kind) vec(0:7),redm(0:red_mat_size-1,0:red_mat_size-1),val !`thread private (redm)?
+	real(real_kind) vec(0:7),redm(0:red_mat_size-1,0:red_mat_size-1),val,alf !`thread private (redm)?
 	real(8) time_beg,tm
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind,red_mat_size,arg_cache_size,min_distr_seg_size,cdim_stretch,core_slope,ker1,ker2,ker3
@@ -6763,6 +6775,7 @@
 
 	ierr=0
 !	time_beg=thread_wtime() !debug
+	if(present(alpha)) then; alf=alpha; else; alf=1d0; endif
 	if(dl.gt.0_LONGINT.and.dr.gt.0_LONGINT.and.dc.gt.0_LONGINT) then
 #ifndef NO_OMP
 	 nthr=omp_get_max_threads()
@@ -6793,18 +6806,18 @@
 	       do l1=b1,e1
 	        ll=l1*dc+b0; lr=l2*dc+b0; vec(:)=0E0_real_kind
 	        do l0=b0,e0-e0r,8_LONGINT
-	         vec(0)=vec(0)+ltens(ll)*rtens(lr)
-	         vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)
-	         vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)
-	         vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)
-	         vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)
-	         vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)
-	         vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)
-	         vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)
+	         vec(0)=vec(0)+ltens(ll)*rtens(lr)*alf
+	         vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)*alf
+	         vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)*alf
+	         vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)*alf
+	         vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)*alf
+	         vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)*alf
+	         vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)*alf
+	         vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)*alf
 	         ll=ll+8_LONGINT; lr=lr+8_LONGINT
 	        enddo
 	        do l0=0_LONGINT,e0r-1_LONGINT
-	         vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)
+	         vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)*alf
 	        enddo
 	        vec(0)=vec(0)+vec(4)
 	        vec(1)=vec(1)+vec(5)
@@ -6833,7 +6846,7 @@
 	     do l1=ls,lf
 	      ll=l1*dc
 	      val=dtens(ld+l1)
-	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	      dtens(ld+l1)=val
 	     enddo
 	    enddo
@@ -6855,7 +6868,7 @@
 	     do l1=b1,min(b1+chunk-1_LONGINT,dl-1_LONGINT)
 	      ll=l1*dc
 	      val=dtens(ld+l1)
-	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	      dtens(ld+l1)=val
 	     enddo
 	    enddo
@@ -6870,7 +6883,7 @@
 	    do l1=0_LONGINT,dl-1_LONGINT
 	     ll=l1*dc
 	     val=dtens(ld+l1)
-	     do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	     do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	     dtens(ld+l1)=val
 	    enddo
 	   enddo
@@ -6893,18 +6906,18 @@
 	     do l1=0_LONGINT,dl-1_LONGINT
 	      ll=l1*dc; lr=b2; vec(:)=0E0_real_kind
 	      do l0=0_LONGINT,dc-1_LONGINT-e0r,8_LONGINT
-	       vec(0)=vec(0)+ltens(ll)*rtens(lr)
-	       vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)
-	       vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)
-	       vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)
-	       vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)
-	       vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)
-	       vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)
-	       vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)
+	       vec(0)=vec(0)+ltens(ll)*rtens(lr)*alf
+	       vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)*alf
+	       vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)*alf
+	       vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)*alf
+	       vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)*alf
+	       vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)*alf
+	       vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)*alf
+	       vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)*alf
 	       ll=ll+8_LONGINT; lr=lr+8_LONGINT
 	      enddo
 	      do l0=0_LONGINT,e0r-1_LONGINT
-	       vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)
+	       vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)*alf
 	      enddo
 	      vec(0)=vec(0)+vec(4)
 	      vec(1)=vec(1)+vec(5)
@@ -6922,7 +6935,7 @@
 	     do l1=0_LONGINT,dl-1_LONGINT
 	      ll=l1*dc; lr=l2*dc
 	      val=dtens(l2*dl+l1)
-	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	      dtens(l2*dl+l1)=val
 	     enddo
 	    enddo
@@ -6952,7 +6965,7 @@
 !$OMP END MASTER
 !$OMP BARRIER
 !$OMP DO SCHEDULE(GUIDED) REDUCTION(+:val)
-	         do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	         do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 !$OMP END DO
 !$OMP MASTER
 		 redm(l1,l2)=val
@@ -6980,7 +6993,7 @@
 	      do l1=0_LONGINT,dl-1_LONGINT
 	       ll=l1*dc; lr=l2*dc
 	       val=dtens(l2*dl+l1)
-	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	       dtens(l2*dl+l1)=val
 	      enddo
 	     enddo
@@ -6993,7 +7006,7 @@
 	      do l1=0_LONGINT,dl-1_LONGINT
 	       ll=l1*dc
 	       val=dtens(ld+l1)
-	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	       dtens(ld+l1)=val
 	      enddo
 	     enddo
@@ -7009,13 +7022,13 @@
 !        tm,dble(dr*dl*dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_pcontract_dlf_r8
-!--------------------------------------------------------------------------------
+!--------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_pcontract_dlf_c8
 #endif
-	subroutine tensor_block_pcontract_dlf_c8(dl,dr,dc,ltens,rtens,dtens,ierr) !PARALLEL
+	subroutine tensor_block_pcontract_dlf_c8(dl,dr,dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
 !This subroutine multiplies two matrices derived from the corresponding tensors by index permutations:
-!dtens(0:dl-1,0:dr-1)+=ltens(0:dc-1,0:dl-1)*rtens(0:dc-1,0:dr-1)
+!dtens(0:dl-1,0:dr-1)+=ltens(0:dc-1,0:dl-1)*rtens(0:dc-1,0:dr-1)*alpha
 !The result is a matrix as well (cannot be a scalar, see tensor_block_fcontract).
 	implicit none
 !---------------------------------------
@@ -7038,9 +7051,10 @@
 	complex(real_kind), intent(in):: ltens(0:*),rtens(0:*) !input arguments
 	complex(real_kind), intent(inout):: dtens(0:*) !output argument
 	integer, intent(inout):: ierr !error code
+	complex(real_kind), intent(in), optional:: alpha
 	integer i,j,k,l,m,n,nthr
 	integer(LONGINT) ll,lr,ld,l0,l1,l2,b0,b1,b2,e0r,e0,e1,e2,ls,lf,cl,cr,cc,chunk
-	complex(real_kind) vec(0:7),redm(0:red_mat_size-1,0:red_mat_size-1),val !`thread private (redm)?
+	complex(real_kind) vec(0:7),redm(0:red_mat_size-1,0:red_mat_size-1),val,alf !`thread private (redm)?
 	real(8) time_beg,tm
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind,red_mat_size,arg_cache_size,min_distr_seg_size,cdim_stretch,core_slope,ker1,ker2,ker3
@@ -7051,6 +7065,7 @@
 
 	ierr=0
 !	time_beg=thread_wtime() !debug
+	if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
 	if(dl.gt.0_LONGINT.and.dr.gt.0_LONGINT.and.dc.gt.0_LONGINT) then
 #ifndef NO_OMP
 	 nthr=omp_get_max_threads()
@@ -7081,18 +7096,18 @@
 	       do l1=b1,e1
 	        ll=l1*dc+b0; lr=l2*dc+b0; vec(:)=cmplx(0E0_real_kind,0E0_real_kind,real_kind)
 	        do l0=b0,e0-e0r,8_LONGINT
-	         vec(0)=vec(0)+ltens(ll)*rtens(lr)
-	         vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)
-	         vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)
-	         vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)
-	         vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)
-	         vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)
-	         vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)
-	         vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)
+	         vec(0)=vec(0)+ltens(ll)*rtens(lr)*alf
+	         vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)*alf
+	         vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)*alf
+	         vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)*alf
+	         vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)*alf
+	         vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)*alf
+	         vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)*alf
+	         vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)*alf
 	         ll=ll+8_LONGINT; lr=lr+8_LONGINT
 	        enddo
 	        do l0=0_LONGINT,e0r-1_LONGINT
-	         vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)
+	         vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)*alf
 	        enddo
 	        vec(0)=vec(0)+vec(4)
 	        vec(1)=vec(1)+vec(5)
@@ -7121,7 +7136,7 @@
 	     do l1=ls,lf
 	      ll=l1*dc
 	      val=dtens(ld+l1)
-	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	      dtens(ld+l1)=val
 	     enddo
 	    enddo
@@ -7143,7 +7158,7 @@
 	     do l1=b1,min(b1+chunk-1_LONGINT,dl-1_LONGINT)
 	      ll=l1*dc
 	      val=dtens(ld+l1)
-	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	      dtens(ld+l1)=val
 	     enddo
 	    enddo
@@ -7158,7 +7173,7 @@
 	    do l1=0_LONGINT,dl-1_LONGINT
 	     ll=l1*dc
 	     val=dtens(ld+l1)
-	     do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	     do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	     dtens(ld+l1)=val
 	    enddo
 	   enddo
@@ -7181,18 +7196,18 @@
 	     do l1=0_LONGINT,dl-1_LONGINT
 	      ll=l1*dc; lr=b2; vec(:)=cmplx(0E0_real_kind,0E0_real_kind,real_kind)
 	      do l0=0_LONGINT,dc-1_LONGINT-e0r,8_LONGINT
-	       vec(0)=vec(0)+ltens(ll)*rtens(lr)
-	       vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)
-	       vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)
-	       vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)
-	       vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)
-	       vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)
-	       vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)
-	       vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)
+	       vec(0)=vec(0)+ltens(ll)*rtens(lr)*alf
+	       vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)*alf
+	       vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)*alf
+	       vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)*alf
+	       vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)*alf
+	       vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)*alf
+	       vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)*alf
+	       vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)*alf
 	       ll=ll+8_LONGINT; lr=lr+8_LONGINT
 	      enddo
 	      do l0=0_LONGINT,e0r-1_LONGINT
-	       vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)
+	       vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)*alf
 	      enddo
 	      vec(0)=vec(0)+vec(4)
 	      vec(1)=vec(1)+vec(5)
@@ -7210,7 +7225,7 @@
 	     do l1=0_LONGINT,dl-1_LONGINT
 	      ll=l1*dc; lr=l2*dc
 	      val=dtens(l2*dl+l1)
-	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	      dtens(l2*dl+l1)=val
 	     enddo
 	    enddo
@@ -7240,7 +7255,7 @@
 !$OMP END MASTER
 !$OMP BARRIER
 !$OMP DO SCHEDULE(GUIDED) REDUCTION(+:val)
-	         do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	         do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 !$OMP END DO
 !$OMP MASTER
 		 redm(l1,l2)=val
@@ -7268,7 +7283,7 @@
 	      do l1=0_LONGINT,dl-1_LONGINT
 	       ll=l1*dc; lr=l2*dc
 	       val=dtens(l2*dl+l1)
-	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	       dtens(l2*dl+l1)=val
 	      enddo
 	     enddo
@@ -7281,7 +7296,7 @@
 	      do l1=0_LONGINT,dl-1_LONGINT
 	       ll=l1*dc
 	       val=dtens(ld+l1)
-	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0); enddo
+	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
 	       dtens(ld+l1)=val
 	      enddo
 	     enddo

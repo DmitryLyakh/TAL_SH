@@ -1,9 +1,9 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h"!
-!REVISION: 2017/01/24
+!REVISION: 2017/03/23
 
-!Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -203,7 +203,16 @@
 
 !C FUNCTION INTERFACES (for Fortran):
         interface
+ !Generic:
+  !Numeric data kind validity check:
+         integer(C_INT) function tens_valid_data_kind(datk,datk_size) bind(c,name='tens_valid_data_kind_')
+          import
+          implicit none
+          integer(C_INT), intent(in), value:: datk
+          integer(C_INT), intent(out):: datk_size
+         end function tens_valid_data_kind
  !Device management:
+  !Obtain a flat device id:
          integer(C_INT) function encode_device_id(dev_kind,dev_num) bind(c,name='encode_device_id')
           import
           implicit none

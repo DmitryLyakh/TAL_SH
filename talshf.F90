@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2017/03/14
+!REVISION: 2017/03/29
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -1386,13 +1386,10 @@
          integer:: conj_bits,ierr
 
          cpu_tensor_block_contract=0; conj_bits=arg_conj
-         if(dabs(scale_real-1d0).gt.ZERO_THRESH.or.dabs(scale_imag-0d0).gt.ZERO_THRESH) then !`Scaling prefactor should be accounted for
-          cpu_tensor_block_contract=TALSH_NOT_IMPLEMENTED; return !`Implement
-         endif
          if(c_associated(dtens_p).and.c_associated(ltens_p).and.c_associated(rtens_p)) then
           call c_f_pointer(dtens_p,dtp); call c_f_pointer(ltens_p,ltp); call c_f_pointer(rtens_p,rtp)
           if(associated(dtp).and.associated(ltp).and.associated(rtp)) then
-           call tensor_block_contract(contr_ptrn,ltp,rtp,dtp,ierr,arg_conj=conj_bits)
+           call tensor_block_contract(contr_ptrn,ltp,rtp,dtp,ierr,alpha=cmplx(scale_real,scale_imag,8),arg_conj=conj_bits)
            cpu_tensor_block_contract=ierr
           else
            cpu_tensor_block_contract=-2

@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2017/03/14
+REVISION: 2017/03/23
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -243,6 +243,9 @@ int tens_valid_data_kind(int datk, int * datk_size)
  if(datk_size != NULL) *datk_size=datk_sz;
  return ans;
 }
+
+int tens_valid_data_kind_(int datk, int * datk_size) //Fortran binding
+{return tens_valid_data_kind(datk,datk_size);}
 
 size_t tens_elem_offset_f(unsigned int num_dim, const unsigned int * dims, const unsigned int * mlndx)
 /** Returns the offset of a tensor element specified by its multi-index with Fortran storage layout.

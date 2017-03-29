@@ -23,7 +23,7 @@
         implicit none
         logical, parameter:: TEST_NVTAL=.FALSE.
         logical, parameter:: TEST_TALSH=.TRUE.
-        logical, parameter:: TEST_COMPLEX=.FALSE.
+        logical, parameter:: TEST_COMPLEX=.TRUE.
         logical, parameter:: BENCH_TALSH_RND=.FALSE.
         logical, parameter:: BENCH_TALSH_CUSTOM=.FALSE.
 
@@ -299,10 +299,10 @@
 
 !Contract tensors:
         write(*,'(1x,"Scheduling two tensor contractions: Statuses: ")',ADVANCE='NO')
-        ierr=talsh_tensor_contract('D(a,b,i,j)+=L+(j,k,c,i)*R(c,b,k,a)',ctens,ltens,rtens,&
+        ierr=talsh_tensor_contract('D(a,b,i,j)+=L+(j,k,c,i)*R(c,b,k,a)',ctens,ltens,rtens,scale=(5d-1,0d0),&
                                   &dev_id=talsh_flat_dev_id(DEV_HOST,0),talsh_task=tsk0)
         write(*,'(i11,1x)',ADVANCE='NO') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=10; return; endif
-        ierr=talsh_tensor_contract('D(a,b,i,j)+=L(j,k,c,i)*R+(c,b,k,a)',dtens,ltens,rtens,&
+        ierr=talsh_tensor_contract('D(a,b,i,j)+=L(j,k,c,i)*R+(c,b,k,a)',dtens,ltens,rtens,scale=(5d-1,0d0),&
                                   &dev_id=talsh_flat_dev_id(DEV_HOST,0),talsh_task=tsk1)
         write(*,'(i11)') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=11; return; endif
         write(*,'(1x,"Waiting upon completion of tensor contraction 1 ... ")',ADVANCE='NO')
@@ -358,7 +358,7 @@
         tens_vol=talsh_tensor_volume(ctens)
         call c_f_pointer(body_p,tens_body,(/tens_vol/))
         write(*,'("Status ",i11,": Element value   = (",(D20.14,1x,D20.14),")")') ierr,tens_body(lbound(tens_body,1))
-        write(*,'(1x,"Reference value = (",(D20.14,1x,D20.14),")")') prod
+        write(*,'(1x,"Reference value = (",(D20.14,1x,D20.14),")")') prod*(5d-1,0d0)
 
 !Destruct tensors:
         write(*,'(1x,"Destructing tensors: Statuses: ")',ADVANCE='NO')
