@@ -1,6 +1,6 @@
 *** TAL-SH: Tensor Algebra Library for Shared Memory Computers ***
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2017/03/14
+REVISION: 2017/05/18
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -774,6 +774,7 @@ API: Place a tensor block on a specific device:
    type(talsh_tens_t), intent(inout):: tens           !inout: tensor block
    integer(C_INT), intent(in):: dev_id                !in: device id (flat or kind-specific)
    integer(C_INT), intent(in), optional:: dev_kind    !in: device kind (if present, <dev_id> is kind-specific)
+   type(C_PTR), value, optional:: dev_mem             !in: externally provided target device memory pointer
    integer(C_INT), intent(in), optional:: copy_ctrl   !in: copy control (COPY_X), defaults to COPY_M
    type(talsh_task_t), intent(inout), optional:: talsh_task !inout: TAL-SH task handle
 
@@ -782,6 +783,7 @@ API: Place a tensor block on a specific device:
    talsh_tens_t * tens,             //inout: tensor block
    int dev_id,                      //in: device id (flat or kind-specific)
    int dev_kind = DEV_DEFAULT,      //in: device kind (if present, <dev_id> is kind-specific)
+   void * dev_mem = NULL,           //in: externally provided target device memory pointer
    int copy_ctrl = COPY_M,          //in: copy control (COPY_X), defaults to COPY_M
    talsh_task_t * talsh_task = NULL //inout: TAL-SH task handle
   )

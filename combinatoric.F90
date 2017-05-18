@@ -1,9 +1,9 @@
        module combinatoric
 !Combinatoric Procedures.
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!Revision: 2016/08/16
+!Revision: 2017/05/10
 
-!Copyright (C) 2007-2016 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2007-2017 Dmitry I. Lyakh (Liakh)
 
 !This file is part of ExaTensor.
 
@@ -38,6 +38,7 @@
 ! - i:HASH_ARR_INT8(i:hash_range,i:ni,i8[1]:arr): returns a hash-mask for an integer*8 array.
 ! - i:CMP_MULTINDS(i:ml1,i[1]:m1,i:ml2,i[1]:m2): compares two integer multiindices.
 ! - i:CMP_MULTINDS_INT8(i:ml1,i8[1]:m1,i:ml2,i8[1]:m2): compares two integer*8 multiindices.
+! - MULTINDX_CMP(i:ml1,i[1]:m1,i:ml2,i[1]:m2,i:ierr,i[1]:prm1,i[2]:prm2): compares two multi-indices: {-1,0,+1}
 ! - MULTINDX_MERGE(i:ml1,i[1]:m1,i:ml2,i[1]:m2,i:mlr,i[1]:mr,i:sign_corr): merges two multiindices, providing a potential sign correction.
 ! - i:CMP_ARRAYS_INT(l:preorder,i:ml1,i[1]:m1,i:ml2,i[1]:m2,i[1]:trn): compares two integer arrays with an optional preodering.
 ! - i:CMP_ARRAYS_INT8(l:preorder,i:ml1,i8[1]:m1,i:ml2,i8[1]:m2,i[1]:trn): compares two integer(8) arrays with an optional preodering.
@@ -47,25 +48,51 @@
 ! - RANDOM_COMPOSITION(l:ordered,i:irange,i:ni,i[1]:trn): returns a random sequence of ni natural numbers from the range [1..irange] without repeats.
 ! - MERGE_SORT_INT(i:ni,i[1]:trn): fast sorting algorithm for an integer array (default integer).
 ! - MERGE_SORT_KEY_INT(i:ni,i[1]:key,i[1]:trn): fast sorting algorithm for an integer array, based on integer keys (default integer).
+! - MERGE_SORT_INT8_S(i8:ni,i8[1]:trn): fast sorting algorithm for an integer*8 array (returns the permuation sign separately).
 ! - MERGE_SORT_INT8(i8:ni,i8[1]:trn): fast sorting algorithm for an integer*8 array.
 ! - MERGE_SORT_KEY_INT8(i8:ni,i8[1]:key,i8[1]:trn): fast sorting algorithm for an integer*8 array, based on integer keys (integer*8).
 ! - MERGE_SORT_REAL8(i:ni,r8[1]:trn): fast sorting algorithm for a real*8 array.
 ! - MERGE_SORT_KEY_REAL8(i:ni,r8[1]:key,i[1]:trn): fast sorting algorithm for an integer array, based on real*8 keys.
 ! - MERGE_SORT_CMPLX8(i:ni,c8[1]:trn): fast sorting algorithm for a complex*8 array.
 ! - MERGE_SORT_KEY_CMPLX8(i:ni,c8[1]:key,i[1]:trn): fast sorting algorithm for an integer array, based on comlex*8 keys.
+! - MERGE_SORT_KEY_GEN(i:ni,*[1]:key,i[1]:trn,cmp_i): fast sorting algorithm for an array of generic keys (requires comparator).
 !NOTES:
 ! - As a rule, a permutation is passed as an integer array (0:n), where the 0th element is the sign of the permutation {1..n}.
-! - TRSIGN uses the buble algorithm => will be very slow for long permutations.
+! - TRSIGN uses the bubble algorithm => will be very slow for long permutations.
 ! - For some subroutines, the permutation {1..n} must contain all integers from the segment [1..n].
         implicit none
         private
 !GLOBAL PARAMETERS:
         real(8), parameter, public:: DP_ZERO_THRESH=1d-13 !certified guaranteed precision of a double-precision real number (one order lower than the epsilon)
+!ABSTRACT INTERFACES:
+        abstract interface
+ !Generic comparison:
+         function cmp_i(obj1,obj2) result(cmp)
+          integer:: cmp                       !out: result of comparison: {-1,0,+1}, see dil_basic.F90
+          class(*), intent(in), target:: obj1 !in: object 1
+          class(*), intent(in), target:: obj2 !in: object 2
+         end function cmp_i
+        end interface
 !GENERIC INTERFACES:
         interface divide_segment
          module procedure divide_segment_i4
          module procedure divide_segment_i8
         end interface divide_segment
+
+        interface merge_sort
+         module procedure merge_sort_int
+         module procedure merge_sort_int8_s
+         module procedure merge_sort_int8
+         module procedure merge_sort_real8
+         module procedure merge_sort_cmplx8
+        end interface merge_sort
+
+        interface merge_sort_key
+         module procedure merge_sort_key_int
+         module procedure merge_sort_key_int8
+         module procedure merge_sort_key_real8
+         module procedure merge_sort_key_cmplx8
+        end interface merge_sort_key
 !PROCEDURE VISIBILITY:
         public trng
         public trsign
@@ -86,6 +113,7 @@
         public hash_arr_int8
         public cmp_multinds
         public cmp_multinds_int8
+        public multindx_cmp
         public multindx_merge
         public cmp_arrays_int
         public cmp_arrays_int8
@@ -93,17 +121,22 @@
         public random_permutation
         public random_permutation_int8
         public random_composition
+        public merge_sort
+        public merge_sort_key
         public merge_sort_int
         public merge_sort_key_int
+        public merge_sort_int8_s
         public merge_sort_int8
         public merge_sort_key_int8
         public merge_sort_real8
         public merge_sort_key_real8
         public merge_sort_cmplx8
         public merge_sort_key_cmplx8
-!-----------------------------------
+        public merge_sort_key_gen
+!--------------------------------
        contains
-!METHODS:
+!IMPLEMENTATION:
+!---------------------------------------
         subroutine trng(ctrl,ni,trn,ngt)
 !Permutation generator: Returns each subsequent permutation.
 ! CTRL - control argument. The first call must have CTRL<>0 and initialized TRN!
@@ -116,7 +149,7 @@
 	implicit none
 	integer, intent(in):: ni
 	integer, intent(inout):: ctrl,trn(0:*),ngt(0:*)
-	integer j,k
+	integer:: j,k
 
 	if(ctrl.ne.0) then !first call: NGT initialization. The original permutation is returned.
 	 ngt(0)=0; do j=1,ni; ngt(j)=j-1; enddo
@@ -142,7 +175,7 @@
 
 	 subroutine transp(m,n)
 	  implicit none
-	  integer m,n,l
+	  integer:: m,n,l
 	  l=trn(m); trn(m)=trn(n); trn(n)=l; trn(0)=-trn(0)
 	  return
 	 end subroutine transp
@@ -159,7 +192,8 @@
 	implicit none
 	integer, intent(in):: n
 	integer, intent(inout):: itr(0:*)
-	integer k,l,isgn
+	integer:: k,l,isgn
+
 	k=1
 	isgn=+1
 	do while(k.lt.n)
@@ -173,20 +207,21 @@
 	itr(0)=isgn
 	return
 	end subroutine trsign
-!---------------------------------------
-	integer(8) function factorial(n) !returns N! for N>=0, and -1 otherwise
+!----------------------------------------------------
+	recursive function factorial(n) result(fctrl) !returns N! for N>=0, and -1 otherwise
 	implicit none
+	integer(8):: fctrl
 	integer, intent(in):: n
-	integer(8) k
+	integer(8):: k
 
 	if(n.ge.0) then
-	 factorial=1_8
+	 fctrl=1_8
 	 do k=2_8,int(n,8)
-	  factorial=factorial*k
-	  if(factorial.lt.0_8) then; write(*,*)'ERROR(combinatoric:factorial): integer(8) overflow!'; stop; endif !trap
+	  fctrl=fctrl*k
+	  if(fctrl.lt.0_8) then; write(*,*)'ERROR(combinatoric:factorial): integer(8) overflow!'; stop; endif !trap
 	 enddo
 	else
-	 factorial=-1_8
+	 fctrl=-1_8
 	endif
 	return
 	end function factorial
@@ -194,7 +229,7 @@
 	integer function noid(m,n) !returns the number of unique distributions of N objects on M places
 	implicit none
 	integer, intent(in):: m,n
-	integer k,l
+	integer:: k,l
 
 	if(n.gt.m.or.n.lt.0.or.m.lt.0) then
 	 noid=0
@@ -204,7 +239,7 @@
 	 return
 	endif
 	noid=1; l=m
-	do k=1,n; noid=noid*l/k; l=l-1; enddo
+	do k=1,n; noid=(noid*l)/k; l=l-1; enddo
 	if(noid.le.0) then; write(*,*)'ERROR(combinatoric:noid): integer overflow:',m,n,noid; stop; endif !trap
 	return
 	end function noid
@@ -212,7 +247,7 @@
 	integer(8) function noid8(m,n) !returns the number of unique distributions of N objects on M places
 	implicit none
 	integer(8), intent(in):: m,n
-	integer(8) k,l
+	integer(8):: k,l
 
 	if(n.gt.m.or.n.lt.0.or.m.lt.0) then
 	 noid8=0_8
@@ -222,7 +257,7 @@
 	 return
 	endif
 	noid8=1_8; l=m
-	do k=1,n; noid8=noid8*l/k; l=l-1; enddo
+	do k=1_8,n; noid8=(noid8*l)/k; l=l-1_8; enddo
 	if(noid8.le.0_8) then; write(*,*)'ERROR(combinatoric:noid8): integer*8 overflow: ',m,n,noid8; stop; endif !trap
 	return
 	end function noid8
@@ -238,7 +273,8 @@
         integer, intent(in):: seg_range,subseg_num
         integer, intent(out):: subseg_sizes(1:subseg_num)
         integer, intent(inout):: ierr
-        integer i,j,k,l,m,n
+        integer:: i,j,k,l,m,n
+
         ierr=0
         if(seg_range.gt.0.and.subseg_num.gt.0) then
          n=seg_range/subseg_num; m=mod(seg_range,subseg_num)
@@ -261,7 +297,8 @@
         integer(8), intent(in):: seg_range,subseg_num
         integer(8), intent(out):: subseg_sizes(1:subseg_num)
         integer, intent(inout):: ierr
-        integer(8) i,j,k,l,m,n
+        integer(8):: i,j,k,l,m,n
+
         ierr=0
         if(seg_range.gt.0_8.and.subseg_num.gt.0_8) then
          n=seg_range/subseg_num; m=mod(seg_range,subseg_num)
@@ -277,7 +314,7 @@
 !This subroutine generates all unique permutations of NI items,
 !in which the items belonging to the same host are always ordered.
 !INPUT:
-! - ctrl - control argument: at the begining must be <>0; 0 - next permutation; -1 - permutations are over.
+! - ctrl - control argument: at the begining must be <> 0; 0 - next permutation; -1 - permutations are over.
 ! - ni - number of items;
 ! - vh(1:ni) - index hosts;
 !INPUT(dummy)/OUTPUT:
@@ -290,19 +327,19 @@
 !   Its sign is +1. Each next permutation is generated from the previous one.
 	implicit none
 !------------------------------------------
-	integer, parameter:: max_item=16384 !max allowed number of items (because of the permutation sign determination, see below)
+	integer, parameter:: MAX_ITEM=16384 !max allowed number of items (because of the permutation sign determination, see below)
 !------------------------------------------
-	integer i,j,k,l,m,n,k1,k2,k3,k4,k5,k6,ks,kf,ierr
 	integer, intent(in):: ni,vh(1:ni)
 	integer, intent(inout):: ctrl,trn(0:ni),cil(0:1,0:ni)
+	integer:: i,j,k,l,m,n,k1,k2,k3,k4,k5,k6,ks,kf,ierr
 
 	if(ni.gt.0) then
-	 if(ni.gt.max_item) then
-	  write(*,*)'ERROR(gpgen): legnth of the permutation exceeds the maximal value: ',max_item,ni
+	 if(ni.gt.MAX_ITEM) then
+	  write(*,*)'ERROR(combinatoric:gpgen): legnth of the permutation exceeds the maximal value: ',MAX_ITEM,ni
 	  stop
 	 endif
 	 if(ctrl.ne.0) then
-	  call first_call
+	  call first_call()
 	 else
 !free the last box:
 	  m=vh(ni); n=ni
@@ -355,9 +392,10 @@
 
 	contains
 
-	 subroutine first_call
+	 subroutine first_call()
 	  implicit none
-	  integer j1
+	  integer:: j1
+
 	  trn(0)=+1; do j1=1,ni; trn(j1)=j1; enddo
 	  cil(0:1,1:ni)=-1; cil(0:1,0)=(/ni+1,0/)
 	  ctrl=0
@@ -367,7 +405,8 @@
 	 subroutine free_item(it)
 	  implicit none
 	  integer, intent(in):: it
-	  integer j1,j2
+	  integer:: j1,j2
+
 	  if(it.lt.cil(0,0)) then
 	   if(cil(0,0).le.ni) then
 	    cil(0:1,it)=(/0,cil(0,0)/); cil(0,cil(0,0))=it; cil(0,0)=it
@@ -395,7 +434,8 @@
 	 subroutine engage_item(it)
 	  implicit none
 	  integer, intent(in):: it
-	  integer j1,jd,ju
+	  integer:: j1,jd,ju
+
 	  jd=1; ju=1
 	  if(it.eq.cil(0,0)) then
 	   j1=cil(1,it)
@@ -414,7 +454,8 @@
 
 	 subroutine determine_trn_sign
 	  implicit none
-	  integer occ(max_item),j1,j2,j3,js
+	  integer:: occ(MAX_ITEM),j1,j2,j3,js
+
 	  js=+1; occ(1:ni)=0; j1=1; j2=0; j3=0
 	  do
 	   if(occ(j1).eq.0) then
@@ -447,15 +488,15 @@
 	integer, intent(in):: ni
 	integer, intent(inout):: trn(0:*)
 	integer, intent(out):: nc,cyc(0:1,*)
-	integer, parameter:: max_in_mem=1024
+	integer, parameter:: MAX_IN_MEM=1024
 	integer i,j,k,l,m,n,k1,k2,k3,k4,k5,k6,ks,kf,ierr
-	integer, target:: ibuss(1:max_in_mem)
+	integer, target:: ibuss(MAX_IN_MEM)
 	integer, allocatable, target:: ibusa(:)
-	integer, pointer:: ibus(:)
+	integer, pointer, contiguous:: ibus(:)
 
 	nc=0
 	if(ni.gt.0) then
-	 if(ni.gt.max_in_mem) then; allocate(ibusa(1:ni)); ibus=>ibusa; else; ibus=>ibuss; endif
+	 if(ni.gt.MAX_IN_MEM) then; allocate(ibusa(1:ni)); ibus=>ibusa; else; ibus=>ibuss; endif
 	 if(trn_ok()) then
 !	  ibus(1:ni)=0 !busy flags
 	  trn(0)=+1; n=0; m=0
@@ -471,7 +512,7 @@
 	 else
 	  trn(0)=-667; nc=-666
 	 endif
-	 nullify(ibus); if(ni.gt.max_in_mem) deallocate(ibusa)
+	 nullify(ibus); if(ni.gt.MAX_IN_MEM) deallocate(ibusa)
 	else
 	 trn(0)=-666; nc=-666
 	endif
@@ -480,7 +521,8 @@
 	contains
 
 	 logical function trn_ok()
-	  integer j1
+	  integer:: j1
+
 	  ibus(1:ni)=0
 	  do j1=1,ni
 	   if(trn(j1).le.0.or.trn(j1).gt.ni) then; trn_ok=.false.; return; endif
@@ -498,7 +540,8 @@
 !Checks whether the given permutation trn(0:ni) is trivial or not.
 	implicit none
 	integer, intent(in):: ni,trn(0:*)
-	integer i
+	integer:: i
+
 	perm_trivial=.true.
 	do i=1,ni; if(trn(i).ne.i) then; perm_trivial=.false.; exit; endif; enddo
 	return
@@ -508,9 +551,10 @@
 !Checks whether the given permutation trn(0:ni) is trivial or not.
 	implicit none
 	integer(8), intent(in):: ni,trn(0:*)
-	integer(8) i
+	integer(8):: i
+
 	perm_trivial_int8=.true.
-	do i=1,ni; if(trn(i).ne.i) then; perm_trivial_int8=.false.; exit; endif; enddo
+	do i=1_8,ni; if(trn(i).ne.i) then; perm_trivial_int8=.false.; exit; endif; enddo
 	return
 	end function perm_trivial_int8
 !---------------------------------------
@@ -519,7 +563,8 @@
 !NOTE: keep the permutation fit into the stack!
 	implicit none
 	integer, intent(in):: ni,trn(0:*)
-	integer i,j,ibus(1:ni)
+	integer:: i,j,ibus(1:ni)
+
 	ibus(1:ni)=0
 	do i=1,ni
 	 j=trn(i)
@@ -551,9 +596,8 @@
 	implicit none
 	integer, intent(in):: ni,trn1(0:*),trn2(0:*)
 	integer, intent(out):: ntrp,trp(2,*)
-	integer i,j,k,l,m,n,k1,k2,k3,k4,k5,k6,ks,kf,ierr
-	integer trn(1:ni),ipos(1:ni)
-	integer isgn
+	integer:: i,j,k,l,m,n,k1,k2,k3,k4,k5,k6,ks,kf,ierr
+	integer:: trn(1:ni),ipos(1:ni),isgn
 
 	ntrp=0
 	if(ni.gt.1) then
@@ -568,7 +612,7 @@
 	   endif
 	  enddo
 	 else
-	  write(*,*)'ERROR(perm2trans): invalid input permutation: ',ni,trn1(1:ni),trn2(1:ni)
+	  write(*,*)'ERROR(combinatoric:perm2trans): invalid input permutation: ',ni,trn1(1:ni),trn2(1:ni)
 	  stop
 	 endif
 	endif
@@ -577,7 +621,8 @@
 	contains
 
 	 logical function trn_ok()
-	  integer j1
+	  integer:: j1
+
 	  trn_ok=.true.
 	  do j1=1,ni
 	   if(trn1(j1).lt.1.or.trn1(j1).gt.ni.or.trn2(j1).lt.1.or.trn2(j1).gt.ni) then; trn_ok=.false.; exit; endif
@@ -604,7 +649,7 @@
 	logical, intent(in):: seq2pos
 	integer, intent(in):: ni
 	integer, intent(inout):: n2o(0:ni),o2n(0:ni)
-	integer i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
 
 	if(seq2pos) then
 	 o2n(0)=n2o(0); do i=1,ni; o2n(n2o(i))=i; enddo !loop over positions
@@ -625,7 +670,7 @@
 	implicit none
 	integer, intent(in):: hash_range,ni
 	integer, intent(in):: arr(0:*)
-	integer i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
 
 	hash_arr_int=0
 	if(hash_range.gt.0.and.ni.ge.0) then
@@ -651,8 +696,8 @@
 	implicit none
 	integer, intent(in):: hash_range,ni
 	integer(8), intent(in):: arr(0:*)
-	integer i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
-	integer(8) hr
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
+	integer(8):: hr
 
 	hash_arr_int8=0
 	if(hash_range.gt.0.and.ni.ge.0) then
@@ -681,7 +726,7 @@
 !                  0 (ml1=ml2): the two multiindices are equal.
 	implicit none
 	integer, intent(in):: ml1,ml2,m1(1:*),m2(1:*)
-	integer i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
 
 	if(ml1.ge.0.and.ml2.ge.0) then
 	 if(ml1.eq.ml2) then
@@ -715,7 +760,7 @@
 	implicit none
 	integer, intent(in):: ml1,ml2
 	integer(8), intent(in):: m1(1:*),m2(1:*)
-	integer i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
 
 	if(ml1.ge.0.and.ml2.ge.0) then
 	 if(ml1.eq.ml2) then
@@ -734,6 +779,66 @@
 	endif
 	return
 	end function cmp_multinds_int8
+!-----------------------------------------------------------------
+        function multindx_cmp(ml1,m1,ml2,m2,prm1,prm2) result(cmp)
+!Compares two multi-indices. Optional permutations specify index priorities for both multi-indices:
+!prmX(1) is the first index to compare, prmX(2) is the second, and so on.
+         implicit none
+         integer:: cmp                    !out: comparison result: -1:m1<m2, 0:m1=m2, +1:m1>m2
+         integer(4), intent(in):: ml1     !in: length of multi-index 1
+         integer(8), intent(in):: m1(1:*) !in: multi-index 1
+         integer(4), intent(in):: ml2     !in: length of multi-index 2
+         integer(8), intent(in):: m2(1:*) !in: multi-index 2
+         integer(4), intent(in), optional:: prm1(1:ml1) !in: permutation for multi-index 1
+         integer(4), intent(in), optional:: prm2(1:ml2) !in: permutation for multi-index 2
+         integer(4):: i
+
+         cmp=0
+         if(present(prm1)) then
+          if(present(prm2)) then
+           if(ml1.lt.ml2) then
+            cmp=-1
+           elseif(ml1.gt.ml2) then
+            cmp=+1
+           else
+            do i=1,ml1
+             if(m1(prm1(i)).ne.m2(prm2(i))) then; cmp=int(sign(1_8,m1(prm1(i))-m2(prm2(i))),4); exit; endif
+            enddo
+           endif
+          else
+           if(ml1.lt.ml2) then
+            cmp=-1
+           elseif(ml1.gt.ml2) then
+            cmp=+1
+           else
+            do i=1,ml1
+             if(m1(prm1(i)).ne.m2(i)) then; cmp=int(sign(1_8,m1(prm1(i))-m2(i)),4); exit; endif
+            enddo
+           endif
+          endif
+         elseif(present(prm2)) then
+          if(ml1.lt.ml2) then
+           cmp=-1
+          elseif(ml1.gt.ml2) then
+           cmp=+1
+          else
+           do i=1,ml1
+            if(m1(i).ne.m2(prm2(i))) then; cmp=int(sign(1_8,m1(i)-m2(prm2(i))),4); exit; endif
+           enddo
+          endif
+         else
+          if(ml1.lt.ml2) then
+           cmp=-1
+          elseif(ml1.gt.ml2) then
+           cmp=+1
+          else
+           do i=1,ml1
+            if(m1(i).ne.m2(i)) then; cmp=int(sign(1_8,m1(i)-m2(i)),4); exit; endif
+           enddo
+          endif
+         endif
+         return
+        end function multindx_cmp
 !----------------------------------------------------------------
 	subroutine multindx_merge(ml1,m1,ml2,m2,mlr,mr,sign_corr)
 !This subroutine merges two multiindices (with index reodering).
@@ -751,7 +856,7 @@
 	implicit none
 	integer, intent(in):: ml1,m1(1:*),ml2,m2(1:*)
 	integer, intent(out):: mlr,mr(1:*),sign_corr
-	integer i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
 
 	mlr=0; sign_corr=+1
 !merge:
@@ -809,7 +914,7 @@
 	integer, intent(in):: ml1,ml2
 	integer, intent(in):: m1(1:ml1),m2(1:ml2)
 	integer, intent(out), optional:: trn(0:*)
-	integer i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
 	integer, allocatable:: prm1(:),prm2(:)
 
 	if(ml1.ge.0.and.ml2.ge.0) then
@@ -868,9 +973,9 @@
 	integer, intent(in):: ml1,ml2
 	integer(8), intent(in):: m1(1:ml1),m2(1:ml2)
 	integer, intent(out), optional:: trn(0:*)
-	integer i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
 	integer(8), allocatable:: prm1(:),prm2(:)
-	integer(8) ml
+	integer(8):: ml
 
 	if(ml1.ge.0.and.ml2.ge.0) then
 	 if(ml1.lt.ml2) then
@@ -919,15 +1024,15 @@
 !NOTES:
 ! - if no points has been passed, NCL is set to -1.
 	implicit none
-	integer i,j,k,l,m,n,k1,k2,k3,k4,k5,k6,ks,kf,ierr
 	integer, intent(in):: nt        !number of points
 	real(8), intent(in):: ctol      !clusterization tolerance (0..1)
 	real(8), intent(in):: dta(*)    !data (points)
 	integer, intent(out):: ncl      !number of classes
 	integer, intent(out):: cdta(*)  !class# the point belongs to
 	real(8), intent(out):: cmv(*)   !class mean values
-	real(8) wh,sw,minv,maxv,val
-	integer nfup,nfdp
+	integer:: i,j,k,l,m,n,k1,k2,k3,k4,k5,k6,ks,kf,ierr
+	integer:: nfup,nfdp
+	real(8):: wh,sw,minv,maxv,val
 
 	if(nt.gt.0) then
 !calculate range of the values:
@@ -976,8 +1081,10 @@
 	contains
 
 	 real(8) function dist(i_point,class_num)
+	  implicit none
 	  integer, intent(in):: i_point,class_num
-	  integer npc,lp
+	  integer:: npc,lp
+
 	  dist=0d0
 	  npc=0      !number of points found for the class#class_num
 	  do lp=1,nt
@@ -1004,19 +1111,19 @@
 	integer, intent(out):: trn(0:ni)
 	logical, intent(in), optional:: no_trivial
 !----------------------------------------------
-	integer, parameter:: random_chunk=2**10 !size of the chunk of random numbers generated in one call
-	integer, parameter:: num_repeats=5      !the bigger the number, the better the generator quality (more expensive)
-!----------------------------------------------
-	integer i,j,k,l,m,n,nr,ierr
-	real(8):: ra(1:random_chunk)
+	integer, parameter:: RANDOM_CHUNK=2**10 !size of the chunk of random numbers generated in one call
+	integer, parameter:: NUM_REPEATS=5      !the bigger the number, the better the generator quality (more expensive)
+!-----------------------------------------
+	integer:: i,j,k,l,m,n,nr,ierr
+	real(8):: ra(RANDOM_CHUNK)
 
 	if(ni.gt.0) then
 	 trn(0)=+1; do i=1,ni; trn(i)=i; enddo !initial permutation
-         if(ni.gt.1) then
+	 if(ni.gt.1) then
 	  ploop: do
-	   do nr=1,num_repeats
-	    do i=1,ni,random_chunk
-	     l=min(i+random_chunk-1,ni)-i+1
+	   do nr=1,NUM_REPEATS
+	    do i=1,ni,RANDOM_CHUNK
+	     l=min(i+RANDOM_CHUNK-1,ni)-i+1
 	     call random_number(ra(1:l))
 	     ra(1:l)=ra(1:l)*2d0
 	     do k=1,l
@@ -1038,9 +1145,9 @@
 	    exit ploop
 	   endif
 	  enddo ploop
-         endif
+	 endif
 !	else
-!	 write(*,*)'ERROR(random_permutation): negative or zero number of items: ',ni
+!	 write(*,*)'ERROR(combinatoric:random_permutation): negative or zero number of items: ',ni
 !	 stop
 	endif
 	return
@@ -1058,19 +1165,19 @@
 	integer(8), intent(out):: trn(0:ni)
 	logical, intent(in), optional:: no_trivial
 !-------------------------------------------------
-	integer(8), parameter:: random_chunk=2**10 !size of the chunk of random numbers generated in one call
-	integer(8), parameter:: num_repeats=5_8    !the bigger the number, the better the generator quality (more expensive)
-!-------------------------------------------------
-	integer(8) i,j,k,l,m,n,nr,ierr
-	real(8):: ra(1:random_chunk)
+	integer(8), parameter:: RANDOM_CHUNK=2**10 !size of the chunk of random numbers generated in one call
+	integer(8), parameter:: NUM_REPEATS=5_8    !the bigger the number, the better the generator quality (more expensive)
+!----------------------------------------------
+	integer(8):: i,j,k,l,m,n,nr,ierr
+	real(8):: ra(RANDOM_CHUNK)
 
 	if(ni.gt.0_8) then
 	 trn(0)=+1_8; do i=1_8,ni; trn(i)=i; enddo !initial permutation
-         if(ni.gt.1_8) then
+	 if(ni.gt.1_8) then
 	  ploop: do
-	   do nr=1_8,num_repeats
-	    do i=1_8,ni,random_chunk
-	     l=min(i+random_chunk-1_8,ni)-i+1_8
+	   do nr=1_8,NUM_REPEATS
+	    do i=1_8,ni,RANDOM_CHUNK
+	     l=min(i+RANDOM_CHUNK-1_8,ni)-i+1_8
 	     call random_number(ra(1_8:l))
 	     ra(1_8:l)=ra(1_8:l)*2d0
 	     do k=1_8,l
@@ -1092,9 +1199,9 @@
 	    exit ploop
 	   endif
 	  enddo ploop
-         endif
+	 endif
 !	else
-!	 write(*,*)'ERROR(random_permutation_int8): negative or zero number of items: ',ni
+!	 write(*,*)'ERROR(combinatoric:random_permutation_int8): negative or zero number of items: ',ni
 !	 stop
 	endif
 	return
@@ -1113,10 +1220,10 @@
 	integer, intent(in):: irange
 	integer, intent(in):: ni
 	integer, intent(out):: trn(0:ni)
-	integer, parameter:: rnd_chunk=2**10
-	integer i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
+	integer, parameter:: RND_CHUNK=2**10
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,ks,kf,ierr
 	integer, allocatable:: prm(:)
-	real(8) rnd_buf(1:rnd_chunk),rn,accept_thresh
+	real(8):: rnd_buf(RND_CHUNK),rn,accept_thresh
 
 	accept_thresh(k,l)=dble(k-l)/dble(k) !k>=l, k!=0: k - amount of objects left for selection; l - number of items to select.
 
@@ -1125,7 +1232,7 @@
 	  if(ordered) then
 	   k=irange; l=ni; k0=0; n=0
 	   do i=1,irange
-	    if(k0.eq.0) then; k0=min(rnd_chunk,k); call random_number(rnd_buf(1:k0)); endif
+	    if(k0.eq.0) then; k0=min(RND_CHUNK,k); call random_number(rnd_buf(1:k0)); endif
 	    if(rnd_buf(k0).ge.accept_thresh(k,l)) then
 	     n=n+1; trn(n)=i; l=l-1; if(l.eq.0) exit
 	    endif
@@ -1144,7 +1251,7 @@
 	   call random_permutation(ni,prm)
 	   k=irange; l=ni; k0=0; n=0
 	   do i=1,irange
-	    if(k0.eq.0) then; k0=min(rnd_chunk,k); call random_number(rnd_buf(1:k0)); endif
+	    if(k0.eq.0) then; k0=min(RND_CHUNK,k); call random_number(rnd_buf(1:k0)); endif
 	    if(rnd_buf(k0).ge.accept_thresh(k,l)) then
 	     n=n+1; trn(prm(n))=i; l=l-1; if(l.eq.0) exit
 	    endif
@@ -1156,7 +1263,7 @@
 	    write(*,*)'ERROR(combinatoric:random_composition): trap: invalid number of items: ',n,ni,irange,ordered
 	    stop
 	   endif
-           deallocate(prm)
+	   deallocate(prm)
 	  endif
 	 endif
 	else
@@ -1179,7 +1286,7 @@
 	implicit none
 	integer, intent(in):: ni
 	integer, intent(inout):: trn(0:ni)
-	integer i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
 	integer, allocatable:: prm(:)
 
 	trn(0)=+1
@@ -1231,14 +1338,14 @@
 	implicit none
 	integer, intent(in):: ni,key(1:ni)
 	integer, intent(inout):: trn(0:ni)
-	integer, parameter:: max_in_mem=1024
-	integer i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
-	integer, target:: prms(1:max_in_mem)
-	integer, allocatable,target:: prma(:)
-	integer, pointer:: prm(:)
+	integer, parameter:: MAX_IN_MEM=1024
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
+	integer, target:: prms(MAX_IN_MEM)
+	integer, allocatable, target:: prma(:)
+	integer, pointer, contiguous:: prm(:)
 
 	if(ni.gt.1) then
-	 if(ni.le.max_in_mem) then; prm=>prms; else; allocate(prma(1:ni)); prm=>prma; endif
+	 if(ni.le.MAX_IN_MEM) then; prm=>prms; else; allocate(prma(1:ni)); prm=>prma; endif
 	 n=1
 	 do while(n.lt.ni)
 	  m=n*2
@@ -1268,10 +1375,65 @@
 	  trn(1:ni)=prm(1:ni)
 	  n=m
 	 enddo
-	 nullify(prm); if(ni.gt.max_in_mem) deallocate(prma)
+	 nullify(prm); if(allocated(prma)) deallocate(prma)
 	endif
 	return
 	end subroutine merge_sort_key_int
+!-----------------------------------------------
+	subroutine merge_sort_int8_s(ni,trn,sgn)
+!This subroutine sorts an array of NI items in a non-descending order.
+!The algorithm was suggested by Johann von Neumann.
+!INPUT:
+! - ni - number of items;
+! - trn(1:ni) - items (arbitrary integer*8 numbers);
+!OUTPUT:
+! - trn(1:ni) - sorted items;
+! - sgn - permutation sign;
+!NOTES:
+! - In order to accelerate the procedure use flip/flop for TRN(:)||PRM(:).
+	implicit none
+	integer(8), intent(in):: ni
+	integer(8), intent(inout):: trn(1:ni)
+	integer(4), intent(out):: sgn
+	integer(8):: i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
+	integer(8), allocatable:: prm(:)
+
+	sgn=+1
+	if(ni.gt.1_8) then
+	 allocate(prm(1_8:ni))
+	 n=1_8
+	 do while(n.lt.ni)
+	  m=n*2_8
+	  do i=1_8,ni,m
+	   k1=i; k2=i+n
+	   if(k2.gt.ni) then
+	    k2=ni+1_8; k3=0_8; k4=0_8 !no right block, only left block
+	   else
+	    k3=i+n; k4=min(ni+1_8,i+m) !right block present
+	   endif
+	   kf=min(ni+1_8,i+m)-i; l=0_8
+	   do while(l.lt.kf)
+	    if(k3.ge.k4) then !right block is over
+	     prm(i+l:i+kf-1_8)=trn(k1:k2-1_8); l=kf
+	    elseif(k1.ge.k2) then !left block is over
+	     prm(i+l:i+kf-1_8)=trn(k3:k4-1_8); l=kf
+	    else
+	     if(trn(k1)-trn(k3).gt.0_8) then
+	      prm(i+l)=trn(k3); k3=k3+1_8; sgn=sgn*(1-2*int(mod(k2-k1,2_8),4))
+	     else
+	      prm(i+l)=trn(k1); k1=k1+1_8
+	     endif
+	     l=l+1_8
+	    endif
+	   enddo
+	  enddo
+	  trn(1_8:ni)=prm(1_8:ni)
+	  n=m
+	 enddo
+	 deallocate(prm)
+	endif
+	return
+	end subroutine merge_sort_int8_s
 !-----------------------------------------
 	subroutine merge_sort_int8(ni,trn)
 !This subroutine sorts an array of NI items in a non-descending order.
@@ -1286,7 +1448,7 @@
 	implicit none
 	integer(8), intent(in):: ni
 	integer(8), intent(inout):: trn(0:ni)
-	integer(8) i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
+	integer(8):: i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
 	integer(8), allocatable:: prm(:)
 
 	trn(0)=+1_8
@@ -1338,14 +1500,14 @@
 	implicit none
 	integer(8), intent(in):: ni,key(1:ni)
 	integer(8), intent(inout):: trn(0:ni)
-	integer(8), parameter:: max_in_mem=1024
-	integer(8) i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
-	integer(8), target:: prms(1:max_in_mem)
-	integer(8), allocatable,target:: prma(:)
-	integer(8), pointer:: prm(:)
+	integer(8), parameter:: MAX_IN_MEM=1024
+	integer(8):: i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
+	integer(8), target:: prms(MAX_IN_MEM)
+	integer(8), allocatable, target:: prma(:)
+	integer(8), pointer, contiguous:: prm(:)
 
 	if(ni.gt.1_8) then
-	 if(ni.le.max_in_mem) then; prm=>prms; else; allocate(prma(1_8:ni)); prm=>prma; endif
+	 if(ni.le.MAX_IN_MEM) then; prm=>prms; else; allocate(prma(1_8:ni)); prm=>prma; endif
 	 n=1_8
 	 do while(n.lt.ni)
 	  m=n*2_8
@@ -1375,7 +1537,7 @@
 	  trn(1_8:ni)=prm(1_8:ni)
 	  n=m
 	 enddo
-	 nullify(prm); if(ni.gt.max_in_mem) deallocate(prma)
+	 nullify(prm); if(allocated(prma)) deallocate(prma)
 	endif
 	return
 	end subroutine merge_sort_key_int8
@@ -1391,7 +1553,7 @@
 	implicit none
 	integer, intent(in):: ni
 	real(8), intent(inout):: trn(0:ni)
-	integer i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
 	real(8), parameter:: ds(0:1)=(/+1d0,-1d0/)
 	real(8), allocatable:: prm(:)
 
@@ -1445,14 +1607,14 @@
 	integer, intent(in):: ni
 	real(8), intent(in):: key(1:ni)
 	integer, intent(inout):: trn(0:ni)
-	integer, parameter:: max_in_mem=1024
-	integer i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
-	integer, target:: prms(1:max_in_mem)
-	integer, allocatable,target:: prma(:)
-	integer, pointer:: prm(:)
+	integer, parameter:: MAX_IN_MEM=1024
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
+	integer, target:: prms(MAX_IN_MEM)
+	integer, allocatable, target:: prma(:)
+	integer, pointer, contiguous:: prm(:)
 
 	if(ni.gt.1) then
-	 if(ni.le.max_in_mem) then; prm=>prms; else; allocate(prma(1:ni)); prm=>prma; endif
+	 if(ni.le.MAX_IN_MEM) then; prm=>prms; else; allocate(prma(1:ni)); prm=>prma; endif
 	 n=1
 	 do while(n.lt.ni)
 	  m=n*2
@@ -1482,7 +1644,7 @@
 	  trn(1:ni)=prm(1:ni)
 	  n=m
 	 enddo
-	 nullify(prm); if(ni.gt.max_in_mem) deallocate(prma)
+	 nullify(prm); if(allocated(prma)) deallocate(prma)
 	endif
 	return
 	end subroutine merge_sort_key_real8
@@ -1499,10 +1661,10 @@
 	implicit none
 	integer, intent(in):: ni
 	complex(8), intent(inout):: trn(0:ni)
-	integer i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
 	real(8), parameter:: ds(0:1)=(/+1d0,-1d0/)
 	complex(8), allocatable:: prm(:)
-	real(8) sgn
+	real(8):: sgn
 
 	sgn=+1d0
 	if(ni.gt.1) then
@@ -1557,14 +1719,14 @@
 	integer, intent(in):: ni
 	complex(8), intent(in):: key(1:ni)
 	integer, intent(inout):: trn(0:ni)
-	integer, parameter:: max_in_mem=1024
-	integer i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
-	integer, target:: prms(1:max_in_mem)
-	integer, allocatable,target:: prma(:)
-	integer, pointer:: prm(:)
+	integer, parameter:: MAX_IN_MEM=1024
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,k6,k7,ks,kf,ierr
+	integer, target:: prms(MAX_IN_MEM)
+	integer, allocatable, target:: prma(:)
+	integer, pointer, contiguous:: prm(:)
 
 	if(ni.gt.1) then
-	 if(ni.le.max_in_mem) then; prm=>prms; else; allocate(prma(1:ni)); prm=>prma; endif
+	 if(ni.le.MAX_IN_MEM) then; prm=>prms; else; allocate(prma(1:ni)); prm=>prma; endif
 	 n=1
 	 do while(n.lt.ni)
 	  m=n*2
@@ -1583,7 +1745,7 @@
 	     prm(i+l:i+kf-1)=trn(k3:k4-1); l=kf
 	    else
 	     if(dble(key(trn(k1)))-dble(key(trn(k3))).gt.0d0.or.&
-	        &(dble(key(trn(k1))).eq.dble(key(trn(k3))).and.dimag(key(trn(k1)))-dimag(key(trn(k3))).gt.0d0)) then
+	       &(dble(key(trn(k1))).eq.dble(key(trn(k3))).and.dimag(key(trn(k1)))-dimag(key(trn(k3))).gt.0d0)) then
 	      prm(i+l)=trn(k3); k3=k3+1; trn(0)=(1-2*mod(k2-k1,2))*trn(0)
 	     else
 	      prm(i+l)=trn(k1); k1=k1+1
@@ -1595,9 +1757,84 @@
 	  trn(1:ni)=prm(1:ni)
 	  n=m
 	 enddo
-	 nullify(prm); if(ni.gt.max_in_mem) deallocate(prma)
+	 nullify(prm); if(allocated(prma)) deallocate(prma)
 	endif
 	return
 	end subroutine merge_sort_key_cmplx8
+!-------------------------------------------------------------
+        subroutine merge_sort_key_gen(ni,key,trn,cmp_f,buffer)
+!This subroutine sorts an array of NI items in a non-descending order according to their keys.
+!The algorithm is due to Johann von Neumann.
+!INPUT:
+! - ni - number of items;
+! - key(1:ni) - item keys (retrieved by old item numbers!): arbitrary type objects;
+! - trn(0:ni) - initial permutation of ni items (a sequence of old numbers), trn(0) is the initial sign;
+! - cmp_f - comparator for keys (function);
+! - buffer(*) - optional external integer(8) buffer of size at least ni;
+!OUTPUT:
+! - trn(0:ni) - sorted permutation of ni items (according to their keys), the sign is in trn(0);
+!               trn(0)=0 means an error.
+         implicit none
+         integer(8), intent(in):: ni
+         class(*), intent(in):: key(1:ni)
+         integer(8), intent(inout):: trn(0:ni)
+         procedure(cmp_i):: cmp_f
+         integer(8), intent(in), contiguous, target, optional:: buffer(1:)
+         integer(8), parameter:: MAX_IN_MEM=1024_8
+         integer:: ierr
+         integer(8) i,l,m,n,k1,k2,k3,k4,kf
+         integer(8), target:: prms(MAX_IN_MEM)
+         integer(8), allocatable, target:: prma(:)
+         integer(8), pointer, contiguous:: prm(:)
+
+         if(ni.gt.1_8) then
+          nullify(prm)
+          if(present(buffer)) then
+           prm=>buffer(1:ni)
+          else
+           if(ni.le.MAX_IN_MEM) then
+            prm(1:ni)=>prms(1:ni)
+           else
+            allocate(prma(1:ni),STAT=ierr)
+            if(ierr.eq.0) prm=>prma
+           endif
+          endif
+          if(associated(prm)) then
+           n=1_8
+           do while(n.lt.ni)
+            m=n*2_8
+            do i=1_8,ni,m
+             k1=i; k2=i+n
+             if(k2.gt.ni) then
+              k2=ni+1_8; k3=0_8; k4=0_8 !no right block, only left block
+             else
+              k3=i+n; k4=min(ni+1_8,i+m) !right block present
+             endif
+             kf=min(ni+1_8,i+m)-i; l=0_8
+             do while(l.lt.kf)
+              if(k3.ge.k4) then !right block is over
+               prm(i+l:i+kf-1_8)=trn(k1:k2-1_8); l=kf
+              elseif(k1.ge.k2) then !left block is over
+               prm(i+l:i+kf-1_8)=trn(k3:k4-1_8); l=kf
+              else
+               if(cmp_f(key(trn(k1)),key(trn(k3))).gt.0) then !.gt.
+                prm(i+l)=trn(k3); k3=k3+1_8; trn(0)=(1_8-2_8*mod(k2-k1,2_8))*trn(0)
+               else
+                prm(i+l)=trn(k1); k1=k1+1_8
+               endif
+               l=l+1_8
+              endif
+             enddo
+            enddo
+            trn(1_8:ni)=prm(1_8:ni)
+            n=m
+           enddo
+           nullify(prm); if(allocated(prma)) deallocate(prma)
+          else
+           trn(0)=0_8 !error
+          endif
+         endif
+         return
+        end subroutine merge_sort_key_gen
 
        end module combinatoric

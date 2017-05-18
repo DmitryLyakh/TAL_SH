@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API header.
-REVISION: 2017/03/14
+REVISION: 2017/05/17
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -32,6 +32,7 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #define TALSH_MEM_ALLOC_POLICY_HOST MEM_ALLOC_TMP_BUF //default Host memory allocation policy for CP-TAL (see tensor_algebra.h)
 #define TALSH_MEM_ALLOC_FALLBACK_HOST 1 //default memory allocation fallback to regular allocate() for CP-TAL: {0|1}
 #define TALSH_CPTAL_MIN_BUF_SIZE 1073741824 //minimun Host argument buffer size that can be used effectively by CP-TAL
+#define TALSH_NO_HOST_BUFFER 1048576 //nominal Host argument buffer size when it is not needed by the application
 
 //TAL-SH ERROR CODES (keep consistent with "talshf.F90"):
 #define TALSH_SUCCESS 0
@@ -88,19 +89,6 @@ typedef struct{
  double flops;     //number of floating point operations (information)
  double exec_time; //execution time in seconds (information)
 } talsh_task_t;
-
-//INTERNAL PROTOTYPES:
-// TAL-SH complex arithmetic:
-inline talshComplex4 talshComplex4Set(float real, float imag);
-inline talshComplex8 talshComplex8Set(double real, double imag);
-inline float talshComplex4Real(talshComplex4 cmplx);
-inline double talshComplex8Real(talshComplex8 cmplx);
-inline float talshComplex4Imag(talshComplex4 cmplx);
-inline double talshComplex8Imag(talshComplex8 cmplx);
-inline talshComplex4 talshComplex4Conjg(talshComplex4 cmplx);
-inline talshComplex8 talshComplex8Conjg(talshComplex8 cmplx);
-inline float talshComplex4Abs(talshComplex4 cmplx);
-inline double talshComplex8Abs(talshComplex8 cmplx);
 
 //EXPORTED FUNCTIONS:
 #ifdef __cplusplus
@@ -250,9 +238,10 @@ extern "C"{
  int talshTensorPlace(talsh_tens_t * tens,               //inout: tensor block
                       int dev_id,                        //in: device id (flat or kind-specific)
                       int dev_kind = DEV_NULL,           //in: device kind (if present, <dev_id> is kind-specific)
+                      void * dev_mem = NULL,             //in: externally provided target device memory pointer
                       int copy_ctrl = COPY_M,            //in: copy control (COPY_X), defaults to COPY_M
                       talsh_task_t * talsh_task = NULL); //inout: TAL-SH task handle
- int talshTensorPlace_(talsh_tens_t * tens, int dev_id, int dev_kind, int copy_ctrl, talsh_task_t * talsh_task);
+ int talshTensorPlace_(talsh_tens_t * tens, int dev_id, int dev_kind, void * dev_mem, int copy_ctrl, talsh_task_t * talsh_task);
 //  Discard a tensor block on a specific device:
  int talshTensorDiscard(talsh_tens_t * tens,      //inout: tensor block
                         int dev_id,               //in: device id (flat or kind-specific)
@@ -261,7 +250,7 @@ extern "C"{
 //  Tensor initialization:
  int talshTensorInit(talsh_tens_t * dtens,              //inout: tensor block
                      double val_real,                   //in: initialization value (real part)
-                     double val_imag,                   //in: initialization value (complex part)
+                     double val_imag,                   //in: initialization value (imaginary part)
                      int dev_id = DEV_DEFAULT,          //in: device id (flat or kind-specific)
                      int dev_kind = DEV_DEFAULT,        //in: device kind (if present, <dev_id> is kind-specific)
                      int copy_ctrl = COPY_M,            //in: copy control (COPY_X), defaults to COPY_M

@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2017/03/29
+!REVISION: 2017/05/17
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -337,12 +337,14 @@
          end subroutine talsh_task_print_info
  !TAL-SH tensor operations C/C++ API:
   !Place a tensor block on a specific device:
-         integer(C_INT) function talshTensorPlace_(tens,dev_id,dev_kind,copy_ctrl,talsh_task) bind(c,name='talshTensorPlace_')
+         integer(C_INT) function talshTensorPlace_(tens,dev_id,dev_kind,dev_mem,copy_ctrl,talsh_task)&
+                        &bind(c,name='talshTensorPlace_')
           import
           implicit none
           type(talsh_tens_t), intent(inout):: tens
           integer(C_INT), value, intent(in):: dev_id
           integer(C_INT), value, intent(in):: dev_kind
+          type(C_PTR), value:: dev_mem
           integer(C_INT), value, intent(in):: copy_ctrl
           type(talsh_task_t), intent(inout):: talsh_task
          end function talshTensorPlace_
@@ -1144,24 +1146,27 @@
          if(present(mmul)) mmul=mmul_tm
          return
         end function talsh_task_time
-!------------------------------------------------------------------------------------------
-        function talsh_tensor_place(tens,dev_id,dev_kind,copy_ctrl,talsh_task) result(ierr)
+!--------------------------------------------------------------------------------------------------
+        function talsh_tensor_place(tens,dev_id,dev_kind,dev_mem,copy_ctrl,talsh_task) result(ierr)
          implicit none
          integer(C_INT):: ierr                              !out: error code (0:success)
          type(talsh_tens_t), intent(inout):: tens           !inout: tensor block
          integer(C_INT), intent(in):: dev_id                !in: device id (flat or kind-specific)
          integer(C_INT), intent(in), optional:: dev_kind    !in: device kind (if present, <dev_id> is kind-specific)
+         type(C_PTR), value, intent(in), optional:: dev_mem !in: externally provided target device memory pointer
          integer(C_INT), intent(in), optional:: copy_ctrl   !in: copy control (COPY_X), defaults to COPY_M
          type(talsh_task_t), intent(inout), optional:: talsh_task !inout: TAL-SH task handle
          integer(C_INT):: dvk,coh,sts
          type(talsh_task_t):: tsk
+         type(C_PTR):: dvm
 
          if(present(dev_kind)) then; dvk=dev_kind; else; dvk=DEV_NULL; endif
+         if(present(dev_mem)) then; dvm=dev_mem; else; dvm=C_NULL_PTR; endif
          if(present(copy_ctrl)) then; coh=copy_ctrl; else; coh=COPY_M; endif
          if(present(talsh_task)) then
-          ierr=talshTensorPlace_(tens,dev_id,dvk,coh,talsh_task)
+          ierr=talshTensorPlace_(tens,dev_id,dvk,dvm,coh,talsh_task)
          else
-          ierr=talshTensorPlace_(tens,dev_id,dvk,coh,tsk)
+          ierr=talshTensorPlace_(tens,dev_id,dvk,dvm,coh,tsk)
           if(ierr.eq.TALSH_SUCCESS) then
            ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
           endif

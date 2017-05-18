@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API.
-REVISION: 2017/03/14
+REVISION: 2017/05/18
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -352,8 +352,10 @@ static int talsh_tensor_c_dissoc(tensBlck_t * tensC) //inout: <tensBlck_t> creat
 
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(tensC == NULL) return TALSH_INVALID_ARGS;
- if(tensBlck_volume(tensC) == 0) return TALSH_OBJECT_IS_EMPTY;
- errc=tensBlck_destroy(tensC); if(errc){if(errc != NOT_CLEAN) errc=TALSH_FAILURE;}
+ errc=TALSH_SUCCESS;
+ if(tensBlck_volume(tensC) > 0){
+  errc=tensBlck_destroy(tensC); if(errc){if(errc != NOT_CLEAN) errc=TALSH_FAILURE;}
+ }
  return errc;
 }
 
@@ -496,7 +498,7 @@ static int talsh_choose_image_for_device(talsh_tens_t * tens, unsigned int coh_c
     case COPY_K: coh=COPY_K; break;
     default: return -1;
    }
-   i=talshTensorPlace(tens,0,DEV_HOST,coh); if(i) return -1;
+   i=talshTensorPlace(tens,0,DEV_HOST,NULL,coh); if(i) return -1;
    *copied=1; image_id=tens->ndev-1;
    if(tens->dev_rsc[image_id].dev_id != talshFlatDevId(DEV_HOST,0)) return -1;
   }else{
@@ -507,141 +509,6 @@ static int talsh_choose_image_for_device(talsh_tens_t * tens, unsigned int coh_c
 }
 
 //EXPORTED FUNCTIONS:
-// Complex arithmetic:
-inline talshComplex4 talshComplex4Set(float real, float imag)
-{
-#ifndef NO_GPU
- talshComplex4 result = make_cuFloatComplex(real,imag);
-#else
-#ifdef __cplusplus
- talshComplex4 result(real,imag);
-#else
- talshComplex4 result = {real,imag};
-#endif
-#endif
- return result;
-}
-
-inline talshComplex8 talshComplex8Set(double real, double imag)
-{
-#ifndef NO_GPU
- talshComplex8 result = make_cuDoubleComplex(real,imag);
-#else
-#ifdef __cplusplus
- talshComplex8 result(real,imag);
-#else
- talshComplex8 result = {real,imag};
-#endif
-#endif
- return result;
-}
-
-inline float talshComplex4Real(talshComplex4 cmplx)
-{
-#ifndef NO_GPU
- return cuCrealf(cmplx);
-#else
-#ifdef __cplusplus
- return cmplx.real();
-#else
- return cmplx.real;
-#endif
-#endif
-}
-
-inline double talshComplex8Real(talshComplex8 cmplx)
-{
-#ifndef NO_GPU
- return cuCreal(cmplx);
-#else
-#ifdef __cplusplus
- return cmplx.real();
-#else
- return cmplx.real;
-#endif
-#endif
-}
-
-inline float talshComplex4Imag(talshComplex4 cmplx)
-{
-#ifndef NO_GPU
- return cuCimagf(cmplx);
-#else
-#ifdef __cplusplus
- return cmplx.imag();
-#else
- return cmplx.imag;
-#endif
-#endif
-}
-
-inline double talshComplex8Imag(talshComplex8 cmplx)
-{
-#ifndef NO_GPU
- return cuCimag(cmplx);
-#else
-#ifdef __cplusplus
- return cmplx.imag();
-#else
- return cmplx.imag;
-#endif
-#endif
-}
-
-inline talshComplex4 talshComplex4Conjg(talshComplex4 cmplx)
-{
-#ifndef NO_GPU
- return cuConjf(cmplx);
-#else
-#ifdef __cplusplus
- return std::conj(cmplx);
-#else
- talshComplex4 result = {cmplx.real,-cmplx.imag};
- return result;
-#endif
-#endif
-}
-
-inline talshComplex8 talshComplex8Conjg(talshComplex8 cmplx)
-{
-#ifndef NO_GPU
- return cuConj(cmplx);
-#else
-#ifdef __cplusplus
- return std::conj(cmplx);
-#else
- talshComplex8 result = {cmplx.real,-cmplx.imag};
- return result;
-#endif
-#endif
-}
-
-inline float talshComplex4Abs(talshComplex4 cmplx)
-{
-#ifndef NO_GPU
- return cuCabsf(cmplx);
-#else
-#ifdef __cplusplus
- return std::abs(cmplx);
-#else
- return (float)sqrt((double)((cmplx.real)*(cmplx.real)) + (double)((cmplx.imag)*(cmplx.imag)));
-#endif
-#endif
-}
-
-inline double talshComplex8Abs(talshComplex8 cmplx)
-{
-#ifndef NO_GPU
- return cuCabs(cmplx);
-#else
-#ifdef __cplusplus
- return std::abs(cmplx);
-#else
- return sqrt(((cmplx.real)*(cmplx.real)) + ((cmplx.imag)*(cmplx.imag)));
-#endif
-#endif
-}
-
 // TAL-SH helper functions:
 int talshValidDataKind(int datk, int * datk_size)
 /** Returns YEP if <datk> is a valid data kind (also returns its size in bytes in <datk_size>). **/
@@ -1964,6 +1831,7 @@ int talshTaskComplete(talsh_task_t * talsh_task, int * stats, int * ierr)
     default:
      *stats=TALSH_FAILURE; *ierr=TALSH_FAILURE;
    }
+   //if(errc == YEP){printf("\n#DEBUG(TALSH::talshTaskComplete): CUDA task completed:"); cuda_task_print(cuda_task_p);} //debug
 #else
    *ierr=TALSH_NOT_AVAILABLE;
 #endif
@@ -2109,7 +1977,7 @@ void talshTaskPrint(const talsh_task_t * talsh_task)
 }
 
 // TAL-SH tensor operations API:
-int talshTensorPlace(talsh_tens_t * tens, int dev_id, int dev_kind, int copy_ctrl, talsh_task_t * talsh_task)
+int talshTensorPlace(talsh_tens_t * tens, int dev_id, int dev_kind, void * dev_mem, int copy_ctrl, talsh_task_t * talsh_task)
 /** Places a tensor block body image on a specific device. **/
 {
  int i,j,dn,dk,errc,devid,dvk,dvn,image_id,host_image,runtime;
@@ -2150,7 +2018,7 @@ int talshTensorPlace(talsh_tens_t * tens, int dev_id, int dev_kind, int copy_ctr
  if(dvk != DEV_HOST){ //the destination device is an accelerator
   if(image_id < 0){ //no device of requested kind holds an image
    if(host_image < 0){ //image is absent on Host as well => a blocking copy will be required
-    errc=talshTensorPlace(tens,0,DEV_HOST,copy_ctrl); //clone/move the image to Host (blocking call!)
+    errc=talshTensorPlace(tens,0,DEV_HOST,dev_mem,copy_ctrl); //clone/move the image to Host (blocking call!)
     if(errc != TALSH_SUCCESS){tsk->task_error=106; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return errc;}
     image_id=tens->ndev-1; //the last image is now residing on Host
     if(tens->dev_rsc[image_id].dev_id != talshFlatDevId(DEV_HOST,0)){
@@ -2200,7 +2068,7 @@ int talshTensorPlace(talsh_tens_t * tens, int dev_id, int dev_kind, int copy_ctr
     j=talsh_tensor_c_dissoc(ctens); ctens=NULL;
     tsk->task_error=113; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
    }
-   errc=gpu_tensor_block_place(ctens,j,(unsigned int)copy_ctrl,cuda_task); //if source == destination, no transfer will be initiated (ok)
+   errc=gpu_tensor_block_place(ctens,j,(unsigned int)copy_ctrl,cuda_task,dev_mem); //if source == destination, no transfer will be initiated (ok)
    if(errc){ //in case of error, CUDA task has already been finalized (with error) without coherence control
     if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=TALSH_FAILURE;
     j=talsh_tensor_c_dissoc(ctens); if(j) errc=TALSH_FAILURE;
@@ -2247,9 +2115,9 @@ int talshTensorPlace(talsh_tens_t * tens, int dev_id, int dev_kind, int copy_ctr
  return errc;
 }
 
-int talshTensorPlace_(talsh_tens_t * tens, int dev_id, int dev_kind, int copy_ctrl, talsh_task_t * talsh_task) //Fortran wrapper
+int talshTensorPlace_(talsh_tens_t * tens, int dev_id, int dev_kind, void * dev_mem, int copy_ctrl, talsh_task_t * talsh_task) //Fortran wrapper
 {
- return talshTensorPlace(tens,dev_id,dev_kind,copy_ctrl,talsh_task);
+ return talshTensorPlace(tens,dev_id,dev_kind,dev_mem,copy_ctrl,talsh_task);
 }
 
 int talshTensorDiscard(talsh_tens_t * tens, int dev_id, int dev_kind)
@@ -2660,7 +2528,7 @@ int talshTensorAdd(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * lten
     printf("#FATAL(talshc:talshTensorAdd): Complex conjugation feature is not implemented for GPU target!");
     tsk->task_error=200; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
    }
-   errc=gpu_tensor_block_add(contr_ptrn,lctr,dctr,coh_ctrl,cuda_task,dvn,scale_real); //non-blocking call
+   errc=gpu_tensor_block_add(contr_ptrn,lctr,dctr,coh_ctrl,cuda_task,dvn,scale_real,scale_imag); //non-blocking call
    dvn=cuda_task_gpu_id(cuda_task);
    if(errc || dvn < 0){ //in case of error, CUDA task has already been finalized (with error) without coherence control
     if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=TALSH_FAILURE;
@@ -2933,7 +2801,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
     printf("#FATAL(talshc:talshTensorContract): Complex conjugation feature is not implemented for GPU target!");
     tsk->task_error=200; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
    }
-   errc=gpu_tensor_block_contract_dlf(contr_ptrn,lctr,rctr,dctr,coh_ctrl,cuda_task,dvn,scale_real); //non-blocking call
+   errc=gpu_tensor_block_contract_dlf(contr_ptrn,lctr,rctr,dctr,coh_ctrl,cuda_task,dvn,scale_real,scale_imag); //non-blocking call
    dvn=cuda_task_gpu_id(cuda_task);
    if(errc || dvn < 0){ //in case of error, CUDA task has already been finalized (with error) without coherence control
     if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=TALSH_FAILURE;

@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2017/03/23
+REVISION: 2017/05/17
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -66,10 +66,6 @@ FOR DEVELOPERS ONLY:
 
 #include <time.h>
 
-#ifdef __cplusplus
-#include <complex>
-#endif
-
 #ifndef NO_GPU
 
 #include <cuda.h>
@@ -83,6 +79,8 @@ FOR DEVELOPERS ONLY:
 
 #endif /*NO_GPU*/
 
+#include "talsh_complex.h"
+
 #include "mem_manager.h"
 
 //DEVICE COMPUTE CAPABILITY (for Host code, but use __CUDA_ARCH__ for device code):
@@ -93,6 +91,7 @@ FOR DEVELOPERS ONLY:
 //GLOBAL PARAMETERS:
 #define MAX_TENSOR_RANK 32         //max allowed tensor rank: Must be multiple of 4
 #define MAX_TENSOR_OPERANDS 4      //max allowed number of tensor operands in a tensor operation
+
 #define MAX_GPU_ARGS 128           //max allowed number of tensor arguments simultaneously residing on a GPU: Must be a multiple of 8
 #define MAX_MLNDS_PER_TENS 4       //max number of multi-indices per tensor block (dims, divs, grps, prmn)
 #define MAX_CUDA_TASKS 128         //max allowed number of simultaneously active CUDA tasks per CUDA device
@@ -291,21 +290,6 @@ FOR DEVELOPERS ONLY:
 #define ENTERED(x) printf("\n#DEBUG: ENTERED %s\n",#x);
 #define EXITED(x) printf("\n#DEBUG: EXITED %s\n",#x);
 
-//BASIC TYPES:
-// Complex number:
-#ifndef NO_GPU
-typedef cuFloatComplex talshComplex4;
-typedef cuDoubleComplex talshComplex8;
-#else
-#ifdef __cplusplus
-typedef std::complex<float> talshComplex4;
-typedef std::complex<double> talshComplex8;
-#else
-typedef struct{float real; float imag;} talshComplex4;
-typedef struct{double real; double imag;} talshComplex8;
-#endif
-#endif /*NO_GPU*/
-
 //DERIVED TYPES (keep consistent with tensor_algebra.F90):
 // Tensor shape:
 typedef struct{
@@ -355,6 +339,7 @@ typedef struct{
  unsigned int coherence; //coherence control for this task (see COPY_X, COPY_XX, and COPY_XXX constants)
  unsigned int num_args;  //number of tensor arguments participating in the tensor operation
  cudaTensArg_t tens_args[MAX_TENSOR_OPERANDS]; //tensor arguments participating in the tensor operation
+ void * pref_ptr;        //tensor operation prefactor location
 } cudaTask_t;
 //Note: Adding new CUDA events will require adjustment of NUM_EVENTS_PER_TASK.
 
@@ -467,12 +452,12 @@ int cuda_get_device_count(int * dev_count);
  float cuda_task_time_(const cudaTask_t *cuda_task, float *in_copy, float *out_copy, float *comp, float *mmul);
  void cuda_task_print(const cudaTask_t *cuda_task);
 //  NV-TAL tensor operations:
- int gpu_tensor_block_place(tensBlck_t *ctens, int gpu_id, unsigned int coh_ctrl, cudaTask_t *cuda_task);
+ int gpu_tensor_block_place(tensBlck_t *ctens, int gpu_id, unsigned int coh_ctrl, cudaTask_t *cuda_task, void *dev_mem = NULL);
  int gpu_tensor_block_init(tensBlck_t *dtens, double val, unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1);
- int gpu_tensor_block_add(const int *cptrn, tensBlck_t *ltens, tensBlck_t *dtens,
-                          unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1, double alpha = 1.0, double beta = 1.0);
+ int gpu_tensor_block_add(const int *cptrn, tensBlck_t *ltens, tensBlck_t *dtens, unsigned int coh_ctrl,
+                          cudaTask_t *cuda_task, int gpu_id = -1, double scale_real = 1.0, double scale_imag = 0.0);
  int gpu_tensor_block_contract_dlf(const int *cptrn, tensBlck_t *ltens, tensBlck_t *rtens, tensBlck_t *dtens, unsigned int coh_ctrl,
-                                   cudaTask_t *cuda_task, int gpu_id = -1, double alpha = 1.0, double beta = 1.0);
+                                   cudaTask_t *cuda_task, int gpu_id = -1, double scale_real = 1.0, double scale_imag = 0.0);
 #endif /*NO_GPU */
 #ifdef __cplusplus
 }

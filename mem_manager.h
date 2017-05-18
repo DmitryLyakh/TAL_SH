@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Memory management API header.
-REVISION: 2016/12/06
+REVISION: 2017/05/17
 
-Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -33,6 +33,9 @@ typedef struct{
  size_t first_free;     //first free entry number (stack pointer)
  void * slab_base;      //slab base pointer
  void ** free_entries;  //stack of free entries
+#ifndef NO_GPU
+ int mem_mapped;        //non-zero if the underlying Host memory was allocated via cudaHostAlloc() as portable mapped
+#endif
 } slab_t;
 
 //Exported functions:
@@ -56,9 +59,18 @@ extern "C"{
  int mem_free_left(int dev_id, size_t * free_mem); //generic
  int mem_print_stats(int dev_id); //generic
  int slab_create(slab_t ** slab);
- int slab_construct(slab_t * slab, size_t slab_entry_size, size_t slab_max_entries, size_t align);
+ int slab_clean(slab_t * slab);
+#ifndef NO_GPU
+ int slab_construct(slab_t * slab, size_t slab_entry_size, size_t slab_max_entries, size_t align = 0, int mapped = 0);
+#else
+ int slab_construct(slab_t * slab, size_t slab_entry_size, size_t slab_max_entries, size_t align = 0);
+#endif
  int slab_entry_get(slab_t * slab, void ** slab_entry);
  int slab_entry_release(slab_t * slab, void * slab_entry);
+ int slab_get_base_ptr(slab_t * slab, void ** base_ptr);
+ int slab_get_max_entries(slab_t * slab, size_t * max_entries);
+ int slab_get_entry_size(slab_t * slab, size_t * entry_size);
+ int slab_get_entry_offset(slab_t * slab, void * slab_entry_p, size_t * entry_offset);
  int slab_destruct(slab_t * slab);
  int slab_destroy(slab_t * slab);
  int host_mem_alloc(void **host_ptr, size_t tsize, size_t align = 1);

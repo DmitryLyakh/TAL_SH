@@ -1,6 +1,6 @@
 !Standard procedures often used by me.
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISON: 2017/01/27
+!REVISON: 2017/04/12
 
 !Copyright (C) 2005-2017 Dmitry I. Lyakh (Liakh)
 
@@ -27,49 +27,50 @@
 	real(8), parameter, public:: PI=3.14159265358979d0 !PI constant
 	real(8), parameter, public:: BOHR=0.529177249d0    !Bohrs to Angstroms conversion factor
 !Procedures:
-	public:: ARRAY2STRING!converts a character*1 array into a string
-	public:: CAP_ASCII   !makes all English letters capital
-	public:: CHARNUM     !converts a number given as a string to real*8 and integer numbers
-	public:: CREATE_LINE !creates a table line in .txt format with ; separator
-	public:: DUMB_WORK   !performs a dumb work on one or two arrays producing a third one
-	public:: ICHARNUM    !converts a number given as a string to the integer number
-	public:: IFCL        !calculates factorial
-	public:: IS_IT_NUMBER!checks if the character is an ASCII number
-	public:: IS_IT_LETTER!checks if the character is an ASCII letter
-	public:: ALPHANUMERIC!checks if the character is alphanumeric
-	public:: ALPHANUMERIC_STRING !checks if the string is alphanumeric_
-	public:: ITRSIGN     !determines a sign of a given transposition
-	public:: LONGNUMCHAR !converts a long integer number to the character representation
-	public:: MARKCHF     !counts how many non-blank fields a string contains
-	public:: MATMAT      !multiplies matrix on matrix
-	public:: MATMATT     !multiplies matrix on transposed matrix
-	public:: MATTMAT     !multiplies transposed matrix on matrix
-	public:: MATTMATT    !multiplies transposed matrix on transposed matrix
-	public:: NAME_HASH   !returns a hash-mask for a given string
-	public:: NOCOMMENT   !removes comments from a line (!,#)
-	public:: NORMV       !normalizes a vector
-	public:: NOSPACE     !removes blanks from a string
-	public:: NOT_A_NUMBER!checks whether a given string solely contains a decimal number
-	public:: NUMCHAR     !converts an integer number to character representation
-	public:: PRINTL      !prints a line of characters
-	public:: RAND_STR    !returns a random string
-	public:: ROTS        !rotates an array of points in a 3d-space
-	public:: SIZE_OF     !scalar data type size in bytes (Fortran 2008)
-	public:: SMALL_ASCII !makes all English letters small
-	public:: STRING2ARRAY!converts a string into a character*1 array
-	public:: STRSEARCH   !searches a given fragment in a string.
-	public:: SYMBOL_TYPE !function which tells you whether the given symbol is a space/tab (0), number (1), letter (2), or other (-1)
-	public:: TPAUSE      !pause for a given number of seconds
-	public:: VALCHAR     !converts a real number to the string of characters
-	public:: WAIT_DELAY  !pause for a given time
-	public:: WAIT_PRESS  !subroutine makes pause until user presses a key
-	public:: WR_MAT_IN   !writes a matrix of integers to the screen
-	public:: WR_MAT_IN8  !writes a matrix of integer8's to the screen
-	public:: WR_MAT_SP   !writes a matrix of single precision elements to the screen
-	public:: WR_MAT_DP   !writes a matrix of double precision elements to the screen
-	public:: WR_MAT_DC   !writes a matrix of double complex elements to the screen
-	public:: WR_VEC_SP   !writes a vector of single precision elements to the screen
-	public:: WR_VEC_DP   !writes a vector of double precision elements to the screen
+	public:: array2string!converts a character*1 array into a string
+	public:: cap_ascii   !makes all English letters capital
+	public:: charnum     !converts a number given as a string to real*8 and integer numbers
+	public:: create_line !creates a table line in .txt format with ; separator
+	public:: dumb_work   !performs a dumb work on one or two arrays producing a third one
+	public:: icharnum    !converts a number given as a string to the integer number
+	public:: ifcl        !calculates factorial
+	public:: is_it_number!checks if the character is an ASCII number
+	public:: is_it_letter!checks if the character is an ASCII letter
+	public:: alphanumeric!checks if the character is alphanumeric
+	public:: alphanumeric_string !checks if the string is alphanumeric_
+	public:: itrsign     !determines a sign of a given transposition
+	public:: longnumchar !converts a long integer number to the character representation
+	public:: markchf     !counts how many non-blank fields a string contains
+	public:: matmat      !multiplies matrix on matrix
+	public:: matmatt     !multiplies matrix on transposed matrix
+	public:: mattmat     !multiplies transposed matrix on matrix
+	public:: mattmatt    !multiplies transposed matrix on transposed matrix
+	public:: name_hash   !returns a hash-mask for a given string
+	public:: nocomment   !removes comments from a line (!,#)
+	public:: normv       !normalizes a vector
+	public:: nospace     !removes blanks from a string
+	public:: not_a_number!checks whether a given string solely contains a decimal number
+	public:: numchar     !converts an integer number to character representation
+	public:: printl      !prints a line of characters
+	public:: rand_str    !returns a random string
+	public:: rots        !rotates an array of points in a 3d-space
+	public:: size_of     !scalar data type size in bytes (Fortran 2008)
+	public:: small_ascii !makes all English letters small
+	public:: str_cmp     !compares two strings
+	public:: string2array!converts a string into a character*1 array
+	public:: strsearch   !searches a given fragment in a string.
+	public:: symbol_type !function which tells you whether the given symbol is a space/tab (0), number (1), letter (2), or other (-1)
+	public:: tpause      !pause for a given number of seconds
+	public:: valchar     !converts a real number to the string of characters
+	public:: wait_delay  !pause for a given time
+	public:: wait_press  !subroutine makes pause until user presses a key
+	public:: wr_mat_in   !writes a matrix of integers to the screen
+	public:: wr_mat_in8  !writes a matrix of integer8's to the screen
+	public:: wr_mat_sp   !writes a matrix of single precision elements to the screen
+	public:: wr_mat_dp   !writes a matrix of double precision elements to the screen
+	public:: wr_mat_dc   !writes a matrix of double complex elements to the screen
+	public:: wr_vec_sp   !writes a vector of single precision elements to the screen
+	public:: wr_vec_dp   !writes a vector of double precision elements to the screen
 
 	contains
 !------------------------------------------------
@@ -838,6 +839,35 @@
 	enddo
 	return
 	end subroutine small_ascii
+!------------------------------------------
+        integer function str_cmp(str1,str2)
+!Compares two strings:
+! -1: str1 < str2;
+! +1: str1 > str2;
+!  0: str1=str2
+         implicit none
+         character(*), intent(in):: str1
+         character(*), intent(in):: str2
+         integer:: l1,l2,i,a1,a2
+
+         l1=len(str1); l2=len(str2)
+         if(l1.lt.l2) then
+          str_cmp=-1
+         elseif(l1.gt.l2) then
+          str_cmp=+1
+         else
+          str_cmp=0
+          do i=1,l1
+           a1=iachar(str1(i:i)); a2=iachar(str2(i:i))
+           if(a1.lt.a2) then
+            str_cmp=-1; exit
+           elseif(a1.gt.a2) then
+            str_cmp=+1; exit
+           endif
+          enddo
+         endif
+         return
+        end function str_cmp
 !------------------------------------------------
 	subroutine string2array(str,ar1,arl,ierr)
 !Converts a character string into a CHARACTER(1) array.

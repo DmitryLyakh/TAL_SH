@@ -167,7 +167,7 @@ void test_nvtal_c(int * ierr)
 void test_talsh_c(int * ierr)
 {
  int errc;
- size_t small_buffer_size=1048576; //bytes (1MB)
+ size_t small_buffer_size=TALSH_NO_HOST_BUFFER;
  int gpu_list[MAX_GPUS_PER_NODE];
 
  *ierr=0;
@@ -233,7 +233,7 @@ void test_talsh_c(int * ierr)
  int dev_num = 0; //CPU Host is always a single device (but multicore)
 #endif
  //Schedule:
- errc=talshTensorContract("D(a,b,i,j)+=L(a,b,c,d)*R(c,i,d,j)",&tens0,&tens1,&tens2,1.0,0.0,dev_num,dev_kind,COPY_TTT,&task0);
+ errc=talshTensorContract("D(a,b,i,j)+=L(a,b,c,d)*R(c,i,d,j)",&tens0,&tens1,&tens2,0.5,0.0,dev_num,dev_kind,COPY_MTT,&task0);
  printf(" Tensor contraction has been scheduled for execution: Status %d\n",errc); if(errc){*ierr=6; return;};
  //Test for completion:
  int sts,done=NOPE;
@@ -250,15 +250,14 @@ void test_talsh_c(int * ierr)
  printf(" Tensor contraction total time = %f: GFlop/s = %f\n",total_time,gflops/total_time);
  //Destruct the task handle:
  errc=talshTaskDestruct(&task0); if(errc){*ierr=9; return;};
-/** IGNORE THIS FOR NOW:
- //If executed on GPU, COPY_MTT parameter means that the destination tensor image
- //was moved to GPU device (letter M means MOVE). So, let's move it back on Host:
 #ifndef NO_GPU
- errc=talshTensorPlace(&tens0,0,DEV_HOST,COPY_M); //this will move the resulting tensor block back to Host (letter M means MOVE)
+ //If executed on GPU, COPY_MTT parameter in the tensor contraction call above means that the
+ //destination tensor image was moved to GPU device (letter M means MOVE).
+ //So, let's move it back to Host (to a user-specified memory location):
+ errc=talshTensorPlace(&tens0,0,DEV_HOST,(void*)tblock0,COPY_M); //this will move the resulting tensor block back to Host (letter M means MOVE)
  if(errc){*ierr=10; return;};
- printf(" Tensor result was moved back to Host");
+ printf(" Tensor result was moved back to Host: Norm1 = %E\n",talshTensorImageNorm1_cpu(&tens0));
 #endif
-**/
 
 //Unregister tensor blocks with TAL-SH:
  errc=talshTensorDestruct(&tens2); if(errc){*ierr=11; return;};

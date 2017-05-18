@@ -1,5 +1,5 @@
 !BASIC FORTRAN PARAMETERS (Fortran-2003)
-!REVISION: 2017/03/20
+!REVISION: 2017/04/13
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -91,7 +91,7 @@
         integer(INTD), parameter, public:: CMP_GT=+1            !greater than
         integer(INTD), parameter, public:: CMP_IN=-2            !contained (in) -> less
         integer(INTD), parameter, public:: CMP_CN=+2            !contains -> greater
-        integer(INTD), parameter, public:: CMP_OV=-5            !overlaps
+        integer(INTD), parameter, public:: CMP_OV=-5            !overlap (whatever it means)
         integer(INTD), parameter, public:: CMP_NC=-6            !not comparable
         integer(INTD), parameter, public:: CMP_ER=GENERIC_ERROR !error
 #ifndef NO_PHI
@@ -119,4 +119,13 @@
 !DIR$ ATTRIBUTES OFFLOAD:mic:: EPS4,EPS8,ZERO_THRESH
 !DIR$ ATTRIBUTES ALIGN:128:: EPS4,EPS8,ZERO_THRESH
 #endif
+       contains
+!-------------------------
+        subroutine crash()
+         integer:: ax,dx
+         write(*,'("Initiating crash ...")')
+         ax=1; dx=ax/0; write(*,*) dx
+         return
+        end subroutine crash
+
        end module dil_basic
