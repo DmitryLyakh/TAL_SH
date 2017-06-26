@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Memory management API header.
-REVISION: 2017/05/17
+REVISION: 2017/06/13
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -79,6 +79,8 @@ extern "C"{
  int host_mem_free_pin(void *host_ptr); //generic
  int host_mem_register(void *host_ptr, size_t tsize); //generic
  int host_mem_unregister(void *host_ptr); //generic
+ int mem_allocate(int dev_id, size_t bytes, int in_buffer, void ** mem_ptr); //generic
+ int mem_free(int dev_id, void ** mem_ptr); // generic
  int mi_entry_get(int ** mi_entry_p); //generic
  int mi_entry_release(int * mi_entry_p); //generic
  int mi_entry_pinned(int * mi_entry_p); //generic

@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2017/05/17
+REVISION: 2017/06/13
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -1067,6 +1067,88 @@ int host_mem_unregister(void *host_ptr){
 #else
  return 0; //`Cannot register the Host memory without CUDA
 #endif
+}
+
+int mem_allocate(int dev_id, size_t bytes, int in_buffer, void ** mem_ptr)
+/** Allocates a memory segment on any device,
+either from the TAL-SH buffer or via a system call. **/
+{
+ int dev_num,dev_kind,buf_entry,errc;
+ char * char_ptr;
+
+ *mem_ptr=NULL; if(bytes == 0) return 0;
+ dev_num=decode_device_id(dev_id,&dev_kind); if(dev_num < 0) return -1; //invalid device id
+ switch(dev_kind){
+  case DEV_HOST:
+   if(in_buffer == NOPE){
+    errc=host_mem_alloc(mem_ptr,bytes); if(errc != 0) return -2;
+   }else{
+    errc=get_buf_entry_host(bytes,&char_ptr,&buf_entry);
+    if(errc == 0){*mem_ptr=(void*)(char_ptr);}else{return -3;}
+   }
+   break;
+#ifndef NO_GPU
+  case DEV_NVIDIA_GPU:
+   if(in_buffer == NOPE){
+    errc=gpu_mem_alloc(mem_ptr,bytes,dev_num); if(errc != 0) return -4;
+   }else{
+    errc=get_buf_entry_gpu(dev_num,bytes,&char_ptr,&buf_entry);
+    if(errc == 0){*mem_ptr=(void*)(char_ptr);}else{return -5;}
+   }
+   break;
+#endif
+#ifndef NO_PHI
+  case DEV_INTEL_MIC:
+   return -6; //`Not implemented
+#endif
+#ifndef NO_AMD
+  case DEV_AMD_GPU:
+   return -7; //`Not implemented
+#endif
+  default:
+   return -8; //invalid device kind
+ }
+ return 0;
+}
+
+int mem_free(int dev_id, void ** mem_ptr)
+/** Deallocates memory on any device. **/
+{
+ int dev_num,dev_kind,buf_entry,errc;
+
+ if(mem_ptr == NULL) return -1;
+ buf_entry=get_buf_entry_from_address(dev_id,*mem_ptr); if(buf_entry < -1) return -2;
+ dev_num=decode_device_id(dev_id,&dev_kind); if(dev_num < 0) return -3; //invalid device id
+ switch(dev_kind){
+  case DEV_HOST:
+   if(buf_entry >= 0){ //in buffer
+    errc=free_buf_entry_host(buf_entry); if(errc != 0) return -4;
+   }else if(buf_entry == -1){ //in system
+    errc=host_mem_free(*mem_ptr); if(errc != 0) return -5;
+   }
+   break;
+#ifndef NO_GPU
+  case DEV_NVIDIA_GPU:
+   if(buf_entry >= 0){ //in buffer
+    errc=free_buf_entry_gpu(dev_num,buf_entry); if(errc != 0) return -6;
+   }else if(buf_entry == -1){ //in system
+    errc=gpu_mem_free(*mem_ptr,dev_num); if(errc != 0) return -7;
+   }
+   break;
+#endif
+#ifndef NO_PHI
+  case DEV_INTEL_MIC:
+   return -8; //`Not implemented
+#endif
+#ifndef NO_AMD
+  case DEV_AMD_GPU:
+   return -9; //`Not implemented
+#endif
+  default:
+   return -10; //invalid device kind
+ }
+ *mem_ptr=NULL;
+ return 0;
 }
 
 static int mi_entry_init()

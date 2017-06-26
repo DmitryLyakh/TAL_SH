@@ -210,14 +210,17 @@ void test_talsh_c(int * ierr)
  talsh_tens_t tens0; //declare a TAL-SH tensor block
  errc=talshTensorClean(&tens0); if(errc){*ierr=3; return;}; //clean TAL-SH tensor block object (default ctor)
  errc=talshTensorConstruct(&tens0,R8,trank0,dims0,talshFlatDevId(DEV_HOST,0),(void*)tblock0); //register tensor block
+ if(errc){*ierr=4; return;};
  //Tensor block 1:
  talsh_tens_t tens1; //declare a TAL-SH tensor block
- errc=talshTensorClean(&tens1); if(errc){*ierr=4; return;}; //clean TAL-SH tensor block object (default ctor)
+ errc=talshTensorClean(&tens1); if(errc){*ierr=5; return;}; //clean TAL-SH tensor block object (default ctor)
  errc=talshTensorConstruct(&tens1,R8,trank1,dims1,talshFlatDevId(DEV_HOST,0),(void*)tblock1); //register tensor block
+ if(errc){*ierr=6; return;};
  //Tensor block 2:
  talsh_tens_t tens2; //declare a TAL-SH tensor block
- errc=talshTensorClean(&tens2); if(errc){*ierr=5; return;}; //clean TAL-SH tensor block object (default ctor)
+ errc=talshTensorClean(&tens2); if(errc){*ierr=7; return;}; //clean TAL-SH tensor block object (default ctor)
  errc=talshTensorConstruct(&tens2,R8,trank2,dims2,talshFlatDevId(DEV_HOST,0),(void*)tblock2); //register tensor block
+ if(errc){*ierr=8; return;};
  printf(" Three external tensor blocks have been registered with TAL-SH\n");
 
 //Declare a TAL-SH task handle:
@@ -234,7 +237,7 @@ void test_talsh_c(int * ierr)
 #endif
  //Schedule:
  errc=talshTensorContract("D(a,b,i,j)+=L(a,b,c,d)*R(c,i,d,j)",&tens0,&tens1,&tens2,0.5,0.0,dev_num,dev_kind,COPY_MTT,&task0);
- printf(" Tensor contraction has been scheduled for execution: Status %d\n",errc); if(errc){*ierr=6; return;};
+ printf(" Tensor contraction has been scheduled for execution: Status %d\n",errc); if(errc){*ierr=9; return;};
  //Test for completion:
  int sts,done=NOPE;
  while(done != YEP && errc == TALSH_SUCCESS){done=talshTaskComplete(&task0,&sts,&errc);}
@@ -242,27 +245,27 @@ void test_talsh_c(int * ierr)
   printf(" Tensor contraction has completed successfully: Status %d\n",sts);
  }else{
   printf(" Tensor contraction has failed: Status %d: Error %d\n",sts,errc);
-  *ierr=7; return;
+  *ierr=10; return;
  }
  //Timing:
  double total_time;
- errc=talshTaskTime(&task0,&total_time); if(errc){*ierr=8; return;};
+ errc=talshTaskTime(&task0,&total_time); if(errc){*ierr=11; return;};
  printf(" Tensor contraction total time = %f: GFlop/s = %f\n",total_time,gflops/total_time);
  //Destruct the task handle:
- errc=talshTaskDestruct(&task0); if(errc){*ierr=9; return;};
+ errc=talshTaskDestruct(&task0); if(errc){*ierr=12; return;};
 #ifndef NO_GPU
  //If executed on GPU, COPY_MTT parameter in the tensor contraction call above means that the
  //destination tensor image was moved to GPU device (letter M means MOVE).
  //So, let's move it back to Host (to a user-specified memory location):
  errc=talshTensorPlace(&tens0,0,DEV_HOST,(void*)tblock0,COPY_M); //this will move the resulting tensor block back to Host (letter M means MOVE)
- if(errc){*ierr=10; return;};
+ if(errc){*ierr=13; return;};
  printf(" Tensor result was moved back to Host: Norm1 = %E\n",talshTensorImageNorm1_cpu(&tens0));
 #endif
 
 //Unregister tensor blocks with TAL-SH:
- errc=talshTensorDestruct(&tens2); if(errc){*ierr=11; return;};
- errc=talshTensorDestruct(&tens1); if(errc){*ierr=12; return;};
- errc=talshTensorDestruct(&tens0); if(errc){*ierr=13; return;};
+ errc=talshTensorDestruct(&tens2); if(errc){*ierr=14; return;};
+ errc=talshTensorDestruct(&tens1); if(errc){*ierr=15; return;};
+ errc=talshTensorDestruct(&tens0); if(errc){*ierr=16; return;};
  printf(" Three external tensor blocks have been unregistered with TAL-SH\n");
 
 //Free external memory (local tensor blocks):
@@ -271,7 +274,7 @@ void test_talsh_c(int * ierr)
  free(tblock0); tblock0=NULL;
 //Shutdown TAL-SH:
  errc=talshShutdown();
- printf(" TAL-SH has been shut down: Status %d\n",errc); if(errc){*ierr=14; return;};
+ printf(" TAL-SH has been shut down: Status %d\n",errc); if(errc){*ierr=17; return;};
 
  return;
 }

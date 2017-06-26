@@ -264,7 +264,7 @@ FFLAGS = $(FFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(DF)$(NO_GPU) $(DF)$(NO_AMD) $(DF)$
 
 #THREADS:
 LTHREAD_GNU   = -lgomp
-LTHREAD_PGI   = -lpthread
+LTHREAD_PGI   = -mp -lpthread
 LTHREAD_INTEL = -liomp5
 LTHREAD_CRAY  = -L.
 LTHREAD_IBM   = -lxlsmp
