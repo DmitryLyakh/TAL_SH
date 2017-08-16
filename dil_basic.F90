@@ -1,5 +1,5 @@
 !BASIC FORTRAN PARAMETERS (Fortran-2003)
-!REVISION: 2017/04/13
+!REVISION: 2017/08/05
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -119,13 +119,4 @@
 !DIR$ ATTRIBUTES OFFLOAD:mic:: EPS4,EPS8,ZERO_THRESH
 !DIR$ ATTRIBUTES ALIGN:128:: EPS4,EPS8,ZERO_THRESH
 #endif
-       contains
-!-------------------------
-        subroutine crash()
-         integer:: ax,dx
-         write(*,'("Initiating crash ...")')
-         ax=1; dx=ax/0; write(*,*) dx
-         return
-        end subroutine crash
-
        end module dil_basic

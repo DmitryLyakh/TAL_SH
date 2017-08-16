@@ -1,6 +1,6 @@
 !Standard procedures often used by me.
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISON: 2017/04/12
+!REVISON: 2017/08/11
 
 !Copyright (C) 2005-2017 Dmitry I. Lyakh (Liakh)
 
@@ -20,24 +20,29 @@
 !along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 
 	module stsubs
-        implicit none
-        private
+	use, intrinsic:: ISO_C_BINDING
+	implicit none
+	private
 !Parameters:
-        logical, private:: VERBOSE=.false.                 !verbosity for errors
+	logical, private:: VERBOSE=.false.                 !verbosity for errors
 	real(8), parameter, public:: PI=3.14159265358979d0 !PI constant
 	real(8), parameter, public:: BOHR=0.529177249d0    !Bohrs to Angstroms conversion factor
 !Procedures:
-	public:: array2string!converts a character*1 array into a string
-	public:: cap_ascii   !makes all English letters capital
-	public:: charnum     !converts a number given as a string to real*8 and integer numbers
-	public:: create_line !creates a table line in .txt format with ; separator
-	public:: dumb_work   !performs a dumb work on one or two arrays producing a third one
-	public:: icharnum    !converts a number given as a string to the integer number
-	public:: ifcl        !calculates factorial
-	public:: is_it_number!checks if the character is an ASCII number
-	public:: is_it_letter!checks if the character is an ASCII letter
 	public:: alphanumeric!checks if the character is alphanumeric
 	public:: alphanumeric_string !checks if the string is alphanumeric_
+	public:: array2string!converts a character*1 array into a string
+	public:: byte_chksum !returns the raw byte check sum for a given memory segment
+	public:: cap_ascii   !makes all English letters capital
+	public:: charnum     !converts a number given as a string to real*8 and integer numbers
+	public:: clone_object!clones a Fortran object
+	public:: crash       !causes a crash
+	public:: create_line !creates a table line in .txt format with ; separator
+	public:: dumb_work   !performs a dumb work on one or two arrays producing a third one
+	public:: dump_bytes  !dumps byte values for a given memory segment
+	public:: icharnum    !converts a number given as a string to the integer number
+	public:: ifcl        !calculates factorial
+	public:: is_it_letter!checks if the character is an ASCII letter
+	public:: is_it_number!checks if the character is an ASCII number
 	public:: itrsign     !determines a sign of a given transposition
 	public:: longnumchar !converts a long integer number to the character representation
 	public:: markchf     !counts how many non-blank fields a string contains
@@ -52,6 +57,9 @@
 	public:: not_a_number!checks whether a given string solely contains a decimal number
 	public:: numchar     !converts an integer number to character representation
 	public:: printl      !prints a line of characters
+	public:: rand_bool   !returns a random logical
+	public:: rand_int4   !returns a random integer4 from the given range
+	public:: rand_real8  !returns a random real8
 	public:: rand_str    !returns a random string
 	public:: rots        !rotates an array of points in a 3d-space
 	public:: size_of     !scalar data type size in bytes (Fortran 2008)
@@ -71,8 +79,47 @@
 	public:: wr_mat_dc   !writes a matrix of double complex elements to the screen
 	public:: wr_vec_sp   !writes a vector of single precision elements to the screen
 	public:: wr_vec_dp   !writes a vector of double precision elements to the screen
+!Data:
+ !Debug:
+#ifdef GCC_ALLOC_WORKAROUND
+        class(*), pointer, private:: gl_ptr_=>NULL()
+#endif
 
 	contains
+!----------------------------------------
+	logical function alphanumeric(ch)
+!Returns TRUE if the character is ASCII alphanumeric, FALSE otherwise.
+	 implicit none
+	 character(1), intent(in):: ch
+	 alphanumeric=.FALSE.
+	 if(is_it_letter(ch).gt.0) then
+	  alphanumeric=.TRUE.
+	 else
+	  if(is_it_number(ch).ge.0) alphanumeric=.TRUE.
+	 endif
+	 return
+	end function alphanumeric
+!------------------------------------------------
+	logical function alphanumeric_string(str)
+!Returns TRUE if the string only contains ASCII alphanumeric + underscore,
+!FALSE otherwise. An empty string is not considered alphanumeric_.
+	 implicit none
+	 character(*), intent(in):: str
+	 integer:: i,l
+	 alphanumeric_string=.TRUE.
+	 l=len(str)
+	 if(l.gt.0) then
+	  do i=1,l
+	   if(.not.alphanumeric(str(i:i))) then
+	    alphanumeric_string=.FALSE.
+	    exit
+	   endif
+	  enddo
+	 else
+	  alphanumeric_string=.FALSE.
+	 endif
+	 return
+	end function alphanumeric_string
 !------------------------------------------------
 	subroutine array2string(str,ar1,arl,ierr)
 !Converts a CHARACTER(1) array into a Fortran string.
@@ -89,6 +136,27 @@
 	endif
 	return
 	end subroutine array2string
+!----------------------------------------------------
+        function byte_chksum(cptr,csize) result(csum)
+!Returns the raw byte check sum for a given memory segment.
+         implicit none
+         integer(8):: csum              !out: check sum
+         type(C_PTR), intent(in):: cptr !in: base C pointer
+         integer, intent(in):: csize    !in: size in bytes
+         integer(1), pointer:: iptr(:)
+         integer:: i
+
+         csum=0_8
+         call c_f_pointer(cptr,iptr,shape=(/csize/))
+         do i=1,csize
+          if(iptr(i).ge.0) then
+           csum=csum+int(iptr(i),8)
+          else
+           csum=csum+(256_8+int(iptr(i),8))
+          endif
+         enddo
+         return
+        end function byte_chksum
 !--------------------------------
 	subroutine cap_ascii(str)
 !Capitalizes all small English letters in string <str>
@@ -206,6 +274,42 @@
 	endif
 	return
 	end subroutine charnum
+!-------------------------------------------------------
+        function clone_object(object,ierr) result(clone)
+!Clones a Fortran object: Deep copy for allocatable components,
+!pointer association for pointer components.
+         implicit none
+         class(*), pointer:: clone             !out: clone
+         class(*), intent(in), target:: object !in: object
+         integer, intent(out), optional:: ierr !out: error code
+         character(256):: errmesg
+         integer:: errc
+
+         clone=>NULL()
+#ifdef GCC_ALLOC_WORKAROUND
+         allocate(gl_ptr_,SOURCE=object,STAT=errc,ERRMSG=errmesg)
+         clone=>gl_ptr_; gl_ptr_=>NULL()
+#else
+         allocate(clone,SOURCE=object,STAT=errc,ERRMSG=errmesg)
+#endif
+         if(errc.ne.0) then
+          write(*,*)'#ERROR(stsubs:clone_object): sourced allocate() failed: '//errmesg
+          if(errmesg(1:39).eq.'Attempt to allocate an allocated object') then !debug
+           write(*,*)'If you see status = F below, you are likely experiencing a GCC runtime bug!'
+           write(*,*)'Object (pointer) association status = ',associated(clone)
+          endif
+          clone=>NULL()
+         endif
+         if(present(ierr)) ierr=errc
+         return
+        end function clone_object
+!-------------------------
+        subroutine crash()
+         integer:: ax,dx
+         write(*,'("Initiating a crash ...")')
+         ax=1; dx=ax/0; write(*,*) dx
+         return
+        end subroutine crash
 !------------------------------------------------------------------
 	subroutine create_line(talen,tabln,mantl,ctrls,numar,symar)
 !The subroutine creates a table line in .txt format with some separator.
@@ -301,6 +405,34 @@
         endif
         return
         end subroutine dumb_work
+!--------------------------------------------------
+        subroutine dump_bytes(cptr,csize,file_name)
+!Dumps byte values for a given memory segment.
+         implicit none
+         type(C_PTR), intent(in):: cptr !in: base C pointer
+         integer, intent(in):: csize    !in: size in bytes
+         character(*), intent(in), optional:: file_name !in: output file name (defaults to screen)
+         integer(1), pointer:: iptr(:)
+         integer:: i,devo
+
+         if(present(file_name)) then
+          devo=666
+          open(devo,file=file_name,FORM='FORMATTED',STATUS='UNKNOWN')
+         else
+          devo=6
+         endif
+         write(devo,'()'); write(devo,*) '### Memory dump for address ' !,cptr
+         call c_f_pointer(cptr,iptr,shape=(/csize/))
+         do i=1,csize
+          if(iptr(i).ge.0) then
+           write(devo,'("Offset ",i10,": ",i4)') i-1,int(iptr(i),4)
+          else
+           write(devo,'("Offset ",i10,": ",i4)') i-1,(256+int(iptr(i),4))
+          endif
+         enddo
+         if(devo.ne.6) close(devo)
+         return
+        end subroutine dump_bytes
 !--------------------------------------
 	integer function icharnum(L,OS)
 !Converts an integer number OS(1:L) given as a string into INTEGER.
@@ -349,21 +481,6 @@
 	 return
 	end function ifcl
 !----------------------------------------
-	integer function is_it_number(ch)
-!If character <ch> is a number, returns its value as an integer,
-!otherwise a negative integer is returned.
-	 implicit none
-	 character(1), intent(in):: ch
-	 integer:: i
-	 i=iachar(ch)
-	 if(i.ge.iachar('0').and.i.le.iachar('9')) then
-	  is_it_number=i-iachar('0')
-	 else
-	  is_it_number=-1
-	 endif
-	 return
-	end function is_it_number
-!----------------------------------------
 	integer function is_it_letter(ch)
 !If character <ch> is a letter, returns 1 for lower-case, 2 for upper-case,
 !otherwise returns 0.
@@ -381,39 +498,20 @@
 	 return
 	end function is_it_letter
 !----------------------------------------
-	logical function alphanumeric(ch)
-!Returns TRUE if the character is ASCII alphanumeric, FALSE otherwise.
+	integer function is_it_number(ch)
+!If character <ch> is a number, returns its value as an integer,
+!otherwise a negative integer is returned.
 	 implicit none
 	 character(1), intent(in):: ch
-	 alphanumeric=.FALSE.
-	 if(is_it_letter(ch).gt.0) then
-	  alphanumeric=.TRUE.
+	 integer:: i
+	 i=iachar(ch)
+	 if(i.ge.iachar('0').and.i.le.iachar('9')) then
+	  is_it_number=i-iachar('0')
 	 else
-	  if(is_it_number(ch).ge.0) alphanumeric=.TRUE.
+	  is_it_number=-1
 	 endif
 	 return
-	end function alphanumeric
-!------------------------------------------------
-	logical function alphanumeric_string(str)
-!Returns TRUE if the string only contains ASCII alphanumeric + underscore,
-!FALSE otherwise. An empty string is not considered alphanumeric_.
-	 implicit none
-	 character(*), intent(in):: str
-	 integer:: i,l
-	 alphanumeric_string=.TRUE.
-	 l=len(str)
-	 if(l.gt.0) then
-	  do i=1,l
-	   if(.not.alphanumeric(str(i:i))) then
-	    alphanumeric_string=.FALSE.
-	    exit
-	   endif
-	  enddo
-	 else
-	  alphanumeric_string=.FALSE.
-	 endif
-	 return
-	end function alphanumeric_string
+	end function is_it_number
 !--------------------------------
 	subroutine itrsign(N,ITR)
 !Reorders a given permutation into an ascending order and returns the permutation sign in ITR(0).
@@ -739,6 +837,41 @@
 	endif
 	return
 	end subroutine printl
+!----------------------------------------
+        function rand_bool() result(bool)
+!Returns a random logical.
+         implicit none
+         logical:: bool !out: random logical
+         real(8):: rn
+
+         bool=.FALSE.
+         call random_number(rn)
+         if(rn.ge.5d-1) bool=.TRUE.
+         return
+        end function rand_bool
+!---------------------------------------------------
+        function rand_int4(lower,upper) result(int4)
+!Returns a random integer4 from the given range.
+         implicit none
+         integer(4):: int4              !out: random number
+         integer(4), intent(in):: lower !in: lower bound
+         integer(4), intent(in):: upper !in: upper bound
+
+         int4=nint(rand_real8(real(lower,8),real(upper,8)),4)
+         return
+        end function rand_int4
+!-----------------------------------------------------
+        function rand_real8(lower,upper) result(real8)
+!Returns a random real8 from the given range.
+         implicit none
+         real(8):: real8             !out: random number
+         real(8), intent(in):: lower !in: lower bound
+         real(8), intent(in):: upper !in: upper bound
+
+         call random_number(real8)
+         real8=lower+real8*(upper-lower)
+         return
+        end function rand_real8
 !----------------------------------
 	subroutine rand_str(sl,str)
 !Generates a random string.
@@ -813,7 +946,8 @@
         integer function size_of(uarg) !Fortran 2008
 !Returns size in bytes for an arbitrary scalar type (-1 means an error).
         implicit none
-        class(*), intent(in):: uarg !in: scalar argument of any type/class
+        class(*), intent(in), target:: uarg !in: scalar argument of any type/class
+
         size_of=storage_size(uarg) !in bits
         if(mod(size_of,8).eq.0) then
          size_of=size_of/8 !in bytes
