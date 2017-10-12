@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2017/05/18
+REVISION: 2017/10/12
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -1567,12 +1567,12 @@ int tensBlck_init_host(tensBlck_t * ctens, double init_val)
   case R4:
    fval = (float)init_val;
    fp = (float*)(ctens->src_rsc->gmem_p);
-#pragma omp parallel for schedule(guided)
+#pragma omp parallel for shared(vol,fp,fval) private(l) schedule(guided)
    for(size_t l=0; l < vol; l++) fp[l]=fval;
    break;
   case R8:
    dp = (double*)(ctens->src_rsc->gmem_p);
-#pragma omp parallel for schedule(guided)
+#pragma omp parallel for shared(vol,dp,init_val) private(l) schedule(guided)
    for(size_t l=0; l < vol; l++) dp[l]=init_val;
    break;
   default:
@@ -1599,12 +1599,12 @@ double tensBlck_norm2_host(const tensBlck_t * ctens)
  switch(ctens->data_kind){
   case R4:
    fp = (float*)(ctens->src_rsc->gmem_p);
-#pragma omp parallel for schedule(guided) reduction(+:nrm2)
+#pragma omp parallel for shared(vol,fp) private(l) schedule(guided) reduction(+:nrm2)
    for(size_t l=0; l < vol; l++) nrm2+=(double)(fp[l]*fp[l]);
    break;
   case R8:
    dp = (double*)(ctens->src_rsc->gmem_p);
-#pragma omp parallel for schedule(guided) reduction(+:nrm2)
+#pragma omp parallel for shared(vol,dp) private(l) schedule(guided) reduction(+:nrm2)
    for(size_t l=0; l < vol; l++) nrm2+=dp[l]*dp[l];
    break;
   default:

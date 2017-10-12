@@ -1,6 +1,6 @@
 *** TAL-SH: Tensor Algebra Library for Shared Memory Computers ***
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2017/05/18
+REVISION: 2017/09/25
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -379,17 +379,16 @@ API: Construct a tensor block:
 
    Fortran 2003:
     abstract interface
-     subroutine talsh_tens_init_i(tens_ptr,data_kind,tens_rank,tens_dims,ierr) bind(c)
-      type(C_PTR), value:: tens_ptr                !in: pointer to the tensor elements storage
-      integer(C_INT), value:: data_kind            !in: data kind: {R4,R8,C4,C8}
-      integer(C_INT), value:: tens_rank            !in: tensor block rank
-      integer(C_INT), intent(in):: tens_dims(1:*)  !in: tensor block dimension extents
-      integer(C_INT), intent(out):: ierr           !out: error code (0:success)
-     end subroutine talsh_tens_init_i
+     integer(C_INT) function talsh_tens_init_i(tens_body_p,data_kind,tens_shape,tens_signature) bind(c) !out: returns an error code
+      type(C_PTR), value:: tens_body_p                     !in: pointer to the tensor elements storage (tensor body)
+      integer(C_INT), value:: data_kind                    !in: data kind: {R4,R8,C4,C8}
+      type(talsh_tens_shape_t), intent(in):: tens_shape    !in: tensor shape
+      integer(C_LONG_LONG), intent(in):: tens_signature(*) !in: tensor signature
+     end function talsh_tens_init_i
     end interface
 
    C/C++:
-    typedef void (*talsh_tens_init_i)(void * tens_ptr, int data_kind, int tens_rank, int tens_dims[], int * ierr);
+    typedef int (*talsh_tens_init_i)(void * tens_body_p, const int data_kind, const talsh_tens_shape_t * tens_shape, const long long * tens_signature);
 
    The user-defined initialization method takes precedence over the initialization value.
    The intialization value, if provided, will only be used if the initialization method
@@ -410,7 +409,7 @@ API: Construct a tensor block:
 
    NOTE:`So far the initialization only works for the CPU Host (DEV_HOST).
          On other device kinds, the tensor block is left undefined and
-         a separate initialization operation will be reqired to define it.
+         a separate initialization operation will be required to define it.
 
 API: Destruct a tensor block (release all resources and set it to empty):
 

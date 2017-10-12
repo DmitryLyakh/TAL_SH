@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h"!
-!REVISION: 2017/06/13
+!REVISION: 2017/10/12
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -186,20 +186,42 @@
          type(C_PTR):: divs=C_NULL_PTR !tensor dimension dividers
          type(C_PTR):: grps=C_NULL_PTR !tensor dimension groups
         end type talsh_tens_shape_t
+ !TAL-SH tensor signature:
+        type, public, bind(C):: talsh_tens_signature_t
+         integer(C_INT):: num_dim=-1        !tensor rank (number of dimensions): >=0; -1:empty
+         type(C_PTR):: signature=C_NULL_PTR !tensor signature (long integer per tensor dimension)
+        end type talsh_tens_signature_t
 
 !EXTERNAL INTERFACES (keep consistent with tensor_algebra.h):
- !User-defined tensor block initialization:
+ !User-defined tensor block initialization class (state present):
+        type, abstract, public:: talsh_tens_definer_t
+         contains
+          procedure(talsh_tens_def_i), deferred, public:: define_body
+        end type talsh_tens_definer_t
+ !User-defined tensor block initialization function (stateless):
         abstract interface
-         subroutine talsh_tens_init_i(tens_body_p,data_kind,tens_rank,tens_dims,ierr) bind(c)
-          import
-          type(C_PTR), value:: tens_body_p             !in: pointer to the tensor elements storage
-          integer(C_INT), value:: data_kind            !in: data kind: {R4,R8,C4,C8}
-          integer(C_INT), value:: tens_rank            !in: tensor block rank
-          integer(C_INT), intent(in):: tens_dims(1:*)  !in: tensor block dimension extents
-          integer(C_INT), intent(out):: ierr           !out: error code (0:success)
-         end subroutine talsh_tens_init_i
+
+         integer(C_INT) function talsh_tens_init_i(tens_body_p,data_kind,tens_shape,tens_signature) bind(c)
+          import:: C_PTR,C_INT,C_LONG_LONG,talsh_tens_shape_t,talsh_tens_signature_t
+          type(C_PTR), value:: tens_body_p                          !in: pointer to the tensor elements storage (tensor body)
+          integer(C_INT), value:: data_kind                         !in: data kind: {R4,R8,C4,C8}
+          type(talsh_tens_shape_t), intent(in):: tens_shape         !in: tensor shape
+          type(talsh_tens_signature_t), intent(in):: tens_signature !in: tensor signature
+         end function talsh_tens_init_i
+
+         integer(C_INT) function talsh_tens_def_i(this,tens_body_p,data_kind,tens_shape,tens_signature)
+          import:: C_PTR,C_INT,C_LONG_LONG,talsh_tens_shape_t,talsh_tens_signature_t,talsh_tens_definer_t
+          class(talsh_tens_definer_t), intent(in):: this            !in: tensor body definer object
+          type(C_PTR), value:: tens_body_p                          !in: pointer to the tensor elements storage (tensor body)
+          integer(C_INT), value:: data_kind                         !in: data kind: {R4,R8,C4,C8}
+          type(talsh_tens_shape_t), intent(in):: tens_shape         !in: tensor shape
+          type(talsh_tens_signature_t), intent(in):: tens_signature !in: tensor signature
+         end function talsh_tens_def_i
+
         end interface
+
         public talsh_tens_init_i
+        public talsh_tens_def_i
 
 !C FUNCTION INTERFACES (for Fortran):
         interface

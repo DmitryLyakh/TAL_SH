@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2017/05/17
+REVISION: 2017/10/12
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -299,6 +299,12 @@ typedef struct{
  int * grps;    //tensor dimension groups (either in regular RAM or pinned)
 } talsh_tens_shape_t;
 
+// Tensor signature:
+typedef struct{
+ int num_dim;               //tensor rank (number of dimensions): >=0; -1:empty
+ long long int * signature; //tensor signature: An array of long integers of size <num_dim>
+} talsh_tens_signature_t;
+
 // Device resource (occupied by a tensor block):
 typedef struct{
  int dev_id;        //flat device id (>=0) the following resources belong to (-1:None)
@@ -343,8 +349,9 @@ typedef struct{
 } cudaTask_t;
 //Note: Adding new CUDA events will require adjustment of NUM_EVENTS_PER_TASK.
 
-// Interface for a user-defined tensor block initialization routine:
-typedef void (*talsh_tens_init_i)(void * tens_body_p, int data_kind, int tens_rank, const int tens_dims[], int * ierr);
+// Interface for a user-defined tensor block initialization function:
+typedef int (*talsh_tens_init_i)(void * tens_body_p, const int data_kind,
+                                 const talsh_tens_shape_t * tens_shape, const talsh_tens_signature_t * tens_signature);
 
 // Device statistics:
 typedef struct{
@@ -366,6 +373,7 @@ extern "C"{
 //Generic:
  int tens_valid_data_kind(int datk, int * datk_size = NULL);
  int tens_valid_data_kind_(int datk, int * datk_size);
+ void get_contr_pattern_sym(const int * rank_left, const int * rank_right, const int * cptrn_dig, char * cptrn_sym, int * cpl, int * ierr);
  size_t tens_elem_offset_f(unsigned int num_dim, const unsigned int * dims, const unsigned int * mlndx);
  void tens_elem_mlndx_f(size_t offset, unsigned int num_dim, const unsigned int * dims, unsigned int * mlndx);
  unsigned int argument_coherence_get_value(unsigned int coh_ctrl, unsigned int tot_args, unsigned int arg_num);

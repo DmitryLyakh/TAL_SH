@@ -7,10 +7,10 @@ export WRAP ?= NOWRAP
 export TOOLKIT ?= GNU
 #Optimization: [DEV|OPT]:
 export BUILD_TYPE ?= OPT
-#MPI Library: [MPICH|OPENMPI|NONE]:
+#MPI Library: [NONE|MPICH|OPENMPI]:
 export MPILIB ?= NONE
 #BLAS: [ATLAS|MKL|ACML|ESSL|NONE]:
-export BLASLIB ?= NONE
+export BLASLIB ?= ATLAS
 #Nvidia GPU via CUDA: [CUDA|NOCUDA]:
 export GPU_CUDA ?= NOCUDA
 #Nvidia GPU architecture (two digits):
@@ -18,7 +18,7 @@ export GPU_SM_ARCH ?= 35
 #Operating system: [LINUX|NO_LINUX]:
 export EXA_OS ?= LINUX
 
-#EXTRAS:
+#ADJUST EXTRAS (optional):
 #Fast GPU tensor transpose (cuTT library): [YES|NO]:
 export WITH_CUTT ?= NO
 
@@ -26,23 +26,41 @@ export WITH_CUTT ?= NO
 #Fool CUDA 7.0 with GCC > 4.9: [YES|NO]:
 export FOOL_CUDA ?= NO
 
-#GPU FINE TIMING (for benchmarking only):
-export GPU_FINE_TIMING ?= NO
-
 #SET YOUR LOCAL PATHS (for unwrapped builds):
-# MPI path (whichever you have chosen above):
-export PATH_MPICH ?= /usr/local/mpi/mpich-3.2
-export PATH_OPENMPI ?= /usr/local/mpi/openmpi-1.10.4
-# BLAS lib path (whichever you have chosen above):
+
+#MPI library (whichever you have, set one):
+# Set this if you have MPICH or its derivative:
+export PATH_MPICH ?= /usr/local/mpi/mpich/3.2
+#  Only reset these if MPI files are spread in the system directories:
+ export PATH_MPICH_INC ?= $(PATH_MPICH)/include
+ export PATH_MPICH_LIB ?= $(PATH_MPICH)/lib
+ export PATH_MPICH_BIN ?= $(PATH_MPICH)/bin
+# Set this if you have OPENMPI or its derivative:
+export PATH_OPENMPI ?= /usr/local/mpi/openmpi/2.0.1
+#  Only reset these if MPI files are spread in the system directories:
+ export PATH_OPENMPI_INC ?= $(PATH_OPENMPI)/include
+ export PATH_OPENMPI_LIB ?= $(PATH_OPENMPI)/lib
+ export PATH_OPENMPI_BIN ?= $(PATH_OPENMPI)/bin
+
+#BLAS library (whichever you have, set one):
+# Set this if you do not have a vendor provided BLAS:
 export PATH_BLAS_ATLAS ?= /usr/lib
+# Set this if you have vendor provided BLAS (choose):
+#  MKL BLAS:
 export PATH_BLAS_MKL ?= /opt/intel/mkl/lib/intel64
 export PATH_BLAS_MKL_DEP ?= /opt/intel/compilers_and_libraries/linux/lib/intel64_lin
+#  ACML BLAS:
 export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
+#  ESSL BLAS:
 export PATH_BLAS_ESSL ?= /sw/summitdev/essl/5.5.0/lib64
-export PATH_BLAS_ESSL_DEP ?= /sw/summitdev/xl/161005/lib
-# CUDA lib and include paths (if you build with CUDA):
-export PATH_CUDA_LIB ?= /usr/local/cuda/lib64
-export PATH_CUDA_INC ?= /usr/local/cuda/include
+export PATH_BLAS_ESSL_DEP ?= /sw/summitdev/xl/20161123/xlf/15.1.5/lib
+
+# CUDA (only if you build with CUDA):
+export PATH_CUDA ?= /usr/local/cuda
+#  Only reset these if CUDA files are spread in the system directories:
+ export PATH_CUDA_INC ?= $(PATH_CUDA)/include
+ export PATH_CUDA_LIB ?= $(PATH_CUDA)/lib64
+ export PATH_CUDA_BIN ?= $(PATH_CUDA)/bin
 # cuTT path (if you use cuTT library):
 export PATH_CUTT ?= /home/div/src/cutt
 
@@ -56,8 +74,8 @@ FC_PGI = pgf90
 FC_INTEL = ifort
 FC_CRAY = ftn
 FC_IBM = xlf2008_r
-FC_MPICH = $(PATH_MPICH)/bin/mpif90
-FC_OPENMPI = $(PATH_OPENMPI)/bin/mpifort
+FC_MPICH = $(PATH_MPICH_BIN)/mpif90
+FC_OPENMPI = $(PATH_OPENMPI_BIN)/mpifort
 ifeq ($(MPILIB),NONE)
 FC_NOWRAP = $(FC_$(TOOLKIT))
 else
@@ -71,8 +89,8 @@ CC_PGI = pgcc
 CC_INTEL = icc
 CC_CRAY = cc
 CC_IBM = xlc_r
-CC_MPICH = $(PATH_MPICH)/bin/mpicc
-CC_OPENMPI = $(PATH_OPENMPI)/bin/mpicc
+CC_MPICH = $(PATH_MPICH_BIN)/mpicc
+CC_OPENMPI = $(PATH_OPENMPI_BIN)/mpicc
 ifeq ($(MPILIB),NONE)
 CC_NOWRAP = $(CC_$(TOOLKIT))
 else
@@ -86,11 +104,11 @@ CPP_PGI = pgc++
 CPP_INTEL = icc
 CPP_CRAY = CC
 CPP_IBM = xlC_r
-CPP_MPICH = $(PATH_MPICH)/bin/mpic++
+CPP_MPICH = $(PATH_MPICH_BIN)/mpic++
 ifeq ($(EXA_OS),LINUX)
-CPP_OPENMPI = $(PATH_OPENMPI)/bin/mpic++
+CPP_OPENMPI = $(PATH_OPENMPI_BIN)/mpic++
 else
-CPP_OPENMPI = $(PATH_OPENMPI)/bin/mpicxx
+CPP_OPENMPI = $(PATH_OPENMPI_BIN)/mpicxx
 endif
 ifeq ($(MPILIB),NONE)
 CPP_NOWRAP = $(CPP_$(TOOLKIT))
@@ -127,8 +145,8 @@ else
 endif
 
 #MPI INCLUDES:
-MPI_INC_MPICH = -I$(PATH_MPICH)/include
-MPI_INC_OPENMPI = -I$(PATH_OPENMPI)/include
+MPI_INC_MPICH = -I$(PATH_MPICH_INC)
+MPI_INC_OPENMPI = -I$(PATH_OPENMPI_INC)
 ifeq ($(MPILIB),NONE)
 MPI_INC_NOWRAP = -I.
 else
@@ -138,8 +156,8 @@ MPI_INC_WRAP = -I.
 MPI_INC = $(MPI_INC_$(WRAP))
 
 #MPI LIBS:
-MPI_LINK_MPICH = -L$(PATH_MPICH)/lib
-MPI_LINK_OPENMPI = -L$(PATH_OPENMPI)/lib
+MPI_LINK_MPICH = -L$(PATH_MPICH_LIB)
+MPI_LINK_OPENMPI = -L$(PATH_OPENMPI_LIB)
 ifeq ($(MPILIB),NONE)
 MPI_LINK_NOWRAP = -L.
 else
@@ -156,7 +174,7 @@ else
 LA_LINK_MKL = -L$(PATH_BLAS_MKL) -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lpthread -lm -ldl -L$(PATH_BLAS_MKL_DEP) -liomp5
 endif
 LA_LINK_ACML = -L$(PATH_BLAS_ACML) -lacml_mp
-LA_LINK_ESSL = -L$(PATH_BLAS_ESSL) -lessl -L$(PATH_BLAS_ESSL_DEP) -lxlf90_r -lxlfmath
+LA_LINK_ESSL = -L$(PATH_BLAS_ESSL) -lesslsmp -L$(PATH_BLAS_ESSL_DEP) -lxlf90_r -lxlfmath
 ifeq ($(BLASLIB),NONE)
 LA_LINK_NOWRAP = -L.
 else
@@ -189,6 +207,14 @@ CUDA_LINK_CUDA = $(CUDA_LINK_$(WRAP))
 CUDA_LINK_NOCUDA = -L.
 CUDA_LINK = $(CUDA_LINK_$(GPU_CUDA))
 
+#Platform independence:
+PIC_FLAG_GNU = -fPIC
+PIC_FLAG_PGI = -fpic
+PIC_FLAG_INTEL = -fpic
+PIC_FLAG_IBM = -qpic=large
+PIC_FLAG_CRAY = -hpic
+PIC_FLAG = $(PIC_FLAG_$(TOOLKIT))
+
 #CUDA FLAGS:
 ifeq ($(GPU_CUDA),CUDA)
 GPU_SM = sm_$(GPU_SM_ARCH)
@@ -198,7 +224,7 @@ CUDA_HOST_WRAP = -I.
 CUDA_HOST = $(CUDA_HOST_$(WRAP))
 CUDA_FLAGS_DEV = --compile -arch=$(GPU_SM) -g -G -lineinfo -DDEBUG_GPU -w
 CUDA_FLAGS_OPT = --compile -arch=$(GPU_SM) -O3 -lineinfo -w
-CUDA_FLAGS_CUDA = $(CUDA_HOST) $(CUDA_FLAGS_$(BUILD_TYPE)) -D_FORCE_INLINES
+CUDA_FLAGS_CUDA = $(CUDA_HOST) $(CUDA_FLAGS_$(BUILD_TYPE)) -D_FORCE_INLINES -Xcompiler $(PIC_FLAG)
 ifeq ($(FOOL_CUDA),NO)
 CUDA_FLAGS_PRE1 = $(CUDA_FLAGS_CUDA) -D$(EXA_OS)
 else
@@ -245,7 +271,7 @@ else
 CFLAGS_DEV = -c -g -O0 -D_DEBUG
 CFLAGS_OPT = -c -O3
 endif
-CFLAGS = $(CFLAGS_$(BUILD_TYPE)) $(NO_GPU) $(NO_AMD) $(NO_PHI) $(NO_BLAS) -D$(EXA_OS)
+CFLAGS = $(CFLAGS_$(BUILD_TYPE)) $(NO_GPU) $(NO_AMD) $(NO_PHI) $(NO_BLAS) -D$(EXA_OS) $(PIC_FLAG)
 
 #FORTRAN FLAGS:
 FFLAGS_INTEL_DEV = -c -g -O0 -fpp -vec-threshold4 -qopenmp -mkl=parallel
@@ -256,11 +282,11 @@ FFLAGS_CRAY_DEV = -c -g
 FFLAGS_CRAY_OPT = -c -O3
 FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -g -O0
 FFLAGS_GNU_OPT = -c -fopenmp -O3
-FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -g -O0
-FFLAGS_PGI_OPT = -c -mp -Mcache_align -Mstandard -O3
-FFLAGS_IBM_DEV = -c -qsmp=omp -g -qkeepparm -qcheck -qsigtrap
+FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -Mallocatable=03 -g -O0
+FFLAGS_PGI_OPT = -c -mp -Mcache_align -Mstandard -Mallocatable=03 -O3
+FFLAGS_IBM_DEV = -c -qsmp=omp -g -O0 -qkeepparm -qcheck -qsigtrap
 FFLAGS_IBM_OPT = -c -qsmp=omp -O3
-FFLAGS = $(FFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(DF)$(NO_GPU) $(DF)$(NO_AMD) $(DF)$(NO_PHI) $(DF)$(NO_BLAS) $(DF)-D$(EXA_OS)
+FFLAGS = $(FFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(DF)$(NO_GPU) $(DF)$(NO_AMD) $(DF)$(NO_PHI) $(DF)$(NO_BLAS) $(DF)-D$(EXA_OS) $(PIC_FLAG)
 
 #THREADS:
 LTHREAD_GNU   = -lgomp

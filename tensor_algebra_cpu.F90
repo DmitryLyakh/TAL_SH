@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2017/03/29
+!REVISION: 2017/09/18
 
 !Copyright (C) 2013-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -3971,9 +3971,9 @@
             cptrn_sym(cpl+1:cpl+2)=(/left_lbl(-cptrn_dig(rank_left+i)),','/); cpl=cpl+2
            endif
           enddo
-          if(cptrn_sym(cpl).eq.'(') cpl=cpl+1; cptrn_sym(cpl)=')'
+          if(cptrn_sym(cpl).eq.'(') cpl=cpl+1; cptrn_sym(cpl)=')'; cptrn_sym(cpl+1:cpl+1)=achar(0)
          else
-          cpl=len_trim('D()+=L()*R()'); cptrn_sym(1:cpl)='D()+=L()*R()'
+          cpl=len_trim('D()+=L()*R()'); cptrn_sym(1:cpl+1)='D()+=L()*R()'//achar(0)
          endif
         else
          ierr=1

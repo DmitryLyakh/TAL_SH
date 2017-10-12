@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API.
-REVISION: 2017/05/18
+REVISION: 2017/10/12
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -900,32 +900,32 @@ int talshTensorConstruct(talsh_tens_t * tens_block,     //inout: empty tensor bl
    if(tens_block->ndev > 0){
     if(dev_kind == DEV_HOST){ //`Currently supported only on Host
      if(init_method != NULL){
-      init_method(tens_block->dev_rsc[0].gmem_p,data_kind,tens_rank,tens_dims,&errc);
+      errc=init_method(tens_block->dev_rsc[0].gmem_p,data_kind,tens_block->shape_p,NULL); //NULL = tens_signature pointer
       if(errc) errc=NOT_CLEAN; //initialization failed, tensor block value is undefined, but one may continue
      }else{
       switch(data_kind){
        case R4:
         fval = (float)init_val_real;
         fp = (float*)(tens_block->dev_rsc[0].gmem_p);
-#pragma omp parallel for schedule(guided)
+#pragma omp parallel for shared(tvol,fp,fval) private(l) schedule(guided)
         for(size_t l=0; l < tvol; l++) fp[l]=fval;
         break;
        case R8:
         dp = (double*)(tens_block->dev_rsc[0].gmem_p);
-#pragma omp parallel for schedule(guided)
+#pragma omp parallel for shared(tvol,dp,init_val_real) private(l) schedule(guided)
         for(size_t l=0; l < tvol; l++) dp[l]=init_val_real;
         break;
        case C4:
         cfv = talshComplex4Set(((float)init_val_real),((float)init_val_imag));
         cfp = (talshComplex4*)(tens_block->dev_rsc[0].gmem_p);
-#pragma omp parallel for schedule(guided)
+#pragma omp parallel for shared(tvol,cfp,cfv) private(l) schedule(guided)
         for(size_t l=0; l < tvol; l++) cfp[l]=cfv;
         break;
        case C8:
         //printf("\n#DBG\n %llu",tvol); //debug
         cdv = talshComplex8Set(init_val_real,init_val_imag);
         cdp = (talshComplex8*)(tens_block->dev_rsc[0].gmem_p);
-#pragma omp parallel for schedule(guided)
+#pragma omp parallel for shared(tvol,cdp,cdv) private(l) schedule(guided)
         for(size_t l=0; l < tvol; l++) cdp[l]=cdv;
         break;
        default:
