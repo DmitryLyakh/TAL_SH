@@ -1,5 +1,5 @@
 !BASIC FORTRAN PARAMETERS (Fortran-2003)
-!REVISION: 2017/08/05
+!REVISION: 2017/10/15
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -51,19 +51,21 @@
 
 !BASIC NUMERIC DATA KINDS (keep consistent with tensor_algebra.h):
         integer(C_INT), parameter, public:: NO_TYPE=0 !no type/kind
+        integer(C_INT), parameter, public:: R2=2      !half-precision float tensor data kind
         integer(C_INT), parameter, public:: R4=4      !float tensor data kind
         integer(C_INT), parameter, public:: R8=8      !double tensor data kind
 !       integer(C_INT), parameter, public:: R16=10    !long double tensor data kind
-        integer(C_INT), parameter, public:: C4=12     !float complex tensor data kind
-        integer(C_INT), parameter, public:: C8=16     !double complex tensor data kind
-!       integer(C_INT), parameter, public:: C16=32    !long double complex tensor data kind
+        integer(C_INT), parameter, public:: C2=12     !half-precision complex tensor data kind
+        integer(C_INT), parameter, public:: C4=14     !float complex tensor data kind
+        integer(C_INT), parameter, public:: C8=18     !double complex tensor data kind
+!       integer(C_INT), parameter, public:: C16=20    !long double complex tensor data kind
         real(4), parameter, public:: R4_=0.0
         real(8), parameter, public:: R8_=0d0
         complex(4), parameter, public:: C4_=(0.0,0.0)
         complex(8), parameter, public:: C8_=(0d0,0d0)
 #ifndef NO_PHI
-!DIR$ ATTRIBUTES OFFLOAD:mic:: NO_TYPE,R4,R8,C4,C8,R4_,R8_,C4_,C8_
-!DIR$ ATTRIBUTES ALIGN:128:: NO_TYPE,R4,R8,C4,C8,R4_,R8_,C4_,C8_
+!DIR$ ATTRIBUTES OFFLOAD:mic:: NO_TYPE,R2,R4,R8,C2,C4,C8,R4_,R8_,C4_,C8_
+!DIR$ ATTRIBUTES ALIGN:128:: NO_TYPE,R2,R4,R8,C2,C4,C8,R4_,R8_,C4_,C8_
 #endif
 
 !BASIC ERROR CLASSES:

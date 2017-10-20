@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h"!
-!REVISION: 2017/10/12
+!REVISION: 2017/10/15
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -191,6 +191,12 @@
          integer(C_INT):: num_dim=-1        !tensor rank (number of dimensions): >=0; -1:empty
          type(C_PTR):: signature=C_NULL_PTR !tensor signature (long integer per tensor dimension)
         end type talsh_tens_signature_t
+ !TAL-SH tensor data:
+        type, public:: talsh_tens_data_t
+         type(C_PTR):: base=C_NULL_PTR      !pointer to the tensor data (body)
+         integer(C_LONG_LONG):: volume=0    !data volume (number of elements)
+         integer(C_INT):: data_kind=NO_TYPE !data kind of each tensor element
+        end type talsh_tens_data_t
 
 !EXTERNAL INTERFACES (keep consistent with tensor_algebra.h):
  !User-defined tensor block initialization class (state present):

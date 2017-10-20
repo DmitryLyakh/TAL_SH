@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2017/10/12
+REVISION: 2017/10/20
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -1542,7 +1542,7 @@ void tensBlck_print(const tensBlck_t * ctens)
     printf("  External mem  : %d\n",ctens->tmp_rsc->mem_attached);
    }
   }
-  printf("#END OF MESSAGE");
+  printf("#END OF MESSAGE\n");
  }else{
   printf("\n#WARNING(tensor_algebra_gpu_nvidia:tensBlck_print): NULL pointer!\n");
  }
@@ -1567,12 +1567,12 @@ int tensBlck_init_host(tensBlck_t * ctens, double init_val)
   case R4:
    fval = (float)init_val;
    fp = (float*)(ctens->src_rsc->gmem_p);
-#pragma omp parallel for shared(vol,fp,fval) private(l) schedule(guided)
+#pragma omp parallel for shared(vol,fp,fval) schedule(guided)
    for(size_t l=0; l < vol; l++) fp[l]=fval;
    break;
   case R8:
    dp = (double*)(ctens->src_rsc->gmem_p);
-#pragma omp parallel for shared(vol,dp,init_val) private(l) schedule(guided)
+#pragma omp parallel for shared(vol,dp,init_val) schedule(guided)
    for(size_t l=0; l < vol; l++) dp[l]=init_val;
    break;
   default:
@@ -1599,12 +1599,12 @@ double tensBlck_norm2_host(const tensBlck_t * ctens)
  switch(ctens->data_kind){
   case R4:
    fp = (float*)(ctens->src_rsc->gmem_p);
-#pragma omp parallel for shared(vol,fp) private(l) schedule(guided) reduction(+:nrm2)
+#pragma omp parallel for shared(vol,fp) schedule(guided) reduction(+:nrm2)
    for(size_t l=0; l < vol; l++) nrm2+=(double)(fp[l]*fp[l]);
    break;
   case R8:
    dp = (double*)(ctens->src_rsc->gmem_p);
-#pragma omp parallel for shared(vol,dp) private(l) schedule(guided) reduction(+:nrm2)
+#pragma omp parallel for shared(vol,dp) schedule(guided) reduction(+:nrm2)
    for(size_t l=0; l < vol; l++) nrm2+=dp[l]*dp[l];
    break;
   default:
@@ -1930,7 +1930,7 @@ __host__ int cuda_task_dev_rsc_copy(const cudaTask_t *cuda_task, unsigned int ar
 
  if(cuda_task == NULL) return -1;
  if(dev_rsc == NULL) return -2;
- if(arg_num > cuda_task->num_args) return 1;
+ if(arg_num >= cuda_task->num_args) return 1;
  ctens=cuda_task->tens_args[arg_num].tens_p;
  if(ctens){
   switch(which){
@@ -1954,7 +1954,7 @@ __host__ int cuda_task_dev_rsc_move(cudaTask_t *cuda_task, unsigned int arg_num,
 
  if(cuda_task == NULL) return -1;
  if(dev_rsc == NULL) return -2;
- if(arg_num > cuda_task->num_args) return 1;
+ if(arg_num >= cuda_task->num_args) return 1;
  ctens=cuda_task->tens_args[arg_num].tens_p;
  if(ctens){
   switch(which){
@@ -1967,6 +1967,27 @@ __host__ int cuda_task_dev_rsc_move(cudaTask_t *cuda_task, unsigned int arg_num,
   errc=3;
  }
  return errc;
+}
+
+__host__ int cuda_task_arg_has_resource(cudaTask_t *cuda_task, unsigned int arg_num, char which, int *ierr)
+/** Queries the existence of a CUDA task resource for tensor argument <arg_num>.
+    <which> selects bewteen 's':source, 't':temporary, 'd':destination (resource). **/
+{
+ int ans;
+ tensBlck_t * ctens;
+
+ ans=NOPE; *ierr=0;
+ if(cuda_task == NULL){*ierr=-1; return ans;}
+ if(arg_num >= cuda_task->num_args){*ierr=1; return ans;}
+ ctens=cuda_task->tens_args[arg_num].tens_p;
+ if(ctens == NULL){*ierr=2; return ans;}
+ switch(which){
+  case 's': if(ctens->src_rsc != NULL) ans=YEP; break;
+  case 't': if(ctens->tmp_rsc != NULL) ans=YEP; break;
+  case 'd': if(ctens->dst_rsc != NULL) ans=YEP; break;
+  default: *ierr=3;
+ }
+ return ans;
 }
 
 __host__ int cuda_task_arg_destroy(cudaTask_t *cuda_task, int arg_num) //internal use only
@@ -2521,7 +2542,9 @@ NOTES:
  gpu_stats[gpu_num].tasks_submitted++;
  gpu_d=decode_device_id(dtens->src_rsc->dev_id,&j); if(gpu_d < 0) return -29; //destination tensor source device id
  if(j == DEV_NVIDIA_GPU){
-  err=cudaDeviceCanAccessPeer(&j,gpu_num,gpu_d); if(err != cudaSuccess || j == 0) return DEVICE_UNABLE; //peer access impossible for this GPU device
+  if(gpu_d != gpu_num){
+   err=cudaDeviceCanAccessPeer(&j,gpu_num,gpu_d); if(err != cudaSuccess || j == 0) return DEVICE_UNABLE; //peer access impossible for this GPU device
+  }
  }else if(j == DEV_HOST){
   gpu_d=-1; //data is in Host memory
  }else{
@@ -2800,7 +2823,9 @@ NOTES:
  gpu_stats[gpu_num].tasks_submitted++;
  gpu_d=decode_device_id(dtens->src_rsc->dev_id,&j); if(gpu_d < 0) return -29; //destination tensor source device id
  if(j == DEV_NVIDIA_GPU){
-  err=cudaDeviceCanAccessPeer(&j,gpu_num,gpu_d); if(err != cudaSuccess || j == 0) return DEVICE_UNABLE; //peer access impossible for this GPU device
+  if(gpu_d != gpu_num){
+   err=cudaDeviceCanAccessPeer(&j,gpu_num,gpu_d); if(err != cudaSuccess || j == 0) return DEVICE_UNABLE; //peer access impossible for this GPU device
+  }
  }else if(j == DEV_HOST){
   gpu_d=-1; //data is in Host memory
  }else{
@@ -2808,7 +2833,9 @@ NOTES:
  }
  gpu_l=decode_device_id(ltens->src_rsc->dev_id,&j); if(gpu_l < 0) return -30; //left tensor source device id
  if(j == DEV_NVIDIA_GPU){
-  err=cudaDeviceCanAccessPeer(&j,gpu_num,gpu_l); if(err != cudaSuccess || j == 0) return DEVICE_UNABLE; //peer access impossible for this GPU device
+  if(gpu_l != gpu_num){
+   err=cudaDeviceCanAccessPeer(&j,gpu_num,gpu_l); if(err != cudaSuccess || j == 0) return DEVICE_UNABLE; //peer access impossible for this GPU device
+  }
  }else if(j == DEV_HOST){
   gpu_l=-1; //data is in Host memory
  }else{
@@ -3388,7 +3415,9 @@ NOTES:
  gpu_stats[gpu_num].tasks_submitted++;
  gpu_d=decode_device_id(dtens->src_rsc->dev_id,&j); if(gpu_d < 0) return -29; //destination tensor source device id
  if(j == DEV_NVIDIA_GPU){
-  err=cudaDeviceCanAccessPeer(&j,gpu_num,gpu_d); if(err != cudaSuccess || j == 0) return DEVICE_UNABLE; //peer access impossible for this GPU device
+  if(gpu_d != gpu_num){
+   err=cudaDeviceCanAccessPeer(&j,gpu_num,gpu_d); if(err != cudaSuccess || j == 0) return DEVICE_UNABLE; //peer access impossible for this GPU device
+  }
  }else if(j == DEV_HOST){
   gpu_d=-1; //data is in Host memory
  }else{
@@ -3396,7 +3425,9 @@ NOTES:
  }
  gpu_l=decode_device_id(ltens->src_rsc->dev_id,&j); if(gpu_l < 0) return -30; //left tensor source device id
  if(j == DEV_NVIDIA_GPU){
-  err=cudaDeviceCanAccessPeer(&j,gpu_num,gpu_l); if(err != cudaSuccess || j == 0) return DEVICE_UNABLE; //peer access impossible for this GPU device
+  if(gpu_l != gpu_num){
+   err=cudaDeviceCanAccessPeer(&j,gpu_num,gpu_l); if(err != cudaSuccess || j == 0) return DEVICE_UNABLE; //peer access impossible for this GPU device
+  }
  }else if(j == DEV_HOST){
   gpu_l=-1; //data is in Host memory
  }else{
@@ -3404,7 +3435,9 @@ NOTES:
  }
  gpu_r=decode_device_id(rtens->src_rsc->dev_id,&j); if(gpu_r < 0) return -31; //right tensor source device id
  if(j == DEV_NVIDIA_GPU){
-  err=cudaDeviceCanAccessPeer(&j,gpu_num,gpu_r); if(err != cudaSuccess || j == 0) return DEVICE_UNABLE; //peer access impossible for this GPU device
+  if(gpu_r != gpu_num){
+   err=cudaDeviceCanAccessPeer(&j,gpu_num,gpu_r); if(err != cudaSuccess || j == 0) return DEVICE_UNABLE; //peer access impossible for this GPU device
+  }
  }else if(j == DEV_HOST){
   gpu_r=-1; //data is in Host memory
  }else{

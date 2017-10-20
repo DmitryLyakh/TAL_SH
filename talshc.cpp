@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API.
-REVISION: 2017/10/12
+REVISION: 2017/10/20
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -907,25 +907,25 @@ int talshTensorConstruct(talsh_tens_t * tens_block,     //inout: empty tensor bl
        case R4:
         fval = (float)init_val_real;
         fp = (float*)(tens_block->dev_rsc[0].gmem_p);
-#pragma omp parallel for shared(tvol,fp,fval) private(l) schedule(guided)
+#pragma omp parallel for shared(tvol,fp,fval) schedule(guided)
         for(size_t l=0; l < tvol; l++) fp[l]=fval;
         break;
        case R8:
         dp = (double*)(tens_block->dev_rsc[0].gmem_p);
-#pragma omp parallel for shared(tvol,dp,init_val_real) private(l) schedule(guided)
+#pragma omp parallel for shared(tvol,dp,init_val_real) schedule(guided)
         for(size_t l=0; l < tvol; l++) dp[l]=init_val_real;
         break;
        case C4:
         cfv = talshComplex4Set(((float)init_val_real),((float)init_val_imag));
         cfp = (talshComplex4*)(tens_block->dev_rsc[0].gmem_p);
-#pragma omp parallel for shared(tvol,cfp,cfv) private(l) schedule(guided)
+#pragma omp parallel for shared(tvol,cfp,cfv) schedule(guided)
         for(size_t l=0; l < tvol; l++) cfp[l]=cfv;
         break;
        case C8:
         //printf("\n#DBG\n %llu",tvol); //debug
         cdv = talshComplex8Set(init_val_real,init_val_imag);
         cdp = (talshComplex8*)(tens_block->dev_rsc[0].gmem_p);
-#pragma omp parallel for shared(tvol,cdp,cdv) private(l) schedule(guided)
+#pragma omp parallel for shared(tvol,cdp,cdv) schedule(guided)
         for(size_t l=0; l < tvol; l++) cdp[l]=cdv;
         break;
        default:
@@ -1489,7 +1489,7 @@ static int talshTaskFinalize(talsh_task_t * talsh_task, int task_status)
     If present, the device-specific task object is finalized. **/
 {
  const unsigned int TWO_BITS_SET=3;
- int i,j,image_id,src_dev_id,errc,discard_device_aliases,coherence_control;
+ int i,j,image_id,src_dev_id,errc,ier,discard_device_aliases,coherence_control;
  unsigned int coh,cc;
  talsh_tens_t * talsh_tens;
  host_task_t * host_task;
@@ -1531,22 +1531,28 @@ static int talshTaskFinalize(talsh_task_t * talsh_task, int task_status)
         break;
        case DEV_NVIDIA_GPU:
 #ifndef NO_GPU
-        cuda_task=(cudaTask_t*)(talsh_task->task_p);
+        cuda_task=(cudaTask_t*)(talsh_task->task_p); //cuda_task has already been finalized in NV-TAL
         //Append the newly formed destination image if needed:
-        if(cc == COPY_M || cc == COPY_K){
-         ++(talsh_tens->ndev); if(talsh_tens->ndev > talsh_tens->dev_rsc_len) return TALSH_LIMIT_EXCEEDED;
-         j=cuda_task_dev_rsc_move(cuda_task,(unsigned int)i,'d',&(talsh_tens->dev_rsc[talsh_tens->ndev-1]));
-         if(j == 0){
-          if(tensDevRsc_device_id(&(talsh_tens->dev_rsc[talsh_tens->ndev-1])) != src_dev_id){
-           talsh_tens->data_kind[talsh_tens->ndev-1]=talsh_task->data_kind;
-           talsh_tens->avail[talsh_tens->ndev-1]=YEP;
+        j=cuda_task_arg_has_resource(cuda_task,(unsigned int)i,'d',&ier);
+        if(j == YEP && ier == 0){
+         if(cc == COPY_M || cc == COPY_K){
+          ++(talsh_tens->ndev); if(talsh_tens->ndev > talsh_tens->dev_rsc_len) return TALSH_LIMIT_EXCEEDED;
+          j=cuda_task_dev_rsc_move(cuda_task,(unsigned int)i,'d',&(talsh_tens->dev_rsc[talsh_tens->ndev-1]));
+          if(j == 0){
+           if(tensDevRsc_device_id(&(talsh_tens->dev_rsc[talsh_tens->ndev-1])) != src_dev_id){
+            talsh_tens->data_kind[talsh_tens->ndev-1]=talsh_task->data_kind;
+            talsh_tens->avail[talsh_tens->ndev-1]=YEP;
+           }else{ //this should never happen as cuda_task_finalize() has already nullified the <dst_rsc> pointer
+            printf("#WARNING(talshc:talshTaskFinalize): I am surprised we are here!"); //trap
+            if(tensDevRsc_same(&(talsh_tens->dev_rsc[image_id]),&(talsh_tens->dev_rsc[talsh_tens->ndev-1])) != YEP) return TALSH_FAILURE;
+            --(talsh_tens->ndev);
+           }
           }else{
-           if(tensDevRsc_same(&(talsh_tens->dev_rsc[image_id]),&(talsh_tens->dev_rsc[talsh_tens->ndev-1])) != YEP) return TALSH_FAILURE;
-           --(talsh_tens->ndev);
+           --(talsh_tens->ndev); errc=TALSH_FAILURE;
           }
-         }else{
-          --(talsh_tens->ndev); errc=TALSH_FAILURE;
          }
+        }else{
+         if(ier != 0) errc=TALSH_FAILURE;
         }
         //Discard device-specific tensor alias:
         if(discard_device_aliases){
@@ -1820,6 +1826,7 @@ int talshTaskComplete(talsh_task_t * talsh_task, int * stats, int * ierr)
 #ifndef NO_GPU
    cuda_task_p=(cudaTask_t*)(talsh_task->task_p);
    *stats=cuda_task_completed(cuda_task_p);
+   //printf("#DEBUG(talshc:talshTaskComplete): Printing cuda_task after NV-TAL completion:\n"); cuda_task_print(cuda_task_p); //debug
    switch(*stats){
     case CUDA_TASK_ERROR: *stats=TALSH_TASK_ERROR; errc=YEP; break;
     case CUDA_TASK_EMPTY: *stats=TALSH_TASK_EMPTY; break;
@@ -2080,7 +2087,7 @@ int talshTensorPlace(talsh_tens_t * tens, int dev_id, int dev_kind, void * dev_m
      if(dn != dvn || dk != dvk) tens->avail[image_id]=NOPE; //mark the image not available since it will be discarded in case of successful execution
     }
    }
-   if(talsh_task == NULL){ //blocking call
+   if(errc == TALSH_SUCCESS && talsh_task == NULL){ //blocking call
     errc=talshTaskWait(tsk,&j); if(errc == TALSH_SUCCESS && j != TALSH_TASK_COMPLETED) errc=TALSH_TASK_ERROR;
     j=talsh_tensor_c_dissoc(ctens); if(j) errc=TALSH_FAILURE;
     j=talshTaskDestroy(tsk); if(j != TALSH_SUCCESS && errc == TALSH_SUCCESS) errc=j;
@@ -2281,7 +2288,7 @@ int talshTensorInit(talsh_tens_t * dtens, double val_real, double val_imag, int 
     }
    }
    //If blocking call, complete it here:
-   if(talsh_task == NULL){
+   if(errc == TALSH_SUCCESS && talsh_task == NULL){
     errc=talshTaskWait(tsk,&j); if(errc == TALSH_SUCCESS && j != TALSH_TASK_COMPLETED) errc=TALSH_TASK_ERROR;
     j=talshTaskDestroy(tsk); if(j != TALSH_SUCCESS && errc == TALSH_SUCCESS) errc=j;
    }
@@ -2310,7 +2317,7 @@ int talshTensorInit(talsh_tens_t * dtens, double val_real, double val_imag, int 
     if(coh == COPY_D || (coh == COPY_M && dtens->dev_rsc[dimg].dev_id != devid)) dtens->avail[dimg] = NOPE;
    }
    //If blocking call, complete it here:
-   if(talsh_task == NULL){
+   if(errc == TALSH_SUCCESS && talsh_task == NULL){
     errc=talshTaskWait(tsk,&j); if(errc == TALSH_SUCCESS && j != TALSH_TASK_COMPLETED) errc=TALSH_TASK_ERROR;
     j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
     j=talshTaskDestroy(tsk); if(j != TALSH_SUCCESS && errc == TALSH_SUCCESS) errc=j;
@@ -2504,7 +2511,7 @@ int talshTensorAdd(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * lten
     }
    }
    //If blocking call, complete it here:
-   if(talsh_task == NULL){
+   if(errc == TALSH_SUCCESS && talsh_task == NULL){
     errc=talshTaskWait(tsk,&j); if(errc == TALSH_SUCCESS && j != TALSH_TASK_COMPLETED) errc=TALSH_TASK_ERROR;
     j=talshTaskDestroy(tsk); if(j != TALSH_SUCCESS && errc == TALSH_SUCCESS) errc=j;
    }
@@ -2545,7 +2552,7 @@ int talshTensorAdd(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * lten
     if(coh == COPY_D || (coh == COPY_M && dtens->dev_rsc[dimg].dev_id != devid)) dtens->avail[dimg] = NOPE;
    }
    //If blocking call, complete it here:
-   if(talsh_task == NULL){
+   if(errc == TALSH_SUCCESS && talsh_task == NULL){
     errc=talshTaskWait(tsk,&j); if(errc == TALSH_SUCCESS && j != TALSH_TASK_COMPLETED) errc=TALSH_TASK_ERROR;
     j=talsh_tensor_c_dissoc(lctr); if(j) errc=TALSH_FAILURE;
     j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
@@ -2772,7 +2779,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
     }
    }
    //If blocking call, complete it here:
-   if(talsh_task == NULL){
+   if(errc == TALSH_SUCCESS && talsh_task == NULL){
     errc=talshTaskWait(tsk,&j); if(errc == TALSH_SUCCESS && j != TALSH_TASK_COMPLETED) errc=TALSH_TASK_ERROR;
     j=talshTaskDestroy(tsk); if(j != TALSH_SUCCESS && errc == TALSH_SUCCESS) errc=j;
    }
@@ -2802,6 +2809,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
     tsk->task_error=200; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
    }
    errc=gpu_tensor_block_contract_dlf(contr_ptrn,lctr,rctr,dctr,coh_ctrl,cuda_task,dvn,scale_real,scale_imag); //non-blocking call
+   //printf("#DEBUG(talshc:talshTensorContract): Printing cuda_task after scheduling:\n"); cuda_task_print(cuda_task); //debug
    dvn=cuda_task_gpu_id(cuda_task);
    if(errc || dvn < 0){ //in case of error, CUDA task has already been finalized (with error) without coherence control
     if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=TALSH_FAILURE;
@@ -2821,7 +2829,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
     if(coh == COPY_D || (coh == COPY_M && dtens->dev_rsc[dimg].dev_id != devid)) dtens->avail[dimg] = NOPE;
    }
    //If blocking call, complete it here:
-   if(talsh_task == NULL){
+   if(errc == TALSH_SUCCESS && talsh_task == NULL){
     errc=talshTaskWait(tsk,&j); if(errc == TALSH_SUCCESS && j != TALSH_TASK_COMPLETED) errc=TALSH_TASK_ERROR;
     j=talsh_tensor_c_dissoc(rctr); if(j) errc=TALSH_FAILURE;
     j=talsh_tensor_c_dissoc(lctr); if(j) errc=TALSH_FAILURE;
