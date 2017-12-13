@@ -21,7 +21,7 @@
         program main
         use, intrinsic:: ISO_C_BINDING
         implicit none
-        logical, parameter:: TEST_NVTAL=.FALSE.
+        logical, parameter:: TEST_NVTAL=.TRUE.
         logical, parameter:: TEST_TALSH=.TRUE.
         logical, parameter:: TEST_COMPLEX=.TRUE.
         logical, parameter:: BENCH_TALSH_RND=.FALSE.

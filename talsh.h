@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API header.
-REVISION: 2017/05/23
+REVISION: 2017/11/03
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -109,6 +109,10 @@ extern "C"{
                int amd_list[]);
 //  Shutdown TAL-SH:
  int talshShutdown();
+//  Set the memory allocation policy on Host:
+ void talshSetMemAllocPolicyHost(int mem_policy,
+                                 int fallback,
+                                 int * ierr);
 //  Get on-node device count:
  int talshGetDeviceCount(int dev_kind,
                          int * dev_count);

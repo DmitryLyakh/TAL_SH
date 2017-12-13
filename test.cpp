@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <time.h>
 
 #include "talsh.h"
 
@@ -166,8 +167,11 @@ void test_nvtal_c(int * ierr)
 
 void test_talsh_c(int * ierr)
 {
+ const int VDIM_SIZE=40; //virtual
+ const int ODIM_SIZE=20; //occupied
  int errc;
- size_t small_buffer_size=TALSH_NO_HOST_BUFFER;
+ //size_t host_buffer_size=TALSH_NO_HOST_BUFFER;
+ size_t host_buffer_size = 1024*1024*1024;
  int gpu_list[MAX_GPUS_PER_NODE];
 
  *ierr=0;
@@ -180,52 +184,60 @@ void test_talsh_c(int * ierr)
 //Initialize TAL-SH (with a negligible Host buffer since we will use external memory):
  int host_arg_max;
  for(int i=0; i<ngpu; ++i) gpu_list[i]=i; //list of NVIDIA GPU devices to use in this process
- errc=talshInit(&small_buffer_size,&host_arg_max,ngpu,gpu_list,0,NULL,0,NULL);
- printf(" TAL-SH has been initialized: Status %d\n",errc); if(errc){*ierr=2; return;};
+ errc=talshInit(&host_buffer_size,&host_arg_max,ngpu,gpu_list,0,NULL,0,NULL);
+ printf(" TAL-SH has been initialized: Status %d: Host buffer size = %lu \n",errc,host_buffer_size); if(errc){*ierr=2; return;};
 
 //Allocate three tensor blocks in Host memory outside of TAL-SH (external application):
  //Tensor block 0:
  int trank0 = 4; //tensor block rank
- const int dims0[] = {40,40,20,20}; //tensor block dimension extents
- size_t vol0 = 1; for(int i=0; i<trank0; ++i) vol0*=(size_t)dims0[i]; //tensor block volume (number of elements)
- double * tblock0 = (double*)malloc(vol0*sizeof(double)); //tensor block body (tensor elements(
- for(size_t l=0; l<vol0; ++l) tblock0[l]=0.0; //initialize it to zero
+ const int dims0[] = {VDIM_SIZE,VDIM_SIZE,ODIM_SIZE,ODIM_SIZE}; //tensor block dimension extents
+ //size_t vol0 = 1; for(int i=0; i<trank0; ++i) vol0*=(size_t)dims0[i]; //tensor block volume (number of elements)
+ //double * tblock0 = (double*)malloc(vol0*sizeof(double)); //tensor block body (tensor elements(
+ //for(size_t l=0; l<vol0; ++l) tblock0[l]=0.0; //initialize it to zero
  //Tensor block 1:
  int trank1 = 4; //tensor block rank
- const int dims1[] = {40,40,40,40}; //tensor block dimension extents
- size_t vol1 = 1; for(int i=0; i<trank1; ++i) vol1*=(size_t)dims1[i]; //tensor block volume (number of elements)
- double * tblock1 = (double*)malloc(vol1*sizeof(double)); //tensor block body (tensor elements(
- for(size_t l=0; l<vol1; ++l) tblock1[l]=0.01; //initialize it to something
+ const int dims1[] = {VDIM_SIZE,VDIM_SIZE,VDIM_SIZE,VDIM_SIZE}; //tensor block dimension extents
+ //size_t vol1 = 1; for(int i=0; i<trank1; ++i) vol1*=(size_t)dims1[i]; //tensor block volume (number of elements)
+ //double * tblock1 = (double*)malloc(vol1*sizeof(double)); //tensor block body (tensor elements(
+ //for(size_t l=0; l<vol1; ++l) tblock1[l]=0.01; //initialize it to something
  //Tensor block 2:
  int trank2 = 4; //tensor block rank
- const int dims2[] = {40,20,40,20}; //tensor block dimension extents
- size_t vol2 = 1; for(int i=0; i<trank2; ++i) vol2*=(size_t)dims2[i]; //tensor block volume (number of elements)
- double * tblock2 = (double*)malloc(vol2*sizeof(double)); //tensor block body (tensor elements(
- for(size_t l=0; l<vol2; ++l) tblock2[l]=0.001; //initialize it to something
- printf(" Three external tensor blocks have been allocated by application\n");
- double gflops=(sqrt(((double)(vol0))*((double)(vol1))*((double)(vol2)))*2.0)/1e9; //total number of floating point operations
+ const int dims2[] = {ODIM_SIZE,VDIM_SIZE,ODIM_SIZE,VDIM_SIZE}; //tensor block dimension extents
+ //size_t vol2 = 1; for(int i=0; i<trank2; ++i) vol2*=(size_t)dims2[i]; //tensor block volume (number of elements)
+ //double * tblock2 = (double*)malloc(vol2*sizeof(double)); //tensor block body (tensor elements(
+ //for(size_t l=0; l<vol2; ++l) tblock2[l]=0.001; //initialize it to something
+ //printf(" Three external tensor blocks have been allocated by application\n");
 
 //Register external tensor blocks with TAL-SH (in Host memory):
  //Tensor block 0:
  talsh_tens_t tens0; //declare a TAL-SH tensor block
- errc=talshTensorClean(&tens0); if(errc){*ierr=3; return;}; //clean TAL-SH tensor block object (default ctor)
- errc=talshTensorConstruct(&tens0,R8,trank0,dims0,talshFlatDevId(DEV_HOST,0),(void*)tblock0); //register tensor block
+ errc = talshTensorClean(&tens0); if(errc){*ierr=3; return;}; //clean TAL-SH tensor block object (default ctor)
+ errc = talshTensorConstruct(&tens0,R8,trank0,dims0,talshFlatDevId(DEV_HOST,0),NULL,-1,NULL,0.0); //construct tensor block in Host buffer
+ //errc = talshTensorConstruct(&tens0,R8,trank0,dims0,talshFlatDevId(DEV_HOST,0),(void*)tblock0); //register tensor block with external memory
  if(errc){*ierr=4; return;};
+ size_t vol0 = talshTensorVolume(&tens0);
  //Tensor block 1:
  talsh_tens_t tens1; //declare a TAL-SH tensor block
- errc=talshTensorClean(&tens1); if(errc){*ierr=5; return;}; //clean TAL-SH tensor block object (default ctor)
- errc=talshTensorConstruct(&tens1,R8,trank1,dims1,talshFlatDevId(DEV_HOST,0),(void*)tblock1); //register tensor block
+ errc = talshTensorClean(&tens1); if(errc){*ierr=5; return;}; //clean TAL-SH tensor block object (default ctor)
+ errc = talshTensorConstruct(&tens1,R8,trank1,dims1,talshFlatDevId(DEV_HOST,0),NULL,-1,NULL,0.001); //construct tensor block in Host buffer
+ //errc = talshTensorConstruct(&tens1,R8,trank1,dims1,talshFlatDevId(DEV_HOST,0),(void*)tblock1); //register tensor block with external memory
  if(errc){*ierr=6; return;};
+ size_t vol1 = talshTensorVolume(&tens1);
  //Tensor block 2:
  talsh_tens_t tens2; //declare a TAL-SH tensor block
- errc=talshTensorClean(&tens2); if(errc){*ierr=7; return;}; //clean TAL-SH tensor block object (default ctor)
- errc=talshTensorConstruct(&tens2,R8,trank2,dims2,talshFlatDevId(DEV_HOST,0),(void*)tblock2); //register tensor block
+ errc = talshTensorClean(&tens2); if(errc){*ierr=7; return;}; //clean TAL-SH tensor block object (default ctor)
+ errc = talshTensorConstruct(&tens2,R8,trank2,dims2,talshFlatDevId(DEV_HOST,0),NULL,-1,NULL,0.01); //construct tensor block in Host buffer
+ //errc=talshTensorConstruct(&tens2,R8,trank2,dims2,talshFlatDevId(DEV_HOST,0),(void*)tblock2); //register tensor block with external memory
  if(errc){*ierr=8; return;};
- printf(" Three external tensor blocks have been registered with TAL-SH\n");
+ size_t vol2 = talshTensorVolume(&tens2);
+ double gflops = (sqrt(((double)(vol0))*((double)(vol1))*((double)(vol2)))*2.0)/1e9; //total number of floating point operations (GFlops)
+ double theor_norm1 = gflops * 0.01 * 0.001 * 1e9;
+ printf(" Three TAL-SH tensor blocks have been constructed: Volumes: %lu, %lu, %lu: GFlops = %f\n",vol0,vol1,vol2,gflops);
 
 //Declare a TAL-SH task handle:
  talsh_task_t task0; //declare a TAL-SH task handle
  errc=talshTaskClean(&task0); //clean TAL-SH task handle object to an empty state
+ if(errc){*ierr=9; return;};
 
 //Execute a tensor contraction either on CPU (synchronously) or GPU (asynchronously):
 #ifndef NO_GPU
@@ -236,45 +248,48 @@ void test_talsh_c(int * ierr)
  int dev_num = 0; //CPU Host is always a single device (but multicore)
 #endif
  //Schedule:
- errc=talshTensorContract("D(a,b,i,j)+=L(a,b,c,d)*R(c,i,d,j)",&tens0,&tens1,&tens2,0.5,0.0,dev_num,dev_kind,COPY_MTT,&task0);
- printf(" Tensor contraction has been scheduled for execution: Status %d\n",errc); if(errc){*ierr=9; return;};
+ clock_t tms = clock();
+ errc=talshTensorContract("D(a,b,i,j)+=L(c,b,d,a)*R(j,d,i,c)",&tens0,&tens1,&tens2,2.0,0.0,dev_num,dev_kind,COPY_MTT,&task0);
+ printf(" Tensor contraction has been scheduled for execution: Status %d\n",errc); if(errc){*ierr=10; return;};
  //Test for completion:
  int sts,done=NOPE;
  while(done != YEP && errc == TALSH_SUCCESS){done=talshTaskComplete(&task0,&sts,&errc);}
+ double tm = ((double)(clock() - tms))/CLOCKS_PER_SEC;
  if(errc == TALSH_SUCCESS){
-  printf(" Tensor contraction has completed successfully: Status %d\n",sts);
+  printf(" Tensor contraction has completed successfully: Status %d: Time %f sec\n",sts,tm);
  }else{
   printf(" Tensor contraction has failed: Status %d: Error %d\n",sts,errc);
-  *ierr=10; return;
+  *ierr=11; return;
  }
  //Timing:
  double total_time;
- errc=talshTaskTime(&task0,&total_time); if(errc){*ierr=11; return;};
+ errc=talshTaskTime(&task0,&total_time); if(errc){*ierr=12; return;};
  printf(" Tensor contraction total time = %f: GFlop/s = %f\n",total_time,gflops/total_time);
  //Destruct the task handle:
- errc=talshTaskDestruct(&task0); if(errc){*ierr=12; return;};
+ errc=talshTaskDestruct(&task0); if(errc){*ierr=13; return;};
 #ifndef NO_GPU
  //If executed on GPU, COPY_MTT parameter in the tensor contraction call above means that the
  //destination tensor image was moved to GPU device (letter M means MOVE).
  //So, let's move it back to Host (to a user-specified memory location):
- errc=talshTensorPlace(&tens0,0,DEV_HOST,(void*)tblock0,COPY_M); //this will move the resulting tensor block back to Host (letter M means MOVE)
- if(errc){*ierr=13; return;};
- printf(" Tensor result was moved back to Host: Norm1 = %E\n",talshTensorImageNorm1_cpu(&tens0));
+ errc=talshTensorPlace(&tens0,0,DEV_HOST,NULL,COPY_M); //this will move the resulting tensor block back to Host (letter M means MOVE)
+ if(errc){*ierr=14; return;};
 #endif
+ printf(" Tensor result was moved back to Host: Norm1 = %E: Correct = %E\n",talshTensorImageNorm1_cpu(&tens0),theor_norm1);
 
 //Unregister tensor blocks with TAL-SH:
- errc=talshTensorDestruct(&tens2); if(errc){*ierr=14; return;};
- errc=talshTensorDestruct(&tens1); if(errc){*ierr=15; return;};
- errc=talshTensorDestruct(&tens0); if(errc){*ierr=16; return;};
+ errc=talshTensorDestruct(&tens2); if(errc){*ierr=15; return;};
+ errc=talshTensorDestruct(&tens1); if(errc){*ierr=16; return;};
+ errc=talshTensorDestruct(&tens0); if(errc){*ierr=17; return;};
  printf(" Three external tensor blocks have been unregistered with TAL-SH\n");
 
 //Free external memory (local tensor blocks):
- free(tblock2); tblock2=NULL;
- free(tblock1); tblock1=NULL;
- free(tblock0); tblock0=NULL;
+ //free(tblock2); tblock2=NULL;
+ //free(tblock1); tblock1=NULL;
+ //free(tblock0); tblock0=NULL;
+
 //Shutdown TAL-SH:
  errc=talshShutdown();
- printf(" TAL-SH has been shut down: Status %d\n",errc); if(errc){*ierr=17; return;};
+ printf(" TAL-SH has been shut down: Status %d\n",errc); if(errc){*ierr=18; return;};
 
  return;
 }

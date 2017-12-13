@@ -217,17 +217,18 @@ PIC_FLAG_INTEL = -fpic
 PIC_FLAG_IBM = -qpic=large
 PIC_FLAG_CRAY = -hpic
 PIC_FLAG = $(PIC_FLAG_$(TOOLKIT))
+PIC_FLAG_CUDA = $(PIC_FLAG_GNU)
 
 #CUDA FLAGS:
 ifeq ($(GPU_CUDA),CUDA)
 GPU_SM = sm_$(GPU_SM_ARCH)
 GPU_ARCH = $(GPU_SM_ARCH)0
-CUDA_HOST_NOWRAP = --compiler-bindir /usr/bin
+CUDA_HOST_NOWRAP = -I.
 CUDA_HOST_WRAP = -I.
 CUDA_HOST = $(CUDA_HOST_$(WRAP))
-CUDA_FLAGS_DEV = --compile -arch=$(GPU_SM) -g -G -lineinfo -DDEBUG_GPU -w
+CUDA_FLAGS_DEV = --compile -arch=$(GPU_SM) -g -G -DDEBUG_GPU -w
 CUDA_FLAGS_OPT = --compile -arch=$(GPU_SM) -O3 -lineinfo -w
-CUDA_FLAGS_CUDA = $(CUDA_HOST) $(CUDA_FLAGS_$(BUILD_TYPE)) -D_FORCE_INLINES -Xcompiler $(PIC_FLAG)
+CUDA_FLAGS_CUDA = $(CUDA_HOST) $(CUDA_FLAGS_$(BUILD_TYPE)) -D_FORCE_INLINES -Xcompiler $(PIC_FLAG_CUDA)
 ifeq ($(FOOL_CUDA),NO)
 CUDA_FLAGS_PRE1 = $(CUDA_FLAGS_CUDA) -D$(EXA_OS)
 else
@@ -287,7 +288,7 @@ FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fch
 FFLAGS_GNU_OPT = -c -fopenmp -O3
 FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -Mallocatable=03 -g -O0
 FFLAGS_PGI_OPT = -c -mp -Mcache_align -Mstandard -Mallocatable=03 -O3
-FFLAGS_IBM_DEV = -c -qsmp=omp -g -O0 -qkeepparm -qcheck -qsigtrap
+FFLAGS_IBM_DEV = -c -qsmp=omp -g9 -O0 -qkeepparm -qcheck -qsigtrap -qstackprotect=all
 FFLAGS_IBM_OPT = -c -qsmp=omp -O3
 FFLAGS = $(FFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(DF)$(NO_GPU) $(DF)$(NO_AMD) $(DF)$(NO_PHI) $(DF)$(NO_BLAS) $(DF)-D$(EXA_OS) $(PIC_FLAG)
 

@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2017/06/13
+!REVISION: 2017/11/03
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -742,8 +742,8 @@
          endif
          return
         end function talsh_update_f_scalar
-!--------------------------------------------------------------------------------------------------------------------------
-        subroutine talsh_set_mem_alloc_policy_host(mem_policy,fallback,ierr) bind(c,name='talsh_set_mem_alloc_policy_host')
+!---------------------------------------------------------------------------------------------------------------------
+        subroutine talsh_set_mem_alloc_policy_host(mem_policy,fallback,ierr) bind(c,name='talshSetMemAllocPolicyHost')
 !Wrapper for CP-TAL set_mem_alloc_policy() for C/C++.
          implicit none
          integer(C_INT), intent(in), value:: mem_policy !in: CPU memory allocation policy for CP-TAL

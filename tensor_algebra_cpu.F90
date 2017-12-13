@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2017/09/18
+!REVISION: 2017/11/03
 
 !Copyright (C) 2013-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -79,7 +79,7 @@
         integer, parameter, public:: MAX_SHAPE_STR_LEN=1024   !max allowed length for a tensor shape specification string (TSSS)
         integer, parameter, public:: LONGINT=INTL             !long integer size in bytes
         integer, parameter, private:: MAX_THREADS=1024        !max allowed number of threads in this module
-        integer, private:: MEM_ALLOC_POLICY=MEM_ALLOC_REGULAR !memory allocation policy
+        integer, private:: MEM_ALLOC_POLICY=MEM_ALLOC_TMP_BUF !memory allocation policy
         logical, private:: MEM_ALLOC_FALLBACK=.TRUE.          !memory allocation fallback to the regular allocator
         logical, private:: DATA_KIND_SYNC=.TRUE. !if .TRUE., each tensor operation will syncronize all existing data kinds
         logical, private:: TRANS_SHMEM=.TRUE.    !cache-efficient (true) VS scatter (false) tensor transpose algorithm
