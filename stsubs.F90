@@ -1,6 +1,6 @@
 !Standard procedures often used by me.
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISON: 2017/08/11
+!REVISON: 2017/12/20
 
 !Copyright (C) 2005-2017 Dmitry I. Lyakh (Liakh)
 
@@ -79,11 +79,6 @@
 	public:: wr_mat_dc   !writes a matrix of double complex elements to the screen
 	public:: wr_vec_sp   !writes a vector of single precision elements to the screen
 	public:: wr_vec_dp   !writes a vector of double precision elements to the screen
-!Data:
- !Debug:
-#ifdef GCC_ALLOC_WORKAROUND
-        class(*), pointer, private:: gl_ptr_=>NULL()
-#endif
 
 	contains
 !----------------------------------------
@@ -285,17 +280,12 @@
          character(256):: errmesg
          integer:: errc
 
-         clone=>NULL()
-#ifdef GCC_ALLOC_WORKAROUND
-         allocate(gl_ptr_,SOURCE=object,STAT=errc,ERRMSG=errmesg)
-         clone=>gl_ptr_; gl_ptr_=>NULL()
-#else
+         clone=>NULL(); errc=0
          allocate(clone,SOURCE=object,STAT=errc,ERRMSG=errmesg)
-#endif
          if(errc.ne.0) then
-          write(*,*)'#ERROR(stsubs:clone_object): sourced allocate() failed: '//errmesg
+          write(*,*)'#ERROR(stsubs:clone_object): Fortran sourced allocate() failed: '//errmesg
           if(errmesg(1:39).eq.'Attempt to allocate an allocated object') then !debug
-           write(*,*)'If you see status = F below, you are likely experiencing a GCC runtime bug!'
+           write(*,*)'If you see status = F below, you are likely experiencing a gfortran bug! Switch to GCC/8.0.0+'
            write(*,*)'Object (pointer) association status = ',associated(clone)
           endif
           clone=>NULL()

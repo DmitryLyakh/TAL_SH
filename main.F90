@@ -21,24 +21,31 @@
         program main
         use, intrinsic:: ISO_C_BINDING
         implicit none
-        logical, parameter:: TEST_NVTAL=.TRUE.
+        logical, parameter:: TEST_NVTAL=.FALSE.
         logical, parameter:: TEST_TALSH=.TRUE.
+        logical, parameter:: TEST_NWCHEM=.TRUE.
         logical, parameter:: TEST_COMPLEX=.TRUE.
         logical, parameter:: BENCH_TALSH_RND=.FALSE.
         logical, parameter:: BENCH_TALSH_CUSTOM=.FALSE.
 
         interface
+
+         subroutine test_talsh_c(ierr) bind(c)
+          import
+          integer(C_INT), intent(out):: ierr
+         end subroutine test_talsh_c
+
+         subroutine test_nwchem_c(ierr) bind(c)
+          import
+          integer(C_INT), intent(out):: ierr
+         end subroutine test_nwchem_c
+
 #ifndef NO_GPU
          subroutine test_nvtal_c(ierr) bind(c)
           import
           integer(C_INT), intent(out):: ierr
          end subroutine test_nvtal_c
 #endif
-         subroutine test_talsh_c(ierr) bind(c)
-          import
-          integer(C_INT), intent(out):: ierr
-         end subroutine test_talsh_c
-
         end interface
 
         integer(C_INT):: ierr
@@ -62,6 +69,14 @@
          write(*,*)''
          write(*,'("Testing TAL-SH Fortran API ...")')
          call test_talsh_f(ierr)
+         write(*,'("Done: Status ",i5)') ierr
+         if(ierr.ne.0) stop
+         write(*,*)''
+        endif
+!Test TAL-SH tensor contractions for NWChem:
+        if(TEST_NWCHEM) then
+         write(*,'("Testing TAL-SH tensor contractions for NWChem ...")')
+         call test_nwchem_c(ierr)
          write(*,'("Done: Status ",i5)') ierr
          if(ierr.ne.0) stop
          write(*,*)''
@@ -135,7 +150,7 @@
         if(ierr.ne.TALSH_SUCCESS) then; ierr=3; return; endif
 
 !Create tensors on Host and initialize them to a value:
-        write(*,'("Tensor dimension extent = ",i5)') DIM_EXT
+        write(*,'(" Tensor dimension extent = ",i5)') DIM_EXT
         do i=1,MAX_TENSORS
          write(*,'(1x,"Constructing tensor block ",i2," ... ")',ADVANCE='NO') i
          select case(mod(i,3))
