@@ -1,6 +1,6 @@
 *** TAL-SH: Tensor Algebra Library for Shared Memory Computers ***
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2017/09/25
+REVISION: 2018/02/02
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -806,6 +806,26 @@ API: Discard a tensor block on a specific device:
  Description:
   Resources occupied by a tensor block on a given device, if any, will be released
   immediately, making the tensor block "absent" on that device.
+
+API: Discard a tensor block on all devices except a specific device:
+
+ Fortran 2003:
+  function talsh_tensor_discard_other(tens,dev_id,dev_kind) result(ierr)
+   integer(C_INT):: ierr                           !out: error code (0:success)
+   type(talsh_tens_t), intent(inout):: tens        !inout: tensor block
+   integer(C_INT), intent(in):: dev_id             !in: device id (flat or kind-specific)
+   integer(C_INT), intent(in), optional:: dev_kind !in: device kind (if present, <dev_id> is kind-specific)
+
+ C/C++:
+  int talshTensorDiscardOther( //out: error code (0:success)
+   talsh_tens_t * tens,        //inout: tensor block
+   int dev_id,                 //in: device id (flat or kind-specific)
+   int dev_kind = DEV_DEFAULT  //in: device kind (if present, <dev_id> is kind-specific)
+  )
+
+ Description:
+  Resources occupied by a tensor block on all devices except a given device
+  will be released immediately, making the tensor block "absent" on those devices.
 
 API: Initialize a tensor block:
 

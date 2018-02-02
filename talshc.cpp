@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API.
-REVISION: 2017/12/13
+REVISION: 2018/02/02
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -2162,6 +2162,43 @@ int talshTensorDiscard(talsh_tens_t * tens, int dev_id, int dev_kind)
 int talshTensorDiscard_(talsh_tens_t * tens, int dev_id, int dev_kind) //Fortran wrapper
 {
  return talshTensorDiscard(tens,dev_id,dev_kind);
+}
+
+int talshTensorDiscardOther(talsh_tens_t * tens, int dev_id, int dev_kind)
+/** Discards tensor block body images on all devices except the given one. **/
+{
+ int i,j,k,errc,devid;
+
+ if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
+ if(tens == NULL) return TALSH_INVALID_ARGS;
+ if(talshTensorIsEmpty(tens) != NOPE) return TALSH_OBJECT_IS_EMPTY;
+ if(talshTensorIsHealthy(tens) != YEP) return TALSH_FAILURE;
+ if(dev_kind == DEV_NULL){devid=dev_id;}else{devid=talshFlatDevId(dev_kind,dev_id);}
+ if(devid < 0 || devid >= DEV_MAX) return TALSH_INVALID_ARGS;
+ errc=TALSH_SUCCESS;
+ k=0;
+ for(i=0;i<tens->ndev;++i){
+  if(tens->avail[i] == YEP){ //images to be discarded cannot be discarded again
+   if(tens->dev_rsc[i].dev_id != devid){
+    j=tensDevRsc_release_all(&(tens->dev_rsc[i]));
+    if(j != 0 && errc != TALSH_FAILURE){if(j == NOT_CLEAN){errc=NOT_CLEAN;}else{errc=TALSH_FAILURE;}}
+   }else{
+    if(i > k){
+     tens->dev_rsc[k]=tens->dev_rsc[i]; tens->data_kind[k]=tens->data_kind[i]; tens->avail[k]=tens->avail[i];
+    }
+    ++k;
+   }
+  }else{
+   ++k;
+  }
+ }
+ tens->ndev=k;
+ return errc;
+}
+
+int talshTensorDiscardOther_(talsh_tens_t * tens, int dev_id, int dev_kind) //Fortran wrapper
+{
+ return talshTensorDiscardOther(tens,dev_id,dev_kind);
 }
 
 int talshTensorInit(talsh_tens_t * dtens, double val_real, double val_imag, int dev_id, int dev_kind,

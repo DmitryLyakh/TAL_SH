@@ -1,6 +1,6 @@
 !Timing services (threadsafe).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2016/11/10
+!REVISION: 2018/01/31
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -20,12 +20,10 @@
 !You should have received a copy of the GNU Lesser General Public License
 !along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 
-!PUBLIC FUNCTIONS:
-! # integer timer_start(real8:time_set, integer:time_handle);
-! # logical time_is_off(integer:time_handle, integer:ierr[, logical:destroy]);
-! # integer timer_destroy(integer:time_handle);
-! # real8 timer_tick_sec();
-! # real8 thread_wtime([real8:tbase]);
+!NOTES:
+! # A timer handle (reference to an internal timer object) is thread-private:
+!   Only the thread which acquired the timer is allowed to deal with it later.
+
 !PREPROCESSOR:
 ! # -D NO_OMP: Disable OpenMP (switch to Fortran cpu_time);
 ! # -D USE_OMP_MOD: Use OpenMP Fortran module;
@@ -63,7 +61,8 @@
         real(8), private:: timer_tick=-1d0 !uninitilized
 !FUNCTION VISIBILITY:
         public timer_start
-        public time_is_off
+        public timer_expired
+        public timer_reset
         public timer_destroy
         public timer_tick_sec
         public thread_wtime
@@ -78,12 +77,14 @@
 
        contains
 !---------------------------------------------------------
-        integer function timer_start(time_set,time_handle)
-!This function sets up a timer limited to <time_set> seconds and returns its handle in <time_handle>.
+        integer function timer_start(time_handle,time_set)
+!This function sets up a timer limited to <time_set> seconds
+!and returns its handle in <time_handle>.
         implicit none
-        real(8), intent(in):: time_set     !in: requested time in seconds
         integer, intent(out):: time_handle !out: timer handle
+        real(8), intent(in):: time_set     !in: requested time in seconds
         real(8):: val
+
         timer_start=TIMERS_SUCCESS
         if(time_set.ge.0d0) then
 !$OMP CRITICAL (TIMERS_REGION)
@@ -106,26 +107,27 @@
         endif
         return
         end function timer_start
-!-------------------------------------------------------------
-        logical function time_is_off(time_handle,ierr,destroy)
-!This function tests whether a given timer had expired.
-!If <destroy> is present and .true., timer handle will be destroyed if the timer is expired.
+!---------------------------------------------------------------
+        logical function timer_expired(time_handle,ierr,destroy)
+!This function tests whether a given timer has expired.
+!If <destroy> is present and TRUE, timer handle will be destroyed if the timer has expired.
         implicit none
         integer, intent(inout):: time_handle    !inout: timer handle
         integer, intent(inout):: ierr           !out: error code (0:success)
-        logical, intent(in), optional:: destroy !in: request to destroy the timer if expired
+        logical, intent(in), optional:: destroy !in: request to destroy the timer if it has expired
         real(8):: tm
-        time_is_off=.false.
+
+        timer_expired=.FALSE.
         if(time_handle.ge.0.and.time_handle.lt.MAX_TIMERS) then !valid range
          if(timer(time_handle)%time_interval.ge.0d0) then !valid handle
-          ierr=0
+          ierr=TIMERS_SUCCESS
 #ifndef NO_OMP
           tm=omp_get_wtime()
 #else
           call cpu_time(tm)
 #endif
-          if(tm.ge.timer(time_handle)%beg_time+timer(time_handle)%time_interval) time_is_off=.true.
-          if(time_is_off.and.present(destroy)) then
+          if(tm.ge.timer(time_handle)%beg_time+timer(time_handle)%time_interval) timer_expired=.TRUE.
+          if(timer_expired.and.present(destroy)) then
            if(destroy) then
 !$OMP CRITICAL (TIMERS_REGION)
             timer(time_handle)=timer_t(-1d0,-1d0)
@@ -140,12 +142,45 @@
          ierr=TIMERS_ERR_INVALID_ARG
         endif
         return
-        end function time_is_off
+        end function timer_expired
+!---------------------------------------------------------
+        integer function timer_reset(time_handle,time_set)
+!Resets an existing timer, regardless of its expiration status, to a new setting.
+        implicit none
+        integer, intent(inout):: time_handle     !inout: timer handle
+        real(8), intent(in), optional:: time_set !in: requested time in seconds
+        real(8):: val
+
+        timer_reset=TIMERS_SUCCESS
+        if(time_handle.ge.0.and.time_handle.lt.MAX_TIMERS) then !valid range
+         if(timer(time_handle)%time_interval.ge.0d0) then !valid handle
+#ifndef NO_OMP
+          val=omp_get_wtime()
+#else
+          call cpu_time(val)
+#endif
+          timer(time_handle)%beg_time=val
+          if(present(time_set)) then
+           if(time_set.ge.0d0) then
+            timer(time_handle)%time_interval=time_set
+           else
+            timer_reset=TIMERS_ERR_INVALID_ARG
+           endif
+          endif
+         else
+          timer_reset=TIMERS_ERR_TIMER_NULL
+         endif
+        else
+         timer_reset=TIMERS_ERR_INVALID_ARG
+        endif
+        return
+        end function timer_reset
 !--------------------------------------------------
         integer function timer_destroy(time_handle)
-!This function explicitly frees a time handle.
+!This function explicitly frees a timer handle.
         implicit none
         integer, intent(in):: time_handle
+
         timer_destroy=TIMERS_SUCCESS
         if(time_handle.ge.0.and.time_handle.lt.MAX_TIMERS) then !valid range
          if(timer(time_handle)%time_interval.ge.0d0) then !valid handle
@@ -178,7 +213,8 @@
 !DIR$ ATTRIBUTES OFFLOAD:mic:: thread_wtime
 #endif
         real(8) function thread_wtime(tbase)
-!This function returns the current wall clock time in seconds.
+!This function returns the current wall clock time in seconds;
+!if <tbase> is present, since that moment.
         implicit none
         real(8), intent(in), optional:: tbase
         real(8):: tm

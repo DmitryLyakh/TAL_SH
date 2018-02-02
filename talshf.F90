@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2017/11/03
+!REVISION: 2018/02/02
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -358,6 +358,14 @@
           integer(C_INT), value, intent(in):: dev_id
           integer(C_INT), value, intent(in):: dev_kind
          end function talshTensorDiscard_
+  !Discard a tensor block on all devices except a specific device:
+         integer(C_INT) function talshTensorDiscardOther_(tens,dev_id,dev_kind) bind(c,name='talshTensorDiscardOther_')
+          import
+          implicit none
+          type(talsh_tens_t), intent(inout):: tens
+          integer(C_INT), value, intent(in):: dev_id
+          integer(C_INT), value, intent(in):: dev_kind
+         end function talshTensorDiscardOther_
   !Tensor initialization:
          integer(C_INT) function talshTensorInit_(dtens,val_real,val_imag,dev_id,dev_kind,copy_ctrl,talsh_task)&
                                                  &bind(c,name='talshTensorInit_')
@@ -470,6 +478,7 @@
  !TAL-SH tensor operations API:
         public talsh_tensor_place
         public talsh_tensor_discard
+        public talsh_tensor_discard_other
         public talsh_tensor_init
 !        public talsh_tensor_scale
 !        public talsh_tensor_norm1
@@ -1189,6 +1198,19 @@
          ierr=talshTensorDiscard_(tens,dev_id,dvk)
          return
         end function talsh_tensor_discard
+!-----------------------------------------------------------------------------
+        function talsh_tensor_discard_other(tens,dev_id,dev_kind) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                           !out: error code (0:success)
+         type(talsh_tens_t), intent(inout):: tens        !inout: tensor block
+         integer(C_INT), intent(in):: dev_id             !in: device id (flat or kind-specific)
+         integer(C_INT), intent(in), optional:: dev_kind !in: device kind (if present, <dev_id> is kind-specific)
+         integer(C_INT):: dvk
+
+         if(present(dev_kind)) then; dvk=dev_kind; else; dvk=DEV_NULL; endif
+         ierr=talshTensorDiscardOther_(tens,dev_id,dvk)
+         return
+        end function talsh_tensor_discard_other
 !----------------------------------------------------------------------------------------------
         function talsh_tensor_init(dtens,val,dev_id,dev_kind,copy_ctrl,talsh_task) result(ierr)
          implicit none

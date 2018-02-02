@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level API header.
-REVISION: 2017/11/03
+REVISION: 2018/02/02
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -251,6 +251,11 @@ extern "C"{
                         int dev_id,               //in: device id (flat or kind-specific)
                         int dev_kind = DEV_NULL); //in: device kind (if present, <dev_id> is kind-specific)
  int talshTensorDiscard_(talsh_tens_t * tens, int dev_id, int dev_kind);
+//  Discard a tensor block on all devices except a specific device:
+ int talshTensorDiscardOther(talsh_tens_t * tens,      //inout: tensor block
+                             int dev_id,               //in: device id (flat or kind-specific)
+                             int dev_kind = DEV_NULL); //in: device kind (if present, <dev_id> is kind-specific)
+ int talshTensorDiscardOther_(talsh_tens_t * tens, int dev_id, int dev_kind);
 //  Tensor initialization:
  int talshTensorInit(talsh_tens_t * dtens,              //inout: tensor block
                      double val_real,                   //in: initialization value (real part)

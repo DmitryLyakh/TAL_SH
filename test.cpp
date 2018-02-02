@@ -240,7 +240,17 @@ void test_nwchem_c(int * ierr)
  printf(" Right tensor norm1       = %e\n",talshTensorImageNorm1_cpu(&tens2));
 
 //Execute a tensor contraction on CPU:
- errc=talshTensorContract("D(a,b)+=L(c,d)*R(d,a,b,c)",&tens0,&tens1,&tens2,-1.0,0.0,0,DEV_HOST);
+ errc=talshTensorContract("D(a,b)+=L(c,d)*R(d,a,b,c)",&tens0,&tens1,&tens2,-2.0,0.0,0,DEV_HOST);
+ if(errc == TALSH_SUCCESS){
+  printf(" Tensor contraction has completed successfully\n");
+ }else{
+  printf(" Tensor contraction has failed: Error %d\n",errc);
+  *ierr=9; return;
+ }
+ printf(" Destination tensor norm1 = %e\n",talshTensorImageNorm1_cpu(&tens0));
+
+//Execute a tensor contraction on CPU again:
+ errc=talshTensorContract("D(a,b)+=L(c,d)*R(d,a,b,c)",&tens0,&tens1,&tens2,1.0,0.0,0,DEV_HOST);
  if(errc == TALSH_SUCCESS){
   printf(" Tensor contraction has completed successfully\n");
  }else{

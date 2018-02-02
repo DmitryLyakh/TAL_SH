@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
-!Keep consistent with "tensor_algebra.h"!
-!REVISION: 2017/10/15
+!Keep consistent with "tensor_algebra.h" when appropriate!
+!REVISION: 2018/01/24
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -198,15 +198,15 @@
          integer(C_INT):: data_kind=NO_TYPE !data kind of each tensor element
         end type talsh_tens_data_t
 
-!EXTERNAL INTERFACES (keep consistent with tensor_algebra.h):
- !User-defined tensor block initialization class (state present):
+!EXTERNAL INTERFACES (keep consistent with tensor_algebra.h when appropriate):
+ !User-defined tensor block initialization/update class (state present):
         type, abstract, public:: talsh_tens_definer_t
          contains
           procedure(talsh_tens_def_i), deferred, public:: define_body
         end type talsh_tens_definer_t
- !User-defined tensor block initialization function (stateless):
+ !User-defined tensor block initialization/update functions:
         abstract interface
-
+  !Stateless initialization/update:
          integer(C_INT) function talsh_tens_init_i(tens_body_p,data_kind,tens_shape,tens_signature) bind(c)
           import:: C_PTR,C_INT,C_LONG_LONG,talsh_tens_shape_t,talsh_tens_signature_t
           type(C_PTR), value:: tens_body_p                          !in: pointer to the tensor elements storage (tensor body)
@@ -214,18 +214,17 @@
           type(talsh_tens_shape_t), intent(in):: tens_shape         !in: tensor shape
           type(talsh_tens_signature_t), intent(in):: tens_signature !in: tensor signature
          end function talsh_tens_init_i
-
+  !Interface for .define_body() method of talsh_tens_definer_t:
          integer(C_INT) function talsh_tens_def_i(this,tens_body_p,data_kind,tens_shape,tens_signature)
           import:: C_PTR,C_INT,C_LONG_LONG,talsh_tens_shape_t,talsh_tens_signature_t,talsh_tens_definer_t
-          class(talsh_tens_definer_t), intent(in):: this            !in: tensor body definer object
+          class(talsh_tens_definer_t), intent(inout):: this         !inout: tensor body definer object
           type(C_PTR), value:: tens_body_p                          !in: pointer to the tensor elements storage (tensor body)
           integer(C_INT), value:: data_kind                         !in: data kind: {R4,R8,C4,C8}
           type(talsh_tens_shape_t), intent(in):: tens_shape         !in: tensor shape
           type(talsh_tens_signature_t), intent(in):: tens_signature !in: tensor signature
          end function talsh_tens_def_i
-
         end interface
-
+!VISIBILITY:
         public talsh_tens_init_i
         public talsh_tens_def_i
 
