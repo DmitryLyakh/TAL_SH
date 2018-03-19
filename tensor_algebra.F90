@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h" when appropriate!
-!REVISION: 2018/01/24
+!REVISION: 2018/03/07
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -214,11 +214,11 @@
           type(talsh_tens_shape_t), intent(in):: tens_shape         !in: tensor shape
           type(talsh_tens_signature_t), intent(in):: tens_signature !in: tensor signature
          end function talsh_tens_init_i
-  !Interface for .define_body() method of talsh_tens_definer_t:
+  !Interface for .define_body() deferred method of talsh_tens_definer_t:
          integer(C_INT) function talsh_tens_def_i(this,tens_body_p,data_kind,tens_shape,tens_signature)
           import:: C_PTR,C_INT,C_LONG_LONG,talsh_tens_shape_t,talsh_tens_signature_t,talsh_tens_definer_t
-          class(talsh_tens_definer_t), intent(inout):: this         !inout: tensor body definer object
-          type(C_PTR), value:: tens_body_p                          !in: pointer to the tensor elements storage (tensor body)
+          class(talsh_tens_definer_t), intent(in):: this            !in: tensor body definer object
+          type(C_PTR), value:: tens_body_p                          !in: pointer to the tensor elements storage (tensor body:inout)
           integer(C_INT), value:: data_kind                         !in: data kind: {R4,R8,C4,C8}
           type(talsh_tens_shape_t), intent(in):: tens_shape         !in: tensor shape
           type(talsh_tens_signature_t), intent(in):: tens_signature !in: tensor signature

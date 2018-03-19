@@ -27,9 +27,14 @@
 #include "talsh.h"
 
 #ifdef __cplusplus
+#include "talshxx.hpp"
+#endif
+
+#ifdef __cplusplus
 extern "C"{
 #endif
 void test_talsh_c(int * ierr);
+void test_talsh_cxx(int * ierr);
 void test_nwchem_c(int * ierr);
 #ifndef NO_GPU
 void test_nvtal_c(int * ierr);
@@ -167,6 +172,30 @@ void test_talsh_c(int * ierr)
 
  return;
 }
+
+
+#ifdef __cplusplus
+void test_talsh_cxx(int * ierr)
+{
+ const int VDIM=40; //virtual dimension size
+ const int ODIM=20; //occupied dimension size
+
+ *ierr=0;
+ //Initialize:
+ talsh::initialize();
+ {
+  //Create destination tensor:
+  talsh::Tensor dtens({VDIM,VDIM,ODIM,ODIM},0.0,{0,0,0,0});
+  //Create left tensor:
+  talsh::Tensor ltens({VDIM,VDIM,ODIM,ODIM},1.0,{0,0,0,0});
+  //Create right tensor:
+  talsh::Tensor rtens({VDIM,VDIM,ODIM,ODIM},2.0,{0,0,0,0});
+ }
+ //Shutdown:
+ talsh::shutdown();
+ return;
+}
+#endif
 
 
 void test_nwchem_c(int * ierr)

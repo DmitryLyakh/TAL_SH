@@ -276,6 +276,7 @@ CFLAGS_DEV = -c -g -O0 -D_DEBUG
 CFLAGS_OPT = -c -O3
 endif
 CFLAGS = $(CFLAGS_$(BUILD_TYPE)) $(NO_GPU) $(NO_AMD) $(NO_PHI) $(NO_BLAS) -D$(EXA_OS) $(PIC_FLAG)
+CPPFLAGS = $(CFLAGS) -std=c++11
 
 #FORTRAN FLAGS:
 FFLAGS_INTEL_DEV = -c -g -O0 -fpp -vec-threshold4 -qopenmp -mkl=parallel
@@ -288,7 +289,7 @@ FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fch
 FFLAGS_GNU_OPT = -c -fopenmp -O3
 FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -Mallocatable=03 -g -O0
 FFLAGS_PGI_OPT = -c -mp -Mcache_align -Mstandard -Mallocatable=03 -O3
-FFLAGS_IBM_DEV = -c -qsmp=omp -g9 -O0 -qkeepparm -qcheck -qsigtrap -qstackprotect=all
+FFLAGS_IBM_DEV = -c -qsmp=noopt -g9 -O0 -qfullpath -qkeepparm -qcheck -qsigtrap -qstackprotect=all
 FFLAGS_IBM_OPT = -c -qsmp=omp -O3
 FFLAGS = $(FFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(DF)$(NO_GPU) $(DF)$(NO_AMD) $(DF)$(NO_PHI) $(DF)$(NO_BLAS) $(DF)-D$(EXA_OS) $(PIC_FLAG)
 
@@ -319,6 +320,9 @@ ifeq ($(WITH_CUTT),YES)
 	rm -rf ./tmp_obj__
 else
 	ar cr lib$(NAME).a $(OBJS)
+ifeq ($(EXA_OS),LINUX)
+	ld -shared -o lib$(NAME).so $(OBJS)
+endif
 endif
 
 ./OBJ/dil_basic.o: dil_basic.F90
@@ -354,8 +358,8 @@ endif
 
 ./OBJ/tensor_algebra_gpu_nvidia.o: tensor_algebra_gpu_nvidia.cu talsh_complex.h tensor_algebra.h
 ifeq ($(GPU_CUDA),CUDA)
-	$(CUDA_COMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) --ptx --source-in-ptx tensor_algebra_gpu_nvidia.cu -o ./OBJ/tensor_algebra_gpu_nvidia.o
-	$(CUDA_COMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) tensor_algebra_gpu_nvidia.cu -o ./OBJ/tensor_algebra_gpu_nvidia.o
+	$(CUDA_COMP) -ccbin /usr/bin/g++ $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) --ptx --source-in-ptx tensor_algebra_gpu_nvidia.cu -o ./OBJ/tensor_algebra_gpu_nvidia.ptx
+	$(CUDA_COMP) -ccbin /usr/bin/g++ $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) tensor_algebra_gpu_nvidia.cu -o ./OBJ/tensor_algebra_gpu_nvidia.o
 else
 	cp tensor_algebra_gpu_nvidia.cu tensor_algebra_gpu_nvidia.cpp
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CFLAGS) tensor_algebra_gpu_nvidia.cpp -o ./OBJ/tensor_algebra_gpu_nvidia.o
@@ -368,8 +372,8 @@ endif
 ./OBJ/talshc.o: talshc.cpp talsh.h tensor_algebra.h ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/mem_manager.o
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CFLAGS) talshc.cpp -o ./OBJ/talshc.o
 
-./OBJ/test.o: test.cpp talsh.h tensor_algebra.h lib$(NAME).a
-	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CFLAGS) test.cpp -o ./OBJ/test.o
+./OBJ/test.o: test.cpp talshxx.hpp talshxx.cpp talsh.h tensor_algebra.h lib$(NAME).a
+	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) test.cpp -o ./OBJ/test.o
 
 ./OBJ/main.o: main.F90 ./OBJ/test.o ./OBJ/talshf.o lib$(NAME).a
 	$(FCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(FFLAGS) main.F90 -o ./OBJ/main.o

@@ -10,6 +10,7 @@
 *.module_id
 *.hash
 *.a
+*.so
 *.x
 *.log
 *.out

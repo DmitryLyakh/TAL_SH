@@ -35,6 +35,11 @@
           integer(C_INT), intent(out):: ierr
          end subroutine test_talsh_c
 
+         subroutine test_talsh_cxx(ierr) bind(c)
+          import
+          integer(C_INT), intent(out):: ierr
+         end subroutine test_talsh_cxx
+
          subroutine test_nwchem_c(ierr) bind(c)
           import
           integer(C_INT), intent(out):: ierr
@@ -60,13 +65,19 @@
          write(*,*)''
         endif
 #endif
-!Test TAL-SH Fortran API interface:
+!Test TAL-SH C/C++ API interface:
         if(TEST_TALSH) then
          write(*,'("Testing TAL-SH C/C++ API ...")')
          call test_talsh_c(ierr)
          write(*,'("Done: Status ",i5)') ierr
          if(ierr.ne.0) stop
          write(*,*)''
+         write(*,'("Testing TAL-SH C++11 API ...")')
+         call test_talsh_cxx(ierr)
+         write(*,'("Done: Status ",i5)') ierr
+         if(ierr.ne.0) stop
+         write(*,*)''
+!Test TAL-SH Fortran API interface:
          write(*,'("Testing TAL-SH Fortran API ...")')
          call test_talsh_f(ierr)
          write(*,'("Done: Status ",i5)') ierr

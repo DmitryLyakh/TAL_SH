@@ -1,5 +1,5 @@
-/** ExaTensor::TAL-SH: Device-unified user-level API.
-REVISION: 2018/02/02
+/** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
+REVISION: 2018/03/14
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -1236,7 +1236,7 @@ void talshTensorPrintInfo(const talsh_tens_t * tens_block)
  int i,dvn,dvk;
 
  if(tens_block != NULL){
-  printf("\n#MESSAGE: Printing TAL-SH tensor info:\n");
+  printf("#MESSAGE: Printing TAL-SH tensor info:\n");
   printf(" Tensor block address: %p\n",tens_block);
   printf(" Tensor block shape:\n");
   printf("  Tensor block rank: %d\n",tens_block->shape_p->num_dim);
