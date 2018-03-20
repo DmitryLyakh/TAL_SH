@@ -6,6 +6,7 @@ project (TALSH C CXX Fortran)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(FindCUDA)
+find_package(MPI REQUIRED)
 
 #TODO:
 #CUDA FLAGS - cuTT
@@ -23,8 +24,8 @@ else()
 	set(TALSH_GPU_DEFS NO_GPU)
 endif()
 
-set(TALSH_CXX_FLAGS ${CMAKE_CXX_FLAGS} -O3)
-set(TALSH_Fortran_FLAGS ${CMAKE_Fortran_FLAGS} -O3)
+set(TALSH_CXX_FLAGS ${CMAKE_CXX_FLAGS} -O3 -fPIC)
+set(TALSH_Fortran_FLAGS ${CMAKE_Fortran_FLAGS} -O3 -fPIC)
 
 if(CMAKE_Fortran_COMPILER_ID STREQUAL "Intel")
   set(TALSH_Fortran_FLAGS ${TALSH_Fortran_FLAGS} -fpp -vec-threshold4 -qopenmp -mkl=parallel)
@@ -47,7 +48,7 @@ endif()
 set(TALSH_CXX_COMPILE_DEFS ${TALSH_GPU_DEFS} ${NO_BLAS} NO_AMD NO_PHI LINUX) 
 set(TALSH_Fortran_COMPILE_DEFS ${TALSH_GPU_DEFS} ${NO_BLAS} NO_AMD NO_PHI LINUX) 
 
-set(TALSH_INCLUDES ${MPI_INCLUDE_PATH} ${CUDA_INCLUDE_DIRS})
+set(TALSH_INCLUDES ${MPI_C_INCLUDE_PATH} ${MPI_Fortran_INCLUDE_PATH} ${CUDA_INCLUDE_DIRS})
 
 set (TALSH_FORTRAN_SOURCES
 	 dil_basic.F90
@@ -106,5 +107,11 @@ endif()
 
 
 set(TALSH_HEADERS mem_manager.h  talsh_complex.h  talsh.h  tensor_algebra.h)
-install(FILES ${TALSH_HEADERS} DESTINATION ${CMAKE_INSTALL_PREFIX}/include)
-install(FILES ${PROJECT_BINARY_DIR}/libtalsh.a DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+
+install(TARGETS talsh
+        LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+
+install(FILES ${TALSH_HEADERS}
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/include
+        
+)
