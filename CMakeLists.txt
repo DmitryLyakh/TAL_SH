@@ -109,7 +109,8 @@ endif()
 set(TALSH_HEADERS mem_manager.h  talsh_complex.h  talsh.h  tensor_algebra.h)
 
 install(TARGETS talsh
-        LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+        LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}/lib
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
 
 install(FILES ${TALSH_HEADERS}
         DESTINATION ${CMAKE_INSTALL_PREFIX}/include
