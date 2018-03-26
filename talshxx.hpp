@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2018/03/14
+REVISION: 2018/03/26
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -87,15 +87,15 @@ class Tensor{
 public:
 
  template <typename T>
- Tensor(const std::initializer_list<int> dims,               //tensor dimension extents
-        const T init_val,                                    //scalar initialization value (its type will define tensor element data kind)
-        const std::initializer_list<std::size_t> signature); //tensor signature (identifier): signature[0:rank-1]
+ Tensor(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
+        const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
+        const T init_val);                                  //scalar initialization value (its type will define tensor element data kind)
 
  template <typename T>
- Tensor(const std::initializer_list<int> dims,               //tensor dimension extents
-        const T init_val,                                    //scalar initialization value (its type will define tensor element data kind)
-        void * ext_mem,                                      //pointer to an external memory storage where the tensor body will reside
-        const std::initializer_list<std::size_t> signature); //tensor signature (identifier): signature[0:rank-1]
+ Tensor(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
+        const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
+        T * ext_mem,                                        //pointer to an external memory storage where the tensor body will reside
+        const T * init_val);                                //optional scalar initialization value (provide nullptr if not needed)
 
  Tensor(const Tensor & tensor) = delete;
 
@@ -107,8 +107,10 @@ public:
 
 private:
 
- talsh_tens_t tensor_;
  std::initializer_list<std::size_t> signature_;
+ talsh_tens_t tensor_;
+ talsh_task_t write_task_;
+ int used_;
 };
 
 } //namespace talsh

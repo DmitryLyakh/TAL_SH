@@ -185,11 +185,12 @@ void test_talsh_cxx(int * ierr)
  talsh::initialize();
  {
   //Create destination tensor:
-  talsh::Tensor dtens({VDIM,VDIM,ODIM,ODIM},0.0,{0,0,0,0});
+  talsh::Tensor dtens({0,0,0,0},{VDIM,VDIM,ODIM,ODIM},0.0);
   //Create left tensor:
-  talsh::Tensor ltens({VDIM,VDIM,ODIM,ODIM},1.0,{0,0,0,0});
+  talsh::Tensor ltens({0,0,0,0},{VDIM,VDIM,ODIM,ODIM},1.0);
   //Create right tensor:
-  talsh::Tensor rtens({VDIM,VDIM,ODIM,ODIM},2.0,{0,0,0,0});
+  talsh::Tensor rtens({0,0,0,0},{VDIM,VDIM,ODIM,ODIM},2.0);
+  rtens.print(); //debug
  }
  //Shutdown:
  talsh::shutdown();
