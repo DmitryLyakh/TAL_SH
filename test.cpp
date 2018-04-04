@@ -27,6 +27,8 @@
 #include "talsh.h"
 
 #ifdef __cplusplus
+#include <iostream>
+#include <string>
 #include "talshxx.hpp"
 #endif
 
@@ -186,11 +188,17 @@ void test_talsh_cxx(int * ierr)
  {
   //Create destination tensor:
   talsh::Tensor dtens({0,0,0,0},{VDIM,VDIM,ODIM,ODIM},0.0);
+  dtens.print(); //debug
   //Create left tensor:
-  talsh::Tensor ltens({0,0,0,0},{VDIM,VDIM,ODIM,ODIM},1.0);
+  talsh::Tensor ltens({0,0,0,0},{ODIM,VDIM,ODIM,VDIM},0.01);
   //Create right tensor:
-  talsh::Tensor rtens({0,0,0,0},{VDIM,VDIM,ODIM,ODIM},2.0);
-  rtens.print(); //debug
+  talsh::Tensor rtens({0,0,0,0},{VDIM,VDIM,VDIM,VDIM},0.001);
+  //Perform tensor contraction:
+  talsh::TensorTask task_hl;
+  dtens.contraction(task_hl,std::string("D(a,b,c,d)+=L(d,i,c,j)*R(j,b,i,a)"),ltens,rtens,DEV_HOST,0,0.5);
+  bool done = dtens.sync();
+  std::cout << "Tensor contraction completion status = " << done << std::endl;
+  dtens.print(); //debug
  }
  //Shutdown:
  talsh::shutdown();

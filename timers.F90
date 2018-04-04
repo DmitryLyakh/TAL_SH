@@ -1,6 +1,6 @@
 !Timing services (threadsafe).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2018/01/31
+!REVISION: 2018/04/03
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -53,7 +53,7 @@
          real(8), private:: beg_time      !time the timer started (sec)
          real(8), private:: time_interval !time the timer is set for (sec)
         end type timer_t
-!DATA:
+!GLOBAL DATA:
         integer, private:: j_
         type(timer_t), private:: timer(0:MAX_TIMERS-1)=(/(timer_t(-1d0,-1d0),j_=0,MAX_TIMERS-1)/)
         integer, private:: handle_stack(0:MAX_TIMERS-1)=(/(j_,j_=0,MAX_TIMERS-1)/)
@@ -85,7 +85,7 @@
         real(8), intent(in):: time_set     !in: requested time in seconds
         real(8):: val
 
-        timer_start=TIMERS_SUCCESS
+        timer_start=TIMERS_SUCCESS; time_handle=-1
         if(time_set.ge.0d0) then
 !$OMP CRITICAL (TIMERS_REGION)
          if(handle_sp.ge.0.and.handle_sp.lt.MAX_TIMERS) then
@@ -107,17 +107,18 @@
         endif
         return
         end function timer_start
-!---------------------------------------------------------------
-        logical function timer_expired(time_handle,ierr,destroy)
+!-------------------------------------------------------------------------
+        logical function timer_expired(time_handle,ierr,destroy,curr_time)
 !This function tests whether a given timer has expired.
 !If <destroy> is present and TRUE, timer handle will be destroyed if the timer has expired.
         implicit none
-        integer, intent(inout):: time_handle    !inout: timer handle
-        integer, intent(inout):: ierr           !out: error code (0:success)
-        logical, intent(in), optional:: destroy !in: request to destroy the timer if it has expired
-        real(8):: tm
+        integer, intent(inout):: time_handle       !inout: timer handle
+        integer, intent(inout):: ierr              !out: error code (0:success)
+        logical, intent(in), optional:: destroy    !in: request to destroy the timer if it has expired
+        real(8), intent(out), optional:: curr_time !out: current timer value in seconds
+        real(8):: tm,ct
 
-        timer_expired=.FALSE.
+        timer_expired=.FALSE.; ct=0d0
         if(time_handle.ge.0.and.time_handle.lt.MAX_TIMERS) then !valid range
          if(timer(time_handle)%time_interval.ge.0d0) then !valid handle
           ierr=TIMERS_SUCCESS
@@ -126,7 +127,8 @@
 #else
           call cpu_time(tm)
 #endif
-          if(tm.ge.timer(time_handle)%beg_time+timer(time_handle)%time_interval) timer_expired=.TRUE.
+          ct=tm-timer(time_handle)%beg_time
+          if(ct.ge.timer(time_handle)%time_interval) timer_expired=.TRUE.
           if(timer_expired.and.present(destroy)) then
            if(destroy) then
 !$OMP CRITICAL (TIMERS_REGION)
@@ -141,6 +143,7 @@
         else
          ierr=TIMERS_ERR_INVALID_ARG
         endif
+        if(present(curr_time)) curr_time=ct
         return
         end function timer_expired
 !---------------------------------------------------------
@@ -167,6 +170,7 @@
             timer_reset=TIMERS_ERR_INVALID_ARG
            endif
           endif
+!$OMP FLUSH
          else
           timer_reset=TIMERS_ERR_TIMER_NULL
          endif
@@ -200,6 +204,7 @@
         real(8) function timer_tick_sec()
 !This function returns the wall clock tick length in seconds.
         implicit none
+
 #ifndef NO_OMP
 !$OMP CRITICAL (TIMERS_REGION)
         if(timer_tick.le.0d0) timer_tick=omp_get_wtick()
@@ -218,6 +223,7 @@
         implicit none
         real(8), intent(in), optional:: tbase
         real(8):: tm
+
 #ifndef NO_OMP
         thread_wtime=omp_get_wtime()
 #else

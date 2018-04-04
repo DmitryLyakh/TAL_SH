@@ -65,7 +65,8 @@ set (TALSH_FORTRAN_SOURCES
 
 set (TALSH_CXX_SOURCES
 	mem_manager.cpp
-	talshc.cpp)
+	talshc.cpp
+	talsh_task.cpp)
 
 if(TALSH_GPU)
 	set(TALSH_CUDA_SOURCES tensor_algebra_gpu_nvidia.cu)

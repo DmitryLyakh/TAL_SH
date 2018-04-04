@@ -306,7 +306,7 @@ LFLAGS = $(MPI_LINK) $(LA_LINK) $(LTHREAD) $(CUDA_LINK) $(LIB)
 
 OBJS =  ./OBJ/dil_basic.o ./OBJ/stsubs.o ./OBJ/combinatoric.o ./OBJ/symm_index.o ./OBJ/timers.o \
 	./OBJ/tensor_algebra.o ./OBJ/tensor_algebra_cpu.o ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_dil_omp.o \
-	./OBJ/mem_manager.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/talshf.o ./OBJ/talshc.o
+	./OBJ/mem_manager.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/talshf.o ./OBJ/talshc.o ./OBJ/talsh_task.o
 
 $(NAME): lib$(NAME).a ./OBJ/test.o ./OBJ/main.o
 	$(FCOMP) ./OBJ/main.o ./OBJ/test.o lib$(NAME).a $(LFLAGS) -o test_$(NAME).x
@@ -372,7 +372,10 @@ endif
 ./OBJ/talshc.o: talshc.cpp talsh.h tensor_algebra.h ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/mem_manager.o
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CFLAGS) talshc.cpp -o ./OBJ/talshc.o
 
-./OBJ/test.o: test.cpp talshxx.hpp talshxx.cpp talsh.h tensor_algebra.h lib$(NAME).a
+./OBJ/talsh_task.o: talsh_task.cpp talsh.h ./OBJ/talshc.o
+	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) talsh_task.cpp -o ./OBJ/talsh_task.o
+
+./OBJ/test.o: test.cpp talshxx.cpp talshxx.hpp talsh_task.hpp talsh.h tensor_algebra.h lib$(NAME).a
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) test.cpp -o ./OBJ/test.o
 
 ./OBJ/main.o: main.F90 ./OBJ/test.o ./OBJ/talshf.o lib$(NAME).a
@@ -381,4 +384,4 @@ endif
 
 .PHONY: clean
 clean:
-	rm -f *.x *.a ./OBJ/* *.mod *.modmic *.ptx *.log
+	rm -f *.x *.a *.so ./OBJ/* *.mod *.modmic *.ptx *.log
