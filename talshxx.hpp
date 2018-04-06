@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2018/03/29
+REVISION: 2018/04/06
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -37,7 +37,7 @@ namespace talsh{
 
 static const std::size_t DEFAULT_HOST_BUFFER_SIZE = TALSH_NO_HOST_BUFFER;
 
-//Tensor data kind (static type VS numeric constant conversions):
+//Tensor data kind (static type VS numeric data kind constant conversions):
 
 template <typename T>
 struct TensorData{
@@ -77,6 +77,7 @@ template <> struct TensorDataType<C8>{using value = std::complex<double>;};
 
 //Helper functions:
 
+// Generic real/imaginary part extraction:
 double realPart(float number){return static_cast<double>(number);}
 double realPart(double number){return number;}
 double realPart(std::complex<float> number){return static_cast<double>(number.real());}
@@ -115,6 +116,11 @@ public:
  /** Dtor **/
  ~Tensor();
 
+ /** Returns the tensor rank (order in math terms). **/
+ int getRank() const;
+ /** Returns the tensor order (rank in phys terms). **/
+ int getOrder() const;
+
  /** Use count increment/decrement. **/
  Tensor & operator++(); //increments tensor use count
  Tensor & operator--(); //decrements tensor use count
@@ -126,15 +132,27 @@ public:
            const int device_id = 0,          //in: specific device of the given kind which the synchronization is done for
            void * dev_mem = nullptr);        //in: optional pointer to that device's client memory where the tensor data should go
 
- /** Performs a tensor contraction of two tensors and accumulates the result into the current tensor. **/
+ /** Performs a tensor contraction of two tensors and accumulates the result into the current tensor:
+     this += left * right * factor
+     Returns an error code (0:success). **/
  template <typename T>
- void contraction(TensorTask & task_handle,               //out: task handle associated with this operation
-                  const std::string & pattern,            //in: contraction pattern string
-                  Tensor & left,                          //in: left tensor
-                  Tensor & right,                         //in: right tensor
-                  const int device_kind = DEV_HOST,       //in: execution device kind
-                  const int device_id = 0,                //in: execution device id
-                  const T factor = TensorData<T>::unity); //in: alpha factor
+ int contractAccumulate(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)
+                        const std::string & pattern,            //in: contraction pattern string
+                        Tensor & left,                          //in: left tensor
+                        Tensor & right,                         //in: right tensor
+                        const int device_kind = DEV_HOST,       //in: execution device kind
+                        const int device_id = 0,                //in: execution device id
+                        const T factor = TensorData<T>::unity); //in: alpha factor
+
+ /** Performs a matrix multiplication on two tensors and accumulates the result into the current tensor.
+     Returns an error code (0:success). **/
+ template <typename T>
+ int multiplyAccumulate(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)
+                        Tensor & left,                          //in: left tensor
+                        Tensor & right,                         //in: right tensor
+                        const int device_kind = DEV_HOST,       //in: execution device kind
+                        const int device_id = 0,                //in: execution device id
+                        const T factor = TensorData<T>::unity); //in: alpha factor
 
  /** Prints the tensor. **/
  void print() const;
@@ -154,19 +172,6 @@ private:
 
 void initialize(std::size_t * host_buffer_size = nullptr); //in: desired host buffer size; out: actual host buffer size
 void shutdown();
-
-template <typename T>
-void gemm(Tensor & result, //out: result tensor
-          Tensor & left,   //in: left tensor
-          Tensor & right,  //in: right tensor
-          const T factor); //in: alpha factor
-
-#if 0
-template <typename T>
-Tensor gemm(Tensor & left,   //in: left tensor
-            Tensor & right,  //in: right tensor
-            const T factor); //in: alpha factor
-#endif
 
 } //namespace talsh
 

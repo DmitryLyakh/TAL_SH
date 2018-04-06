@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2018/04/04
+REVISION: 2018/04/06
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -82,6 +82,18 @@ Tensor::~Tensor()
 }
 
 
+/** Returns the tensor rank (order in math terms). **/
+int Tensor::getRank() const
+{
+ return talshTensorRank(&tensor_);
+}
+/** Returns the tensor order (rank in phys terms). **/
+int Tensor::getOrder() const
+{
+ return this->getRank();
+}
+
+
 /** Use counter increment. **/
 Tensor & Tensor::operator++()
 {
@@ -113,29 +125,74 @@ bool Tensor::sync(const int device_kind, const int device_id, void * dev_mem)
 }
 
 
-/** Performs a tensor contraction of two tensors and accumulates the result into the current tensor. **/
+/** Performs a tensor contraction of two tensors and accumulates the result into the current tensor:
+    this += left * right * factor **/
 template <typename T>
-void Tensor::contraction(TensorTask & task_handle,    //out: task handle associated with this operation
-                         const std::string & pattern, //in: contraction pattern string
-                         Tensor & left,               //in: left tensor
-                         Tensor & right,              //in: right tensor
-                         const int device_kind,       //in: execution device kind
-                         const int device_id,         //in: execution device id
-                         const T factor)              //in: alpha factor
+int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle associated with this operation or nullptr (synchronous)
+                               const std::string & pattern, //in: contraction pattern string
+                               Tensor & left,               //in: left tensor
+                               Tensor & right,              //in: right tensor
+                               const int device_kind,       //in: execution device kind
+                               const int device_id,         //in: execution device id
+                               const T factor)              //in: alpha factor
 {
+ int errc = TALSH_SUCCESS;
  this->complete_write_task();
  const char * contr_ptrn = pattern.c_str();
  talsh_tens_t * dtens = this->get_talsh_tensor_ptr();
  talsh_tens_t * ltens = left.get_talsh_tensor_ptr();
  talsh_tens_t * rtens = right.get_talsh_tensor_ptr();
- assert(task_handle.is_empty());
- talsh_task_t * task_hl = task_handle.get_talsh_task_ptr();
- //++left; ++right; ++(*this);
- int errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MTT,task_hl);
- //if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::contraction): talshTensorContract error " << errc << std::endl; //debug
- assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
- if(errc == TALSH_SUCCESS) write_task_ = &task_handle;
- return;
+ if(task_handle != nullptr){ //asynchronous
+  assert(task_handle->is_empty());
+  talsh_task_t * task_hl = task_handle->get_talsh_task_ptr();
+  //++left; ++right; ++(*this);
+  errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MTT,task_hl);
+  //if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+  if(errc == TALSH_SUCCESS) write_task_ = task_handle;
+ }else{ //synchronous
+  errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MTT);
+  //if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+ }
+ return errc;
+}
+
+
+/** Performs a matrix multiplication on two tensors and accumulates the result into the current tensor. **/
+template <typename T>
+int Tensor::multiplyAccumulate(TensorTask * task_handle, //out: task handle associated with this operation or nullptr (synchronous)
+                               Tensor & left,            //in: left tensor
+                               Tensor & right,           //in: right tensor
+                               const int device_kind,    //in: execution device kind
+                               const int device_id,      //in: execution device id
+                               const T factor)           //in: alpha factor
+{
+ int errc = TALSH_SUCCESS;
+ char cptrn[MAX_CONTRACTION_PATTERN_LEN];
+ int dptrn[MAX_TENSOR_RANK*2];
+ int drank = this->getRank();
+ int lrank = left.getRank();
+ int rrank = right.getRank();
+ assert(lrank + rrank >= drank && (lrank + rrank - drank)%2 == 0);
+ int nc = (lrank + rrank - drank)/2; //number of contracted indices
+ int nl = lrank - nc; //number of left open indices
+ int nr = rrank - nc; //number of right open indices
+ //Create the digital contraction pattern:
+ int l = 0;
+ for(int i = 0; i < nl; ++i){dptrn[l++] = (i+1);}
+ for(int i = 0; i < nc; ++i){dptrn[l++] = -(i+1);}
+ for(int i = 0; i < nc; ++i){dptrn[l++] = -(nl+1+i);}
+ for(int i = 0; i < nr; ++i){dptrn[l++] = (nl+1+i);}
+ //Convert the digital contraction pattern into a symbolc one:
+ int cpl;
+ get_contr_pattern_sym(&lrank,&rrank,dptrn,cptrn,&cpl,&errc); cptrn[cpl]='\0';
+ assert(errc == 0);
+ std::string contr_ptrn(cptrn);
+ std::cout << contr_ptrn << std::endl; //debug
+ //Execute tensor contraction:
+ errc = this->contractAccumulate(task_handle,contr_ptrn,left,right,device_kind,device_id,factor);
+ return errc;
 }
 
 
@@ -195,18 +252,6 @@ void shutdown()
 {
  int errc = talshShutdown();
  assert(errc == TALSH_SUCCESS);
- return;
-}
-
-
-/** Performs a matrix-matrix multiplication on tensors. **/
-template <typename T>
-void gemm(Tensor & result, Tensor & left, Tensor & right, const T factor)
-{
- //Construct a matrix-multiplication pattern:
- 
- //Contract tensors:
- //result.contraction(pattern,left,right,factor);
  return;
 }
 

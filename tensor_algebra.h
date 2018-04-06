@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2017/10/20
+REVISION: 2018/04/06
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -89,8 +89,9 @@ FOR DEVELOPERS ONLY:
 #endif
 
 //GLOBAL PARAMETERS:
-#define MAX_TENSOR_RANK 32         //max allowed tensor rank: Must be multiple of 4
-#define MAX_TENSOR_OPERANDS 4      //max allowed number of tensor operands in a tensor operation
+#define MAX_TENSOR_RANK 32    //max allowed tensor rank: Must be multiple of 4
+#define MAX_TENSOR_OPERANDS 4 //max allowed number of tensor operands in a tensor operation
+#define MAX_CONTRACTION_PATTERN_LEN 1024 //max allowed length of a symbolic contraction pattern
 
 #define MAX_GPU_ARGS 128           //max allowed number of tensor arguments simultaneously residing on a GPU: Must be a multiple of 8
 #define MAX_MLNDS_PER_TENS 4       //max number of multi-indices per tensor block (dims, divs, grps, prmn)

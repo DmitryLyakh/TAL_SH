@@ -58,13 +58,16 @@ export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
 export PATH_BLAS_ESSL ?= /sw/summitdev/essl/5.5.0/lib64
 export PATH_BLAS_ESSL_DEP ?= /sw/summitdev/xl/20161123/xlf/15.1.5/lib
 
-# CUDA (only if you build with CUDA):
+#IBM XL C++ (only set this if you use IBM XL):
+export PATH_IBM_XL_CPP = /sw/summit/xl/20180319-beta/xlC/13.1.7/lib
+
+# CUDA (only set this if you build with CUDA):
 export PATH_CUDA ?= /usr/local/cuda
 #  Only reset these if CUDA files are spread in the system directories:
  export PATH_CUDA_INC ?= $(PATH_CUDA)/include
  export PATH_CUDA_LIB ?= $(PATH_CUDA)/lib64
  export PATH_CUDA_BIN ?= $(PATH_CUDA)/bin
-# cuTT path (if you use cuTT library):
+# cuTT path (only set this if you use cuTT library):
 export PATH_CUTT ?= /home/div/src/cutt
 
 #YOU ARE DONE!
@@ -141,8 +144,8 @@ LIB_CRAY = -L.
 LIB_IBM = -L.
 LIB_NOWRAP = $(LIB_$(TOOLKIT))
 LIB_WRAP = -L.
-ifeq ($(TOOLKIT),PGI)
- LIB = $(LIB_$(WRAP)) -lstdc++
+ifeq ($(TOOLKIT),IBM)
+ LIB = $(LIB_$(WRAP)) -L$(PATH_IBM_XL_CPP) -libmc++ -lstdc++
 else
  LIB = $(LIB_$(WRAP)) -lstdc++
 endif
@@ -276,7 +279,11 @@ CFLAGS_DEV = -c -g -O0 -D_DEBUG
 CFLAGS_OPT = -c -O3
 endif
 CFLAGS = $(CFLAGS_$(BUILD_TYPE)) $(NO_GPU) $(NO_AMD) $(NO_PHI) $(NO_BLAS) -D$(EXA_OS) $(PIC_FLAG)
+ifeq ($(TOOLKIT),CRAY)
+CPPFLAGS = $(CFLAGS) -h std=c++11
+else
 CPPFLAGS = $(CFLAGS) -std=c++11
+endif
 
 #FORTRAN FLAGS:
 FFLAGS_INTEL_DEV = -c -g -O0 -fpp -vec-threshold4 -qopenmp -mkl=parallel
