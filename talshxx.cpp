@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2018/04/06
+REVISION: 2018/04/16
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -24,7 +24,9 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #include <iostream>
 #include <complex>
 #include <initializer_list>
+#include <vector>
 #include <string>
+#include <memory>
 #include <assert.h>
 
 #include "talsh.h"
@@ -34,9 +36,9 @@ namespace talsh{
 
 
 template <typename T>
-Tensor::Tensor(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
-               const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
-               const T init_val):                                  //scalar initialization value (its type will define tensor element data kind)
+Tensor::Impl::Impl(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
+                   const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
+                   const T init_val):                                  //scalar initialization value (its type will define tensor element data kind)
  signature_(signature), used_(0)
 {
  static_assert(TensorData<T>::supported,"Tensor data type is not supported!");
@@ -49,12 +51,20 @@ Tensor::Tensor(const std::initializer_list<std::size_t> signature, //tensor sign
  write_task_ = nullptr;
 }
 
-
 template <typename T>
 Tensor::Tensor(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
                const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
-               T * ext_mem,                                        //pointer to an external memory storage where the tensor body will reside
-               const T * init_val):                                //optional scalar initialization value (provide nullptr if not needed)
+               const T init_val):                                  //scalar initialization value (its type will define tensor element data kind)
+ pimpl_(new Impl(signature,dims,init_val))
+{
+}
+
+
+template <typename T>
+Tensor::Impl::Impl(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
+                   const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
+                   T * ext_mem,                                        //pointer to an external memory storage where the tensor body will reside
+                   const T * init_val):                                //optional scalar initialization value (provide nullptr if not needed)
  signature_(signature), used_(0)
 {
  static_assert(TensorData<T>::supported,"Tensor data type is not supported!");
@@ -73,8 +83,17 @@ Tensor::Tensor(const std::initializer_list<std::size_t> signature, //tensor sign
  write_task_ = nullptr;
 }
 
+template <typename T>
+Tensor::Tensor(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
+               const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
+               T * ext_mem,                                        //pointer to an external memory storage where the tensor body will reside
+               const T * init_val):                                //optional scalar initialization value (provide nullptr if not needed)
+ pimpl_(new Impl(signature,dims,ext_mem,init_val))
+{
+}
 
-Tensor::~Tensor()
+
+Tensor::Impl::~Impl()
 {
  assert(used_ == 0 && write_task_ == nullptr);
  int errc = talshTensorDestruct(&tensor_);
@@ -85,7 +104,7 @@ Tensor::~Tensor()
 /** Returns the tensor rank (order in math terms). **/
 int Tensor::getRank() const
 {
- return talshTensorRank(&tensor_);
+ return talshTensorRank(&(pimpl_->tensor_));
 }
 /** Returns the tensor order (rank in phys terms). **/
 int Tensor::getOrder() const
@@ -97,7 +116,7 @@ int Tensor::getOrder() const
 /** Use counter increment. **/
 Tensor & Tensor::operator++()
 {
- ++used_;
+ ++(pimpl_->used_);
  return *this;
 }
 
@@ -105,8 +124,8 @@ Tensor & Tensor::operator++()
 /** Use counter decrement. **/
 Tensor & Tensor::operator--()
 {
- assert(used_ > 0);
- --used_;
+ assert(pimpl_->used_ > 0);
+ --(pimpl_->used_);
  return *this;
 }
 
@@ -118,7 +137,7 @@ bool Tensor::sync(const int device_kind, const int device_id, void * dev_mem)
 {
  bool res = this->complete_write_task();
  if(res){
-  int errc = talshTensorPlace(&tensor_,device_id,device_kind,dev_mem);
+  int errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,dev_mem);
   assert(errc == TALSH_SUCCESS);
  }
  return res;
@@ -149,7 +168,7 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
   errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MTT,task_hl);
   //if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
-  if(errc == TALSH_SUCCESS) write_task_ = task_handle;
+  if(errc == TALSH_SUCCESS) pimpl_->write_task_ = task_handle;
  }else{ //synchronous
   errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MTT);
   //if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
@@ -200,18 +219,18 @@ int Tensor::multiplyAccumulate(TensorTask * task_handle, //out: task handle asso
 void Tensor::print() const
 {
  std::cout << "TAL-SH Tensor {";
- std::size_t rank = signature_.size();
- for(std::size_t i = 0; i < rank - 1; ++i) std::cout << signature_.begin()[i] << ",";
- if(rank > 0) std::cout << signature_.begin()[rank-1];
- std::cout << "} [use=" << used_ << "]:" << std::endl;
- talshTensorPrintInfo(&tensor_);
+ std::size_t rank = (pimpl_->signature_).size();
+ for(std::size_t i = 0; i < rank - 1; ++i) std::cout << (pimpl_->signature_).at(i) << ",";
+ if(rank > 0) std::cout << (pimpl_->signature_).at(rank-1);
+ std::cout << "} [use=" << pimpl_->used_ << "]:" << std::endl;
+ talshTensorPrintInfo(&(pimpl_->tensor_));
  return;
 }
 
 
 talsh_tens_t * Tensor::get_talsh_tensor_ptr()
 {
- return &tensor_;
+ return &(pimpl_->tensor_);
 }
 
 
@@ -219,9 +238,9 @@ talsh_tens_t * Tensor::get_talsh_tensor_ptr()
 bool Tensor::complete_write_task()
 {
  bool res = true;
- if(write_task_ != nullptr){
-  res = write_task_->wait();
-  write_task_ = nullptr;
+ if(pimpl_->write_task_ != nullptr){
+  res = pimpl_->write_task_->wait();
+  pimpl_->write_task_ = nullptr;
  }
  return res;
 }

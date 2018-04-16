@@ -188,12 +188,12 @@ void test_talsh_cxx(int * ierr)
  //Tensor contraction (brackets are needed to push talsh::shutdown() out of scope):
  {
   //Create destination tensor:
-  talsh::Tensor dtens({0,0,0,0},{VDIM,VDIM,ODIM,ODIM},0.0);
+  talsh::Tensor dtens({1,2,3,4},{VDIM,VDIM,ODIM,ODIM},0.0);
   dtens.print(); //debug
   //Create left tensor:
-  talsh::Tensor ltens({0,0,0,0},{ODIM,VDIM,ODIM,VDIM},0.01);
+  talsh::Tensor ltens({5,6,7,8},{ODIM,VDIM,ODIM,VDIM},0.01);
   //Create right tensor:
-  talsh::Tensor rtens({0,0,0,0},{VDIM,VDIM,VDIM,VDIM},0.001);
+  talsh::Tensor rtens({9,10,11,12},{VDIM,VDIM,VDIM,VDIM},0.001);
   //Perform tensor contraction:
   talsh::TensorTask task_hl;
   *ierr = dtens.contractAccumulate(&task_hl,std::string("D(a,b,c,d)+=L(d,i,c,j)*R(j,b,i,a)"),ltens,rtens,DEV_HOST,0,0.5);
@@ -202,14 +202,14 @@ void test_talsh_cxx(int * ierr)
   dtens.print(); //debug
  }
  //Matrix multiplication (brackets are needed to push talsh::shutdown() out of scope):
- {
+ if(*ierr == 0){
   //Create destination tensor:
-  talsh::Tensor dtens({0,0,0,0},{VDIM,VDIM,ODIM,ODIM},0.0);
+  talsh::Tensor dtens({1,2,3,4},{VDIM,VDIM,ODIM,ODIM},0.0);
   dtens.print(); //debug
   //Create left tensor:
-  talsh::Tensor ltens({0,0,0,0},{VDIM,VDIM,VDIM,VDIM},0.01);
+  talsh::Tensor ltens({5,6,7,8},{VDIM,VDIM,VDIM,VDIM},0.01);
   //Create right tensor:
-  talsh::Tensor rtens({0,0,0,0},{VDIM,VDIM,ODIM,ODIM},0.001);
+  talsh::Tensor rtens({9,10,11,12},{VDIM,VDIM,ODIM,ODIM},0.001);
   //Perform matrix multiplication:
   talsh::TensorTask task_hl;
   *ierr = dtens.multiplyAccumulate(&task_hl,ltens,rtens,DEV_HOST,0,0.5);

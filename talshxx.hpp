@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2018/04/06
+REVISION: 2018/04/16
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -26,7 +26,9 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 
 #include <complex>
 #include <initializer_list>
+#include <vector>
 #include <string>
+#include <memory>
 
 #include "talsh.h"        //TAL-SH C header
 #include "talsh_task.hpp" //TAL-SH C++ task
@@ -108,13 +110,19 @@ public:
         const T * init_val);                                //optional scalar initialization value (provide nullptr if not needed)
 
  /** Copy ctor **/
- Tensor(const Tensor & tensor) = delete;
+ Tensor(const Tensor & tensor) = default;
 
  /** Copy assignment **/
- Tensor & operator=(const Tensor & tensor) = delete;
+ Tensor & operator=(const Tensor & tensor) = default;
+
+ /** Move ctor **/
+ Tensor(Tensor && tensor) = default;
+
+ /** Move assignment **/
+ Tensor & operator=(Tensor && tensor) = default;
 
  /** Dtor **/
- ~Tensor();
+ ~Tensor() = default;
 
  /** Returns the tensor rank (order in math terms). **/
  int getRank() const;
@@ -159,13 +167,37 @@ public:
 
 private:
 
+ //Private methods:
  talsh_tens_t * get_talsh_tensor_ptr();
  bool complete_write_task();
 
- std::initializer_list<std::size_t> signature_; //tensor signature (unique integer multi-index identifier)
- talsh_tens_t tensor_;                          //TAL-SH tensor block
- TensorTask * write_task_;                      //non-owning pointer to the task handle for the current asynchronous operation updating the tensor, if any
- int used_;                                     //number of unfinished (asynchronous) TAL-SH operations that are currently using the tensor
+ //Implementation:
+ struct Impl{
+
+  std::vector<std::size_t> signature_; //tensor signature (unique integer multi-index identifier)
+  talsh_tens_t tensor_;                //TAL-SH tensor block
+  TensorTask * write_task_;            //non-owning pointer to the task handle for the current asynchronous operation updating the tensor, if any
+  int used_;                           //number of unfinished (asynchronous) TAL-SH operations that are currently using the tensor
+
+  template <typename T>
+  Impl(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
+       const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
+       const T init_val);                                  //scalar initialization value (its type will define tensor element data kind)
+
+  template <typename T>
+  Impl(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
+       const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
+       T * ext_mem,                                        //pointer to an external memory storage where the tensor body will reside
+       const T * init_val);                                //optional scalar initialization value (provide nullptr if not needed)
+
+  Impl(const Impl &) = delete;
+  Impl & operator=(const Impl &) = delete;
+
+  ~Impl();
+ };
+
+ //Data members:
+ std::shared_ptr<Impl> pimpl_;
 };
 
 //Namespace API:
