@@ -177,6 +177,7 @@ private:
   std::vector<std::size_t> signature_; //tensor signature (unique integer multi-index identifier)
   talsh_tens_t tensor_;                //TAL-SH tensor block
   TensorTask * write_task_;            //non-owning pointer to the task handle for the current asynchronous operation updating the tensor, if any
+  void * host_mem_;                    //saved pointer to the original external Host memory buffer provided by the application during construction
   int used_;                           //number of unfinished (asynchronous) TAL-SH operations that are currently using the tensor
 
   template <typename T>

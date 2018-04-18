@@ -39,7 +39,7 @@ template <typename T>
 Tensor::Impl::Impl(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
                    const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
                    const T init_val):                                  //scalar initialization value (its type will define tensor element data kind)
- signature_(signature), used_(0)
+ signature_(signature), host_mem_(nullptr), used_(0)
 {
  static_assert(TensorData<T>::supported,"Tensor data type is not supported!");
  int errc = talshTensorClean(&tensor_);
@@ -65,7 +65,7 @@ Tensor::Impl::Impl(const std::initializer_list<std::size_t> signature, //tensor 
                    const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
                    T * ext_mem,                                        //pointer to an external memory storage where the tensor body will reside
                    const T * init_val):                                //optional scalar initialization value (provide nullptr if not needed)
- signature_(signature), used_(0)
+ signature_(signature), host_mem_(((void*)ext_mem)), used_(0)
 {
  static_assert(TensorData<T>::supported,"Tensor data type is not supported!");
  int errc = talshTensorClean(&tensor_);
@@ -137,7 +137,16 @@ bool Tensor::sync(const int device_kind, const int device_id, void * dev_mem)
 {
  bool res = this->complete_write_task();
  if(res){
-  int errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,dev_mem);
+  int errc;
+  if(dev_mem != nullptr){ //client provided an explicit buffer to place the tensor into
+   errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,dev_mem);
+  }else{ //no explicit buffer provided, use saved information (if any)
+   if(device_kind == DEV_HOST){
+    errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,pimpl_->host_mem_);
+   }else{
+    errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind);
+   }
+  }
   assert(errc == TALSH_SUCCESS);
  }
  return res;
