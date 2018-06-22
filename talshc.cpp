@@ -59,6 +59,7 @@ FOR DEVELOPER(s):
 #include <time.h>
 
 #include "talsh.h"
+#include <omp.h>
 
 //GLOBALS:
 // General:
@@ -521,7 +522,15 @@ int talshInit(size_t * host_buf_size,    //inout: Host Argument Buffer size in b
               int namds, int amd_list[]) //in: number of AMD GPU(s) to use and the list of AMD GPU(s) to use
 /** Initializes the TAL-SH runtime. **/
 {
- int i,j,gpu_beg,gpu_end,errc;
+ int i,j,gpu_beg,gpu_end,errc,threads,tid;
+ 
+#ifndef NO_OMP
+ #pragma omp parallel
+ {
+  tid=omp_get_thread_num();
+  if(tid == 0) threads=omp_get_num_threads();
+ }
+#endif
 
  if(talsh_on) return TALSH_ALREADY_INITIALIZED;
 //CPU Host:
