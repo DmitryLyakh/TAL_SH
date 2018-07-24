@@ -1,7 +1,7 @@
 !Tensor Algebra Library for Intel MIC built upon
 !the Tensor Algebra Library for multi-core CPU.
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2015/09/23
+!REVISION: 2018/07/24
 
 !Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
@@ -30,13 +30,11 @@
 ! -D NO_PHI: Ignore Intel MIC;
        module tensor_algebra_cpu_phi
         use tensor_algebra_cpu !certain procedures and globals are imported from this module
+#ifndef NO_OMP
+        use omp_lib
+#endif
         implicit none
         public
-#ifndef NO_OMP
-#ifndef USE_OMP_MOD
-        integer, external, private:: omp_get_max_threads,omp_get_num_threads,omp_get_thread_num
-#endif
-#endif
 
 #ifndef NO_PHI
 !PARAMETERS:

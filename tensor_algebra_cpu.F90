@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2017/11/03
+!REVISION: 2018/07/24
 
 !Copyright (C) 2013-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -36,7 +36,6 @@
 ! - c8 - complex(8);
 !PREPROCESSOR:
 ! -D NO_OMP: Do not use OpenMP (serial);
-! -D USE_OMP_MOD: Use OpenMP Fortran module;
 ! -D NO_BLAS: Replace BLAS calls with in-house routines (slower);
 ! -D USE_MKL: USE Intel MKL library for BLAS;
 ! -D NO_PHI: Ignore Intel MIC (Xeon Phi);
@@ -48,25 +47,16 @@
         use combinatoric
         use timers
         use symm_index
+#ifndef NO_OMP
+        use omp_lib
+#endif
 #ifdef USE_MKL
         use mkl95_blas
         use mkl95_lapack
         use mkl95_precision
 #endif
-#ifndef NO_OMP
-#ifdef USE_OMP_MOD
-        use omp_lib
         implicit none
         public
-#else
-        implicit none
-        public
-        integer, external, private:: omp_get_max_threads,omp_get_num_threads,omp_get_thread_num
-#endif
-#else
-        implicit none
-        public
-#endif
 !PARAMETERS:
  !Default output for the module procedures:
         integer, private:: CONS_OUT=6     !default output device for this module (also used for INTEL MIC TAL)
@@ -290,14 +280,14 @@
 
          select case(mem_policy)
          case(MEM_ALLOC_REGULAR,MEM_ALLOC_TMP_BUF,MEM_ALLOC_ALL_BUF)
-!$OMP ATOMIC WRITE
+!$OMP ATOMIC WRITE SEQ_CST
           MEM_ALLOC_POLICY=mem_policy
          case default
           if(present(ierr)) ierr=1 !invalid policy
           return
          end select
          if(present(fallback)) then
-!$OMP ATOMIC WRITE
+!$OMP ATOMIC WRITE SEQ_CST
           MEM_ALLOC_FALLBACK=fallback
          endif
          if(present(ierr)) ierr=0
@@ -311,10 +301,10 @@
 	implicit none
 	integer, intent(in):: alg
 	if(alg.eq.0) then
-!$OMP ATOMIC WRITE
+!$OMP ATOMIC WRITE SEQ_CST
 	 DATA_KIND_SYNC=.FALSE.
 	else
-!$OMP ATOMIC WRITE
+!$OMP ATOMIC WRITE SEQ_CST
 	 DATA_KIND_SYNC=.TRUE.
 	endif
 	return
@@ -327,10 +317,10 @@
 	implicit none
 	integer, intent(in):: alg
 	if(alg.eq.0) then
-!$OMP ATOMIC WRITE
+!$OMP ATOMIC WRITE SEQ_CST
 	 TRANS_SHMEM=.FALSE.
 	else
-!$OMP ATOMIC WRITE
+!$OMP ATOMIC WRITE SEQ_CST
 	 TRANS_SHMEM=.TRUE.
 	endif
 	return
@@ -344,10 +334,10 @@
 	integer, intent(in):: alg
 #ifndef NO_BLAS
 	if(alg.eq.0) then
-!$OMP ATOMIC WRITE
+!$OMP ATOMIC WRITE SEQ_CST
 	 DISABLE_BLAS=.FALSE.
 	else
-!$OMP ATOMIC WRITE
+!$OMP ATOMIC WRITE SEQ_CST
 	 DISABLE_BLAS=.TRUE.
 	endif
 #endif
@@ -5546,7 +5536,7 @@
 	    enddo loop1
 	    if(lb.ne.0_LONGINT) then
 	     if(VERBOSE) write(CONS_OUT,'("ERROR(tensor_algebra::tensor_block_copy_dlf_r4): invalid remainder: ",i11,1x,i4)') lb,n
-!$OMP ATOMIC WRITE
+!$OMP ATOMIC WRITE SEQ_CST
 	     ierr=2
 	     exit loop0
 	    endif
@@ -5787,7 +5777,7 @@
 	    enddo loop1
 	    if(lb.ne.0_LONGINT) then
 	     if(VERBOSE) write(CONS_OUT,'("ERROR(tensor_algebra::tensor_block_copy_dlf_r8): invalid remainder: ",i11,1x,i4)') lb,n
-!$OMP ATOMIC WRITE
+!$OMP ATOMIC WRITE SEQ_CST
 	     ierr=2
 	     exit loop0
 	    endif
@@ -6055,7 +6045,7 @@
 	    enddo loop1
 	    if(lb.ne.0_LONGINT) then
 	     if(VERBOSE) write(CONS_OUT,'("ERROR(tensor_algebra::tensor_block_copy_dlf_c8): invalid remainder: ",i11,1x,i4)') lb,n
-!$OMP ATOMIC WRITE
+!$OMP ATOMIC WRITE SEQ_CST
 	     ierr=2
 	     exit loop0
 	    endif
@@ -7781,7 +7771,7 @@
 	     enddo
 	     kf=kf-1; if(kf.lt.0) exit tloop
 	    enddo tloop
-!$OMP ATOMIC
+!$OMP ATOMIC UPDATE
 	    tens_out(l_out)=tens_out(l_out)+val_tr
 	   enddo
 !$OMP END PARALLEL
@@ -7940,7 +7930,7 @@
 	     enddo
 	     kf=kf-1; if(kf.lt.0) exit tloop
 	    enddo tloop
-!$OMP ATOMIC
+!$OMP ATOMIC UPDATE
 	    tens_out(l_out)=tens_out(l_out)+val_tr
 	   enddo
 !$OMP END PARALLEL
@@ -8099,7 +8089,7 @@
 	     enddo
 	     kf=kf-1; if(kf.lt.0) exit tloop
 	    enddo tloop
-!$OMP ATOMIC
+!$OMP ATOMIC UPDATE
 	    tens_out(l_out)=tens_out(l_out)+val_tr
 	   enddo
 !$OMP END PARALLEL

@@ -56,10 +56,10 @@ export PATH_BLAS_MKL_DEP ?= /opt/intel/compilers_and_libraries/linux/lib/intel64
 export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
 #  ESSL BLAS:
 export PATH_BLAS_ESSL ?= /sw/summitdev/essl/5.5.0/lib64
-export PATH_BLAS_ESSL_DEP ?= /sw/summitdev/xl/20161123/xlf/15.1.5/lib
 
-#IBM XL C++ (only set this if you use IBM XL):
-export PATH_IBM_XL_CPP = /sw/summit/xl/20180319-beta/xlC/13.1.7/lib
+#IBM XL (only set these if you use IBM XL and/or ESSL):
+export PATH_IBM_XL_CPP ?= /sw/summit/xl/16.1.1-beta1/xlC/16.1.1/lib
+export PATH_IBM_XL_FOR ?= /sw/summit/xl/16.1.1-beta1/xlf/16.1.1/lib
 
 # CUDA (only set this if you build with CUDA):
 export PATH_CUDA ?= /usr/local/cuda
@@ -173,14 +173,14 @@ MPI_LINK_WRAP = -L.
 MPI_LINK = $(MPI_LINK_$(WRAP))
 
 #LINEAR ALGEBRA FLAGS:
-LA_LINK_ATLAS = -L$(PATH_BLAS_ATLAS) -lblas -llapack
+LA_LINK_ATLAS = -L$(PATH_BLAS_ATLAS) -lblas
 ifeq ($(TOOLKIT),GNU)
 LA_LINK_MKL = -L$(PATH_BLAS_MKL) -lmkl_intel_lp64 -lmkl_gnu_thread -lmkl_core -lpthread -lm -ldl
 else
 LA_LINK_MKL = -L$(PATH_BLAS_MKL) -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lpthread -lm -ldl -L$(PATH_BLAS_MKL_DEP) -liomp5
 endif
 LA_LINK_ACML = -L$(PATH_BLAS_ACML) -lacml_mp
-LA_LINK_ESSL = -L$(PATH_BLAS_ESSL) -lesslsmp -L$(PATH_BLAS_ESSL_DEP) -lxlf90_r -lxlfmath
+LA_LINK_ESSL = -L$(PATH_BLAS_ESSL) -lesslsmp -L$(PATH_IBM_XL_FOR) -lxlf90_r -lxlfmath
 ifeq ($(BLASLIB),NONE)
 LA_LINK_NOWRAP = -L.
 else
@@ -292,7 +292,7 @@ FFLAGS_INTEL_OPT = -c -O3 -fpp -vec-threshold4 -qopenmp -mkl=parallel
 #FFLAGS_INTEL_OPT = -c -O3 -fpp -vec-threshold4 -openmp
 FFLAGS_CRAY_DEV = -c -g
 FFLAGS_CRAY_OPT = -c -O3
-FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -g -O0
+FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -g -Og
 FFLAGS_GNU_OPT = -c -fopenmp -O3
 FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -Mallocatable=03 -g -O0
 FFLAGS_PGI_OPT = -c -mp -Mcache_align -Mstandard -Mallocatable=03 -O3
@@ -311,7 +311,7 @@ LTHREAD = $(LTHREAD_$(TOOLKIT))
 #LINKING:
 LFLAGS = $(MPI_LINK) $(LA_LINK) $(LTHREAD) $(CUDA_LINK) $(LIB)
 
-OBJS =  ./OBJ/dil_basic.o ./OBJ/stsubs.o ./OBJ/combinatoric.o ./OBJ/symm_index.o ./OBJ/timers.o \
+OBJS =  ./OBJ/dil_basic.o ./OBJ/stsubs.o ./OBJ/combinatoric.o ./OBJ/symm_index.o ./OBJ/timer.o ./OBJ/timers.o \
 	./OBJ/tensor_algebra.o ./OBJ/tensor_algebra_cpu.o ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_dil_omp.o \
 	./OBJ/mem_manager.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/talshf.o ./OBJ/talshc.o ./OBJ/talsh_task.o
 
@@ -324,6 +324,7 @@ ifeq ($(WITH_CUTT),YES)
 	ar x $(PATH_CUTT)/lib/libcutt.a
 	mv *.o ./tmp_obj__
 	ar cr lib$(NAME).a $(OBJS) ./tmp_obj__/*.o
+	g++ -shared -o lib$(NAME).so $(OBJS) ./tmp_obj__/*.o
 	rm -rf ./tmp_obj__
 else
 	ar cr lib$(NAME).a $(OBJS)
@@ -345,7 +346,10 @@ endif
 ./OBJ/symm_index.o: symm_index.F90
 	$(FCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(FFLAGS) symm_index.F90 -o ./OBJ/symm_index.o
 
-./OBJ/timers.o: timers.F90
+./OBJ/timer.o: timer.cpp timer.h
+	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) timer.cpp -o ./OBJ/timer.o
+
+./OBJ/timers.o: timers.F90 ./OBJ/timer.o
 	$(FCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(FFLAGS) timers.F90 -o ./OBJ/timers.o
 
 ./OBJ/tensor_algebra.o: tensor_algebra.F90 ./OBJ/dil_basic.o
