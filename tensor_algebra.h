@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2018/04/06
+REVISION: 2018/09/21
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -294,7 +294,7 @@ FOR DEVELOPERS ONLY:
 #define EXITED(x) printf("\n#DEBUG: EXITED %s\n",#x);
 
 //DERIVED TYPES (keep consistent with tensor_algebra.F90):
-// Tensor shape:
+// Tensor shape (interoperable):
 typedef struct{
  int num_dim;   //tensor rank (number of dimensions): >=0; -1:empty
  int * dims;    //tensor dimension extents (either in regular RAM or pinned)
@@ -302,11 +302,18 @@ typedef struct{
  int * grps;    //tensor dimension groups (either in regular RAM or pinned)
 } talsh_tens_shape_t;
 
-// Tensor signature:
+// Tensor signature (interoperable):
 typedef struct{
  int num_dim;               //tensor rank (number of dimensions): >=0; -1:empty
  long long int * signature; //tensor signature: An array of long integers of size <num_dim>
 } talsh_tens_signature_t;
+
+// Tensor data descriptor (interoperable):
+typedef struct{
+ void * base;
+ size_t volume;
+ int data_kind;
+} talsh_tens_data_t;
 
 // Device resource (occupied by a tensor block):
 typedef struct{
@@ -353,8 +360,9 @@ typedef struct{
 //Note: Adding new CUDA events will require adjustment of NUM_EVENTS_PER_TASK.
 
 // Interface for a user-defined tensor block initialization function:
-typedef int (*talsh_tens_init_i)(void * tens_body_p, const int data_kind,
-                                 const talsh_tens_shape_t * tens_shape, const talsh_tens_signature_t * tens_signature);
+typedef int (*talsh_tens_init_i)(const talsh_tens_data_t * tens_data,
+                                 const talsh_tens_shape_t * tens_shape,
+                                 const talsh_tens_signature_t * tens_signature);
 
 // Device statistics:
 typedef struct{
@@ -376,7 +384,7 @@ extern "C"{
 //Generic:
  int tens_valid_data_kind(int datk, int * datk_size = NULL);
  int tens_valid_data_kind_(int datk, int * datk_size);
- void get_contr_pattern_sym(const int * rank_left, const int * rank_right, const int * cptrn_dig, char * cptrn_sym, int * cpl, int * ierr);
+ void get_contr_pattern_sym(const int * rank_left, const int * rank_right, const int * conj_bits, const int * cptrn_dig, char * cptrn_sym, int * cpl, int * ierr);
  size_t tens_elem_offset_f(unsigned int num_dim, const unsigned int * dims, const unsigned int * mlndx);
  void tens_elem_mlndx_f(size_t offset, unsigned int num_dim, const unsigned int * dims, unsigned int * mlndx);
  unsigned int argument_coherence_get_value(unsigned int coh_ctrl, unsigned int tot_args, unsigned int arg_num);

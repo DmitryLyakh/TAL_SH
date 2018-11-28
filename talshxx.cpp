@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2018/04/16
+REVISION: 2018/08/20
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -33,6 +33,11 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #include "talsh_task.hpp"
 
 namespace talsh{
+
+constexpr float TensorData<float>::unity;
+constexpr double TensorData<double>::unity;
+constexpr std::complex<float> TensorData<std::complex<float>>::unity;
+constexpr std::complex<double> TensorData<std::complex<double>>::unity;
 
 
 template <typename T>
@@ -214,7 +219,8 @@ int Tensor::multiplyAccumulate(TensorTask * task_handle, //out: task handle asso
  for(int i = 0; i < nr; ++i){dptrn[l++] = (nl+1+i);}
  //Convert the digital contraction pattern into a symbolc one:
  int cpl;
- get_contr_pattern_sym(&lrank,&rrank,dptrn,cptrn,&cpl,&errc); cptrn[cpl]='\0';
+ int conj_bits = 0;
+ get_contr_pattern_sym(&lrank,&rrank,&conj_bits,dptrn,cptrn,&cpl,&errc); cptrn[cpl]='\0';
  assert(errc == 0);
  std::string contr_ptrn(cptrn);
  std::cout << contr_ptrn << std::endl; //debug

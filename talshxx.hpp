@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2018/04/16
+REVISION: 2018/08/19
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -46,29 +46,33 @@ struct TensorData{
  static constexpr int kind = NO_TYPE;
  static constexpr bool supported = false;
 };
+
 template <>
 struct TensorData<float>{
  static constexpr int kind = R4;
  static constexpr bool supported = true;
  static constexpr float unity = 1.0f;
 };
+
 template <>
 struct TensorData<double>{
  static constexpr int kind = R8;
  static constexpr bool supported = true;
  static constexpr double unity = 1.0;
 };
+
 template <>
 struct TensorData<std::complex<float>>{
  static constexpr int kind = C4;
  static constexpr bool supported = true;
- static constexpr std::complex<float> unity = std::complex<float>(1.0f,0.0f);
+ static constexpr std::complex<float> unity = {1.0f,0.0f};
 };
+
 template <>
 struct TensorData<std::complex<double>>{
  static constexpr int kind = C8;
  static constexpr bool supported = true;
- static constexpr std::complex<double> unity = std::complex<double>(1.0,0.0);
+ static constexpr std::complex<double> unity = {1.0,0.0};
 };
 
 template <int talsh_data_kind> struct TensorDataType{using value = void;};

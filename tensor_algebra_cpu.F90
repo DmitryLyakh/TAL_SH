@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2018/07/24
+!REVISION: 2018/08/21
 
 !Copyright (C) 2013-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -280,14 +280,16 @@
 
          select case(mem_policy)
          case(MEM_ALLOC_REGULAR,MEM_ALLOC_TMP_BUF,MEM_ALLOC_ALL_BUF)
-!$OMP ATOMIC WRITE SEQ_CST
+!!!$OMP ATOMIC WRITE SEQ_CST
+!$OMP ATOMIC WRITE
           MEM_ALLOC_POLICY=mem_policy
          case default
           if(present(ierr)) ierr=1 !invalid policy
           return
          end select
          if(present(fallback)) then
-!$OMP ATOMIC WRITE SEQ_CST
+!!!$OMP ATOMIC WRITE SEQ_CST
+!$OMP ATOMIC WRITE
           MEM_ALLOC_FALLBACK=fallback
          endif
          if(present(ierr)) ierr=0
@@ -301,10 +303,12 @@
 	implicit none
 	integer, intent(in):: alg
 	if(alg.eq.0) then
-!$OMP ATOMIC WRITE SEQ_CST
+!!!$OMP ATOMIC WRITE SEQ_CST
+!$OMP ATOMIC WRITE
 	 DATA_KIND_SYNC=.FALSE.
 	else
-!$OMP ATOMIC WRITE SEQ_CST
+!!!$OMP ATOMIC WRITE SEQ_CST
+!$OMP ATOMIC WRITE
 	 DATA_KIND_SYNC=.TRUE.
 	endif
 	return
@@ -317,10 +321,12 @@
 	implicit none
 	integer, intent(in):: alg
 	if(alg.eq.0) then
-!$OMP ATOMIC WRITE SEQ_CST
+!!!$OMP ATOMIC WRITE SEQ_CST
+!$OMP ATOMIC WRITE
 	 TRANS_SHMEM=.FALSE.
 	else
-!$OMP ATOMIC WRITE SEQ_CST
+!!!$OMP ATOMIC WRITE SEQ_CST
+!$OMP ATOMIC WRITE
 	 TRANS_SHMEM=.TRUE.
 	endif
 	return
@@ -334,10 +340,12 @@
 	integer, intent(in):: alg
 #ifndef NO_BLAS
 	if(alg.eq.0) then
-!$OMP ATOMIC WRITE SEQ_CST
+!!!$OMP ATOMIC WRITE SEQ_CST
+!$OMP ATOMIC WRITE
 	 DISABLE_BLAS=.FALSE.
 	else
-!$OMP ATOMIC WRITE SEQ_CST
+!!!$OMP ATOMIC WRITE SEQ_CST
+!$OMP ATOMIC WRITE
 	 DISABLE_BLAS=.TRUE.
 	endif
 #endif
@@ -3802,7 +3810,7 @@
 ! - ierr - error code (0:success);
 ! - conj_bits - (optional) conjugation bits: bit 0 for D, bit 1 for L, and bit 2 for R;
 !NOTES:
-! - Index labels can only contain English letters and/or numbers.
+! - Index labels may only contain English letters and/or numbers.
 !   Indices are separated by commas. Parentheses are mandatory.
 ! - ASCII is assumed.
 	implicit none
@@ -3919,12 +3927,14 @@
 	 end function index_label_ok
 
 	end subroutine get_contr_pattern
-!------------------------------------------------------------------------------------------
-        subroutine get_contr_pattern_sym(rank_left,rank_right,cptrn_dig,cptrn_sym,cpl,ierr) bind(c,name='get_contr_pattern_sym') !SERIAL
+!-----------------------------------------------------------------------------------------------------
+        subroutine get_contr_pattern_sym(rank_left,rank_right,conj_bits,cptrn_dig,cptrn_sym,cpl,ierr)&
+        &bind(c,name='get_contr_pattern_sym') !SERIAL
 !Converts a digital tensor contraction pattern into a symbolic form.
         implicit none
         integer(C_INT), intent(in):: rank_left                         !in: rank of the left tensor
         integer(C_INT), intent(in):: rank_right                        !in: rank of the right tensor
+        integer(C_INT), intent(in):: conj_bits                         !in: argument conjugation bits: {0:D,1:L,2:R}
         integer(C_INT), intent(in):: cptrn_dig(1:rank_left+rank_right) !in: digital contraction pattern
         character(C_CHAR), intent(inout):: cptrn_sym(1:*)              !out: symbolic contraction pattern
         integer(C_INT), intent(out):: cpl                              !out: length of <cptrn_sym>
@@ -3938,11 +3948,19 @@
 !Count uncontracted indices:
           nu=0; do i=1,rank_left+rank_right; if(cptrn_dig(i).gt.0) nu=nu+1; enddo
 !Print the destination tensor:
-          cptrn_sym(1:len_trim('D('))=(/'D','('/); cpl=cpl+len_trim('D(')
+          if(iand(conj_bits,1_C_INT).eq.0) then !no conjugation
+           cptrn_sym(1:len_trim('D('))=(/'D','('/); cpl=cpl+len_trim('D(')
+          else !conjugation
+           cptrn_sym(1:len_trim('D+('))=(/'D','+','('/); cpl=cpl+len_trim('D+(')
+          endif
           m=iachar('a'); do i=1,nu; cptrn_sym(cpl+1:cpl+2)=(/achar(m),','/); cpl=cpl+2; m=m+1; enddo
           if(cptrn_sym(cpl).eq.'(') cpl=cpl+1; cptrn_sym(cpl)=')'
 !Print the left tensor:
-          cptrn_sym(cpl+1:cpl+len_trim('+=L('))=(/'+','=','L','('/); cpl=cpl+len_trim('+=L(')
+          if(iand(conj_bits,2_C_INT).eq.0) then !no conjugation
+           cptrn_sym(cpl+1:cpl+len_trim('+=L('))=(/'+','=','L','('/); cpl=cpl+len_trim('+=L(')
+          else !conjugation
+           cptrn_sym(cpl+1:cpl+len_trim('+=L+('))=(/'+','=','L','+','('/); cpl=cpl+len_trim('+=L+(')
+          endif
           do i=1,rank_left
            if(cptrn_dig(i).gt.0) then !uncontracted index
             cptrn_sym(cpl+1:cpl+2)=(/achar(iachar('a')+cptrn_dig(i)-1),','/); cpl=cpl+2
@@ -3953,7 +3971,11 @@
           enddo
           if(cptrn_sym(cpl).eq.'(') cpl=cpl+1; cptrn_sym(cpl)=')'
 !Print the right tensor:
-          cptrn_sym(cpl+1:cpl+len_trim('*R('))=(/'*','R','('/); cpl=cpl+len_trim('*R(')
+          if(iand(conj_bits,4_C_INT).eq.0) then !no conjugation
+           cptrn_sym(cpl+1:cpl+len_trim('*R('))=(/'*','R','('/); cpl=cpl+len_trim('*R(')
+          else !conjugation
+           cptrn_sym(cpl+1:cpl+len_trim('*R+('))=(/'*','R','+','('/); cpl=cpl+len_trim('*R+(')
+          endif
           do i=1,rank_right
            if(cptrn_dig(rank_left+i).gt.0) then !uncontracted index
             cptrn_sym(cpl+1:cpl+2)=(/achar(iachar('a')+cptrn_dig(rank_left+i)-1),','/); cpl=cpl+2
@@ -3961,9 +3983,24 @@
             cptrn_sym(cpl+1:cpl+2)=(/left_lbl(-cptrn_dig(rank_left+i)),','/); cpl=cpl+2
            endif
           enddo
-          if(cptrn_sym(cpl).eq.'(') cpl=cpl+1; cptrn_sym(cpl)=')'; cptrn_sym(cpl+1:cpl+1)=achar(0)
+          if(cptrn_sym(cpl).eq.'(') cpl=cpl+1; cptrn_sym(cpl)=')'; cptrn_sym(cpl+1)=achar(0)
          else
-          cpl=len_trim('D()+=L()*R()'); cptrn_sym(1:cpl+1)='D()+=L()*R()'//achar(0)
+          if(iand(conj_bits,1_C_INT).eq.0) then !no conjugation
+           cptrn_sym(cpl+1:cpl+len_trim('D()'))=(/'D','(',')'/); cpl=cpl+len_trim('D()')
+          else !conjugation
+           cptrn_sym(cpl+1:cpl+len_trim('D+()'))=(/'D','+','(',')'/); cpl=cpl+len_trim('D+()')
+          endif
+          if(iand(conj_bits,2_C_INT).eq.0) then !no conjugation
+           cptrn_sym(cpl+1:cpl+len_trim('+=L()'))=(/'+','=','L','(',')'/); cpl=cpl+len_trim('+=L()')
+          else !conjugation
+           cptrn_sym(cpl+1:cpl+len_trim('+=L+()'))=(/'+','=','L','+','(',')'/); cpl=cpl+len_trim('+=L+()')
+          endif
+          if(iand(conj_bits,4_C_INT).eq.0) then !no conjugation
+           cptrn_sym(cpl+1:cpl+len_trim('*R()'))=(/'*','R','(',')'/); cpl=cpl+len_trim('*R()')
+          else !conjugation
+           cptrn_sym(cpl+1:cpl+len_trim('*R+()'))=(/'*','R','+','(',')'/); cpl=cpl+len_trim('*R+()')
+          endif
+          cptrn_sym(cpl+1)=achar(0)
          endif
         else
          ierr=1
@@ -5536,7 +5573,8 @@
 	    enddo loop1
 	    if(lb.ne.0_LONGINT) then
 	     if(VERBOSE) write(CONS_OUT,'("ERROR(tensor_algebra::tensor_block_copy_dlf_r4): invalid remainder: ",i11,1x,i4)') lb,n
-!$OMP ATOMIC WRITE SEQ_CST
+!!!$OMP ATOMIC WRITE SEQ_CST
+!$OMP ATOMIC WRITE
 	     ierr=2
 	     exit loop0
 	    endif
@@ -5777,7 +5815,8 @@
 	    enddo loop1
 	    if(lb.ne.0_LONGINT) then
 	     if(VERBOSE) write(CONS_OUT,'("ERROR(tensor_algebra::tensor_block_copy_dlf_r8): invalid remainder: ",i11,1x,i4)') lb,n
-!$OMP ATOMIC WRITE SEQ_CST
+!!!$OMP ATOMIC WRITE SEQ_CST
+!$OMP ATOMIC WRITE
 	     ierr=2
 	     exit loop0
 	    endif
@@ -6045,7 +6084,8 @@
 	    enddo loop1
 	    if(lb.ne.0_LONGINT) then
 	     if(VERBOSE) write(CONS_OUT,'("ERROR(tensor_algebra::tensor_block_copy_dlf_c8): invalid remainder: ",i11,1x,i4)') lb,n
-!$OMP ATOMIC WRITE SEQ_CST
+!!!$OMP ATOMIC WRITE SEQ_CST
+!$OMP ATOMIC WRITE
 	     ierr=2
 	     exit loop0
 	    endif

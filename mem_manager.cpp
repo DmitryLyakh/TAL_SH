@@ -2,10 +2,10 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2017/06/13
+REVISION: 2018/11/02
 
-Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2018 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2018 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -1005,7 +1005,7 @@ int host_mem_alloc(void **host_ptr, size_t tsize, size_t align)
   }else{ //no aligment
    *host_ptr=(void*)malloc(tsize);
   }
-  if(*host_ptr == NULL) return 1;
+  if(*host_ptr == NULL) return TRY_LATER;
  }
  return 0;
 }
@@ -1043,7 +1043,7 @@ int host_mem_free_pin(void *host_ptr){
 
 int host_mem_register(void *host_ptr, size_t tsize){
 #ifndef NO_GPU
- cudaError_t err = cudaHostRegister(host_ptr,tsize,cudaHostAllocPortable);
+ cudaError_t err = cudaHostRegister(host_ptr,tsize,cudaHostRegisterPortable);
  if(err != cudaSuccess){
   const char * err_msg = cudaGetErrorString(err);
   printf("\n#ERROR(TALSH:mem_manager:host_mem_register): %s",err_msg);
@@ -1070,45 +1070,48 @@ int host_mem_unregister(void *host_ptr){
 }
 
 int mem_allocate(int dev_id, size_t bytes, int in_buffer, void ** mem_ptr)
-/** Allocates a memory segment on any device,
-either from the TAL-SH buffer or via a system call. **/
+/** Allocates a memory segment on any device, either from the TAL-SH buffer
+or via a system call. If the memory allocation is unsuccessful, returns
+an error code != 0, among which is also TRY_LATER and DEVICE_UNABLE. **/
 {
  int dev_num,dev_kind,buf_entry,errc;
  char * char_ptr;
 
- *mem_ptr=NULL; if(bytes == 0) return 0;
+ errc=0; *mem_ptr=NULL; if(bytes == 0) return 0;
  dev_num=decode_device_id(dev_id,&dev_kind); if(dev_num < 0) return -1; //invalid device id
  switch(dev_kind){
   case DEV_HOST:
    if(in_buffer == NOPE){
-    errc=host_mem_alloc(mem_ptr,bytes); if(errc != 0) return -2;
+    errc=host_mem_alloc(mem_ptr,bytes);
    }else{
     errc=get_buf_entry_host(bytes,&char_ptr,&buf_entry);
-    if(errc == 0){*mem_ptr=(void*)(char_ptr);}else{return -3;}
+    if(errc == 0) *mem_ptr=(void*)(char_ptr);
    }
    break;
 #ifndef NO_GPU
   case DEV_NVIDIA_GPU:
    if(in_buffer == NOPE){
-    errc=gpu_mem_alloc(mem_ptr,bytes,dev_num); if(errc != 0) return -4;
+    errc=gpu_mem_alloc(mem_ptr,bytes,dev_num);
    }else{
     errc=get_buf_entry_gpu(dev_num,bytes,&char_ptr,&buf_entry);
-    if(errc == 0){*mem_ptr=(void*)(char_ptr);}else{return -5;}
+    if(errc == 0) *mem_ptr=(void*)(char_ptr);
    }
    break;
 #endif
 #ifndef NO_PHI
   case DEV_INTEL_MIC:
-   return -6; //`Not implemented
+   errc=-2; //`Not implemented
+   break;
 #endif
 #ifndef NO_AMD
   case DEV_AMD_GPU:
-   return -7; //`Not implemented
+   errc=-3; //`Not implemented
+   break;
 #endif
   default:
-   return -8; //invalid device kind
+   errc=-4; //invalid device kind
  }
- return 0;
+ return errc;
 }
 
 int mem_free(int dev_id, void ** mem_ptr)
@@ -1242,7 +1245,7 @@ int gpu_mem_alloc(void **dev_ptr, size_t tsize, int gpu_id)
   err=cudaGetDevice(&i); if(err != cudaSuccess) return 1;
   err=cudaSetDevice(gpu_id); if(err != cudaSuccess){err=cudaSetDevice(i); return 2;}
  }
- err=cudaMalloc(dev_ptr,tsize); if(err != cudaSuccess){if(i >= 0) err=cudaSetDevice(i); return 3;}
+ err=cudaMalloc(dev_ptr,tsize); if(err != cudaSuccess){if(i >= 0) err=cudaSetDevice(i); return TRY_LATER;}
  if(i >= 0){err=cudaSetDevice(i); if(err != cudaSuccess) return NOT_CLEAN;}
  return 0;
 }

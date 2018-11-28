@@ -1,6 +1,6 @@
 !Standard procedures often used by me.
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISON: 2017/12/20
+!REVISON: 2018/10/03
 
 !Copyright (C) 2005-2017 Dmitry I. Lyakh (Liakh)
 
@@ -84,6 +84,7 @@
 !----------------------------------------
 	logical function alphanumeric(ch)
 !Returns TRUE if the character is ASCII alphanumeric, FALSE otherwise.
+!A space is not considered alphanumeric.
 	 implicit none
 	 character(1), intent(in):: ch
 	 alphanumeric=.FALSE.
@@ -97,7 +98,8 @@
 !------------------------------------------------
 	logical function alphanumeric_string(str)
 !Returns TRUE if the string only contains ASCII alphanumeric + underscore,
-!FALSE otherwise. An empty string is not considered alphanumeric_.
+!FALSE otherwise. Spaces are not considered alphanumeric_.
+!An empty string is not considered alphanumeric_ either.
 	 implicit none
 	 character(*), intent(in):: str
 	 integer:: i,l
@@ -105,7 +107,7 @@
 	 l=len(str)
 	 if(l.gt.0) then
 	  do i=1,l
-	   if(.not.alphanumeric(str(i:i))) then
+	   if(.not.(alphanumeric(str(i:i)).or.str(i:i).eq.'_')) then
 	    alphanumeric_string=.FALSE.
 	    exit
 	   endif

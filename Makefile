@@ -1,11 +1,11 @@
 NAME = talsh
 
 #ADJUST THE FOLLOWING ACCORDINGLY:
-#Cross-compiling wrappers: [WRAP|NOWRAP]:
+#Cross-compiling wrappers (only for Cray): [WRAP|NOWRAP]:
 export WRAP ?= NOWRAP
 #Compiler: [GNU|PGI|INTEL|CRAY|IBM]:
 export TOOLKIT ?= GNU
-#Optimization: [DEV|OPT]:
+#Optimization: [DEV|OPT|PRF]:
 export BUILD_TYPE ?= OPT
 #MPI Library: [NONE|MPICH|OPENMPI]:
 export MPILIB ?= NONE
@@ -23,7 +23,7 @@ export EXA_OS ?= LINUX
 export WITH_CUTT ?= NO
 
 #GPU fine timing [YES|NO]:
-export GPU_FINE_TIMING ?= NO
+export GPU_FINE_TIMING ?= YES
 
 #WORKAROUNDS (ignore if you do not experience problems):
 #Fool CUDA 7.0 with GCC > 4.9: [YES|NO]:
@@ -54,16 +54,17 @@ export PATH_BLAS_MKL ?= /opt/intel/mkl/lib/intel64
 export PATH_BLAS_MKL_DEP ?= /opt/intel/compilers_and_libraries/linux/lib/intel64_lin
 #  ACML BLAS:
 export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
-#  ESSL BLAS:
-export PATH_BLAS_ESSL ?= /sw/summitdev/essl/5.5.0/lib64
+#  ESSL BLAS (also set PATH_IBM_XL_CPP, PATH_IBM_XL_FOR, PATH_IBM_XL_SMP below):
+export PATH_BLAS_ESSL ?= /sw/summit/essl/6.1.0-1/essl/6.1/lib64
 
 #IBM XL (only set these if you use IBM XL and/or ESSL):
-export PATH_IBM_XL_CPP ?= /sw/summit/xl/16.1.1-beta1/xlC/16.1.1/lib
-export PATH_IBM_XL_FOR ?= /sw/summit/xl/16.1.1-beta1/xlf/16.1.1/lib
+export PATH_IBM_XL_CPP ?= /sw/summit/xl/16.1.1-beta4/xlC/16.1.1/lib
+export PATH_IBM_XL_FOR ?= /sw/summit/xl/16.1.1-beta4/xlf/16.1.1/lib
+export PATH_IBM_XL_SMP ?= /sw/summit/xl/16.1.1-beta4/xlsmp/5.1.1/lib
 
-# CUDA (only set this if you build with CUDA):
+#CUDA (only set this if you build with CUDA):
 export PATH_CUDA ?= /usr/local/cuda
-#  Only reset these if CUDA files are spread in the system directories:
+# Only reset these if CUDA files are spread in the system directories:
  export PATH_CUDA_INC ?= $(PATH_CUDA)/include
  export PATH_CUDA_LIB ?= $(PATH_CUDA)/lib64
  export PATH_CUDA_BIN ?= $(PATH_CUDA)/bin
@@ -73,7 +74,12 @@ export PATH_CUTT ?= /home/div/src/cutt
 #YOU ARE DONE!
 
 
-#=================
+#=======================
+ifeq ($(BUILD_TYPE),PRF)
+ COMP_PREF = scorep --thread=omp --cuda
+else
+ COMP_PREF =
+endif
 #Fortran compiler:
 FC_GNU = gfortran
 FC_PGI = pgf90
@@ -88,7 +94,7 @@ else
 FC_NOWRAP = $(FC_$(MPILIB))
 endif
 FC_WRAP = ftn
-FCOMP = $(FC_$(WRAP))
+FCOMP = $(COMP_PREF) $(FC_$(WRAP))
 #C compiler:
 CC_GNU = gcc
 CC_PGI = pgcc
@@ -103,7 +109,7 @@ else
 CC_NOWRAP = $(CC_$(MPILIB))
 endif
 CC_WRAP = cc
-CCOMP = $(CC_$(WRAP))
+CCOMP = $(COMP_PREF) $(CC_$(WRAP))
 #C++ compiler:
 CPP_GNU = g++
 CPP_PGI = pgc++
@@ -122,7 +128,7 @@ else
 CPP_NOWRAP = $(CPP_$(MPILIB))
 endif
 CPP_WRAP = CC
-CPPCOMP = $(CPP_$(WRAP))
+CPPCOMP = $(COMP_PREF) $(CPP_$(WRAP))
 #CUDA compiler:
 CUDA_COMP = nvcc
 
@@ -180,7 +186,8 @@ else
 LA_LINK_MKL = -L$(PATH_BLAS_MKL) -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -lpthread -lm -ldl -L$(PATH_BLAS_MKL_DEP) -liomp5
 endif
 LA_LINK_ACML = -L$(PATH_BLAS_ACML) -lacml_mp
-LA_LINK_ESSL = -L$(PATH_BLAS_ESSL) -lesslsmp -L$(PATH_IBM_XL_FOR) -lxlf90_r -lxlfmath
+LA_LINK_ESSL = -L$(PATH_BLAS_ESSL) -lessl -L$(PATH_IBM_XL_FOR) -lxlf90_r -lxlfmath
+#LA_LINK_ESSL = -L$(PATH_BLAS_ESSL) -lesslsmp -L$(PATH_IBM_XL_SMP) -lxlsmp -L$(PATH_IBM_XL_FOR) -lxlf90_r -lxlfmath
 ifeq ($(BLASLIB),NONE)
 LA_LINK_NOWRAP = -L.
 else
@@ -231,6 +238,7 @@ CUDA_HOST_WRAP = -I.
 CUDA_HOST = $(CUDA_HOST_$(WRAP))
 CUDA_FLAGS_DEV = --compile -arch=$(GPU_SM) -g -G -DDEBUG_GPU -w
 CUDA_FLAGS_OPT = --compile -arch=$(GPU_SM) -O3 -lineinfo -w
+CUDA_FLAGS_PRF = --compile -arch=$(GPU_SM) -g -G -O3 -w
 CUDA_FLAGS_CUDA = $(CUDA_HOST) $(CUDA_FLAGS_$(BUILD_TYPE)) -D_FORCE_INLINES -Xcompiler $(PIC_FLAG_CUDA)
 ifeq ($(FOOL_CUDA),NO)
 CUDA_FLAGS_PRE1 = $(CUDA_FLAGS_CUDA) -D$(EXA_OS)
@@ -271,14 +279,24 @@ NO_AMD = -DNO_AMD
 NO_PHI = -DNO_PHI
 
 #C FLAGS:
-ifeq ($(TOOLKIT),PGI)
-CFLAGS_DEV = -c -g -O0 -D_DEBUG -silent -w
-CFLAGS_OPT = -c -O3 -silent -w -Mnovect
-else
-CFLAGS_DEV = -c -g -O0 -D_DEBUG
-CFLAGS_OPT = -c -O3
-endif
-CFLAGS = $(CFLAGS_$(BUILD_TYPE)) $(NO_GPU) $(NO_AMD) $(NO_PHI) $(NO_BLAS) -D$(EXA_OS) $(PIC_FLAG)
+CFLAGS_INTEL_DEV = -c -g -O0 -qopenmp -D_DEBUG
+CFLAGS_INTEL_OPT = -c -O3 -qopenmp
+CFLAGS_INTEL_PRF = -c -g -O3 -qopenmp
+CFLAGS_CRAY_DEV = -c -g -O0 -D_DEBUG
+CFLAGS_CRAY_OPT = -c -O3
+CFLAGS_CRAY_PRF = -c -g -O3
+CFLAGS_GNU_DEV = -c -g -O0 -fopenmp -D_DEBUG
+CFLAGS_GNU_OPT = -c -O3 -fopenmp
+CFLAGS_GNU_PRF = -c -g -O3 -fopenmp
+CFLAGS_PGI_DEV = -c -g -O0 -D_DEBUG -silent -w
+CFLAGS_PGI_OPT = -c -O3 -silent -w -Mnovect
+CFLAGS_PGI_PRF = -c -g -O3 -silent -w -Mnovect
+CFLAGS_IBM_DEV = -c -g -O0 -qsmp=omp -D_DEBUG
+CFLAGS_IBM_OPT = -c -O3 -qsmp=omp
+CFLAGS_IBM_PRF = -c -g -O3 -qsmp=omp
+CFLAGS = $(CFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(NO_GPU) $(NO_AMD) $(NO_PHI) $(NO_BLAS) -D$(EXA_OS) $(PIC_FLAG)
+
+#CPP FLAGS:
 ifeq ($(TOOLKIT),CRAY)
 CPPFLAGS = $(CFLAGS) -h std=c++11
 else
@@ -286,18 +304,21 @@ CPPFLAGS = $(CFLAGS) -std=c++11
 endif
 
 #FORTRAN FLAGS:
-FFLAGS_INTEL_DEV = -c -g -O0 -fpp -vec-threshold4 -qopenmp -mkl=parallel
-#FFLAGS_INTEL_DEV = -c -g -fpp -vec-threshold4 -openmp
-FFLAGS_INTEL_OPT = -c -O3 -fpp -vec-threshold4 -qopenmp -mkl=parallel
-#FFLAGS_INTEL_OPT = -c -O3 -fpp -vec-threshold4 -openmp
+FFLAGS_INTEL_DEV = -c -std08 -g -O0 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel
+FFLAGS_INTEL_OPT = -c -std08 -O3 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel
+FFLAGS_INTEL_PRF = -c -std08 -g -O3 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel
 FFLAGS_CRAY_DEV = -c -g
 FFLAGS_CRAY_OPT = -c -O3
+FFLAGS_CRAY_PRF = -c -g -O3
 FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -g -Og
 FFLAGS_GNU_OPT = -c -fopenmp -O3
+FFLAGS_GNU_PRF = -c -fopenmp -g -O3
 FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -Mallocatable=03 -g -O0
 FFLAGS_PGI_OPT = -c -mp -Mcache_align -Mstandard -Mallocatable=03 -O3
+FFLAGS_PGI_PRF = -c -mp -Mcache_align -Mstandard -Mallocatable=03 -g -O3
 FFLAGS_IBM_DEV = -c -qsmp=noopt -g9 -O0 -qfullpath -qkeepparm -qcheck -qsigtrap -qstackprotect=all
 FFLAGS_IBM_OPT = -c -qsmp=omp -O3
+FFLAGS_IBM_PRF = -c -qsmp=omp -g -O3
 FFLAGS = $(FFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(DF)$(NO_GPU) $(DF)$(NO_AMD) $(DF)$(NO_PHI) $(DF)$(NO_BLAS) $(DF)-D$(EXA_OS) $(PIC_FLAG)
 
 #THREADS:

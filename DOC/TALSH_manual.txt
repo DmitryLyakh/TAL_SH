@@ -1,6 +1,6 @@
 *** TAL-SH: Tensor Algebra Library for Shared Memory Computers ***
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2018/02/02
+REVISION: 2018/09/21
 
 Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -379,24 +379,25 @@ API: Construct a tensor block:
 
    Fortran 2003:
     abstract interface
-     integer(C_INT) function talsh_tens_init_i(tens_body_p,data_kind,tens_shape,tens_signature) bind(c) !out: returns an error code
-      type(C_PTR), value:: tens_body_p                     !in: pointer to the tensor elements storage (tensor body)
-      integer(C_INT), value:: data_kind                    !in: data kind: {R4,R8,C4,C8}
-      type(talsh_tens_shape_t), intent(in):: tens_shape    !in: tensor shape
-      integer(C_LONG_LONG), intent(in):: tens_signature(*) !in: tensor signature
+     integer(C_INT) function talsh_tens_init_i(tens_data,tens_shape,tens_signature) bind(C) !out: returns an error code
+      type(talsh_tens_data_t), intent(in):: tens_data           !in: tensor data descriptor
+      type(talsh_tens_shape_t), intent(in):: tens_shape         !in: tensor shape
+      type(talsh_tens_signature_t), intent(in):: tens_signature !in: tensor signature
      end function talsh_tens_init_i
     end interface
 
    C/C++:
-    typedef int (*talsh_tens_init_i)(void * tens_body_p, const int data_kind, const talsh_tens_shape_t * tens_shape, const long long * tens_signature);
+    typedef int (*talsh_tens_init_i)(const talsh_tens_data_t * tens_data,
+                                     const talsh_tens_shape_t * tens_shape,
+                                     const talsh_tens_signature_t * tens_signature);
 
    The user-defined initialization method takes precedence over the initialization value.
    The intialization value, if provided, will only be used if the initialization method
    is absent (Fortran) or NULL (C/C++). If neither initialization method nor initialization
-   value is provided, the tensor block will still be initialized to zero.
+   value is provided, the tensor block will be initialized to zero.
 
    The interface of the user-defined initialization method may often be found
-   to be too restricive since no additional information can be provided. In this case,
+   to be restricive since no additional information can be provided. In this case,
    an alternative solution is to simply construct a tensor block without any initialization
    method and then use the function <talshTensorGetBodyAccess()> to obtain a C pointer
    to the tensor image of proper data kind on a desired device. This C pointer can be
@@ -408,8 +409,6 @@ API: Construct a tensor block:
    NOTE: This function must only be called on clean tensor blocks (empty defined).
 
    NOTE:`So far the initialization only works for the CPU Host (DEV_HOST).
-         On other device kinds, the tensor block is left undefined and
-         a separate initialization operation will be required to define it.
 
 API: Destruct a tensor block (release all resources and set it to empty):
 

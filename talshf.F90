@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2018/02/02
+!REVISION: 2018/09/21
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -24,16 +24,19 @@
         implicit none
         private
 !EXTERNAL PUBLIC:
-        public tensor_shape_t    !tensor shape (Fortran)
-        public tensor_block_t    !tensor block (Fortran)
-        public MAX_SHAPE_STR_LEN !max length of a shape-defining string
-        public MAX_TENSOR_RANK   !max tensor rank
-        public mem_allocate          !universal memory allocator
-        public mem_free              !universal memory deallocator
-        public tensor_shape_rank     !
-        public get_contr_pattern     !
-        public get_contr_pattern_sym !
-        public contr_pattern_rnd     !
+        public tensor_shape_t         !CP-TAL tensor shape (Fortran)
+        public tensor_block_t         !CP-TAL tensor block (Fortran)
+        public talsh_tens_signature_t !TAL-SH tensor signature
+        public talsh_tens_shape_t     !TAL-SH tensor shape
+        public talsh_tens_data_t      !TAL-SH tensor data descriptor
+        public MAX_SHAPE_STR_LEN      !max length of a shape-defining string
+        public MAX_TENSOR_RANK        !max tensor rank
+        public mem_allocate           !universal memory allocator
+        public mem_free               !universal memory deallocator
+        public tensor_shape_rank      !
+        public get_contr_pattern      !
+        public get_contr_pattern_sym  !
+        public contr_pattern_rnd      !
 !PARAMETERS:
  !Generic:
         integer(INTD), private:: CONS_OUT=6 !default output device for this module

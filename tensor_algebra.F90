@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h" when appropriate!
-!REVISION: 2018/03/07
+!REVISION: 2018/09/21
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -192,9 +192,9 @@
          type(C_PTR):: signature=C_NULL_PTR !tensor signature (long integer per tensor dimension)
         end type talsh_tens_signature_t
  !TAL-SH tensor data:
-        type, public:: talsh_tens_data_t
+        type, public, bind(C):: talsh_tens_data_t
          type(C_PTR):: base=C_NULL_PTR      !pointer to the tensor data (body)
-         integer(C_LONG_LONG):: volume=0    !data volume (number of elements)
+         integer(C_SIZE_T):: volume=0       !data volume (number of elements)
          integer(C_INT):: data_kind=NO_TYPE !data kind of each tensor element
         end type talsh_tens_data_t
 
@@ -207,19 +207,17 @@
  !User-defined tensor block initialization/update functions:
         abstract interface
   !Stateless initialization/update:
-         integer(C_INT) function talsh_tens_init_i(tens_body_p,data_kind,tens_shape,tens_signature) bind(c)
-          import:: C_PTR,C_INT,C_LONG_LONG,talsh_tens_shape_t,talsh_tens_signature_t
-          type(C_PTR), value:: tens_body_p                          !in: pointer to the tensor elements storage (tensor body)
-          integer(C_INT), value:: data_kind                         !in: data kind: {R4,R8,C4,C8}
+         integer(C_INT) function talsh_tens_init_i(tens_data,tens_shape,tens_signature) bind(C)
+          import:: talsh_tens_data_t,talsh_tens_shape_t,talsh_tens_signature_t,C_INT
+          type(talsh_tens_data_t), intent(in):: tens_data           !in: tensor data descriptor
           type(talsh_tens_shape_t), intent(in):: tens_shape         !in: tensor shape
           type(talsh_tens_signature_t), intent(in):: tens_signature !in: tensor signature
          end function talsh_tens_init_i
   !Interface for .define_body() deferred method of talsh_tens_definer_t:
-         integer(C_INT) function talsh_tens_def_i(this,tens_body_p,data_kind,tens_shape,tens_signature)
-          import:: C_PTR,C_INT,C_LONG_LONG,talsh_tens_shape_t,talsh_tens_signature_t,talsh_tens_definer_t
+         integer(C_INT) function talsh_tens_def_i(this,tens_data,tens_shape,tens_signature)
+          import:: talsh_tens_definer_t,talsh_tens_data_t,talsh_tens_shape_t,talsh_tens_signature_t,C_INT
           class(talsh_tens_definer_t), intent(in):: this            !in: tensor body definer object
-          type(C_PTR), value:: tens_body_p                          !in: pointer to the tensor elements storage (tensor body:inout)
-          integer(C_INT), value:: data_kind                         !in: data kind: {R4,R8,C4,C8}
+          type(talsh_tens_data_t), intent(in):: tens_data           !in: tensor data descriptor
           type(talsh_tens_shape_t), intent(in):: tens_shape         !in: tensor shape
           type(talsh_tens_signature_t), intent(in):: tens_signature !in: tensor signature
          end function talsh_tens_def_i
