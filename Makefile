@@ -31,24 +31,24 @@ export FOOL_CUDA ?= NO
 
 #SET YOUR LOCAL PATHS (for unwrapped builds):
 
-#MPI library (whichever you have, set one):
-# Set this if you have MPICH or its derivative:
-export PATH_MPICH ?= /usr/local/mpi/mpich/3.2
+#MPI library (only if you use MPI, set whichever you have chosen above):
+# Set this if you have chosen MPICH (or its derivative, e.g. Cray-MPICH):
+export PATH_MPICH ?= /usr/local/mpi/mpich/3.2.1
 #  Only reset these if MPI files are spread in the system directories:
  export PATH_MPICH_INC ?= $(PATH_MPICH)/include
  export PATH_MPICH_LIB ?= $(PATH_MPICH)/lib
  export PATH_MPICH_BIN ?= $(PATH_MPICH)/bin
-# Set this if you have OPENMPI or its derivative:
-export PATH_OPENMPI ?= /usr/local/mpi/openmpi/2.0.1
+# Set this if you have chosen OPENMPI (or its derivative, e.g. Spectrum MPI):
+export PATH_OPENMPI ?= /usr/local/mpi/openmpi/3.1.0
 #  Only reset these if MPI files are spread in the system directories:
  export PATH_OPENMPI_INC ?= $(PATH_OPENMPI)/include
  export PATH_OPENMPI_LIB ?= $(PATH_OPENMPI)/lib
  export PATH_OPENMPI_BIN ?= $(PATH_OPENMPI)/bin
 
-#BLAS library (whichever you have, set one):
-# Set this if you do not have a vendor provided BLAS:
+#BLAS library (whichever you have chosen above):
+# Set this if you do not have a vendor provided BLAS (default Linux BLAS):
 export PATH_BLAS_ATLAS ?= /usr/lib
-# Set this if you have vendor provided BLAS (choose):
+# Set this if you have a vendor provided BLAS that you have specified above:
 #  MKL BLAS:
 export PATH_BLAS_MKL ?= /opt/intel/mkl/lib/intel64
 export PATH_BLAS_MKL_DEP ?= /opt/intel/compilers_and_libraries/linux/lib/intel64_lin
@@ -58,9 +58,9 @@ export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
 export PATH_BLAS_ESSL ?= /sw/summit/essl/6.1.0-1/essl/6.1/lib64
 
 #IBM XL (only set these if you use IBM XL and/or ESSL):
-export PATH_IBM_XL_CPP ?= /sw/summit/xl/16.1.1-beta4/xlC/16.1.1/lib
-export PATH_IBM_XL_FOR ?= /sw/summit/xl/16.1.1-beta4/xlf/16.1.1/lib
-export PATH_IBM_XL_SMP ?= /sw/summit/xl/16.1.1-beta4/xlsmp/5.1.1/lib
+export PATH_IBM_XL_CPP ?= /sw/summit/xl/16.1.1-beta6/xlC/16.1.1/lib
+export PATH_IBM_XL_FOR ?= /sw/summit/xl/16.1.1-beta6/xlf/16.1.1/lib
+export PATH_IBM_XL_SMP ?= /sw/summit/xl/16.1.1-beta6/xlsmp/5.1.1/lib
 
 #CUDA (only set this if you build with CUDA):
 export PATH_CUDA ?= /usr/local/cuda
@@ -69,9 +69,9 @@ export PATH_CUDA ?= /usr/local/cuda
  export PATH_CUDA_LIB ?= $(PATH_CUDA)/lib64
  export PATH_CUDA_BIN ?= $(PATH_CUDA)/bin
 # cuTT path (only set this if you use cuTT library):
-export PATH_CUTT ?= /home/div/src/cutt
+export PATH_CUTT ?= /home/dima/src/cutt
 
-#YOU ARE DONE!
+#YOU ARE DONE! MAKE IT!
 
 
 #=======================
