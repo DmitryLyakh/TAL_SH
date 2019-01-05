@@ -52,6 +52,7 @@ export PATH_BLAS_ATLAS ?= /usr/lib
 #  MKL BLAS:
 export PATH_BLAS_MKL ?= /opt/intel/mkl/lib/intel64
 export PATH_BLAS_MKL_DEP ?= /opt/intel/compilers_and_libraries/linux/lib/intel64_lin
+export PATH_BLAS_MKL_INC ?= /opt/intel/mkl/include/intel64/lp64
 #  ACML BLAS:
 export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
 #  ESSL BLAS (also set PATH_IBM_XL_CPP, PATH_IBM_XL_FOR, PATH_IBM_XL_SMP below):
@@ -199,6 +200,11 @@ else
 LA_LINK_WRAP = -L.
 endif
 LA_LINK = $(LA_LINK_$(WRAP))
+ifeq ($(BLASLIB),MKL)
+LA_INC = -DUSE_MKL -I$(PATH_BLAS_MKL_INC)
+else
+LA_INC = -I.
+endif
 
 #CUDA INCLUDES:
 ifeq ($(GPU_CUDA),CUDA)
@@ -304,18 +310,18 @@ CPPFLAGS = $(CFLAGS) -std=c++11
 endif
 
 #FORTRAN FLAGS:
-FFLAGS_INTEL_DEV = -c -std08 -g -O0 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel
-FFLAGS_INTEL_OPT = -c -std08 -O3 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel
-FFLAGS_INTEL_PRF = -c -std08 -g -O3 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel
-FFLAGS_CRAY_DEV = -c -g
-FFLAGS_CRAY_OPT = -c -O3
-FFLAGS_CRAY_PRF = -c -g -O3
-FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -g -Og
-FFLAGS_GNU_OPT = -c -fopenmp -O3
-FFLAGS_GNU_PRF = -c -fopenmp -g -O3
-FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -Mallocatable=03 -g -O0
-FFLAGS_PGI_OPT = -c -mp -Mcache_align -Mstandard -Mallocatable=03 -O3
-FFLAGS_PGI_PRF = -c -mp -Mcache_align -Mstandard -Mallocatable=03 -g -O3
+FFLAGS_INTEL_DEV = -c -std08 -g -O0 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel $(LA_INC)
+FFLAGS_INTEL_OPT = -c -std08 -O3 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel $(LA_INC)
+FFLAGS_INTEL_PRF = -c -std08 -g -O3 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel $(LA_INC)
+FFLAGS_CRAY_DEV = -c -g $(LA_INC)
+FFLAGS_CRAY_OPT = -c -O3 $(LA_INC)
+FFLAGS_CRAY_PRF = -c -g -O3 $(LA_INC)
+FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -g -Og $(LA_INC)
+FFLAGS_GNU_OPT = -c -fopenmp -O3 $(LA_INC)
+FFLAGS_GNU_PRF = -c -fopenmp -g -O3 $(LA_INC)
+FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -Mallocatable=03 -g -O0 $(LA_INC)
+FFLAGS_PGI_OPT = -c -mp -Mcache_align -Mstandard -Mallocatable=03 -O3 $(LA_INC)
+FFLAGS_PGI_PRF = -c -mp -Mcache_align -Mstandard -Mallocatable=03 -g -O3 $(LA_INC)
 FFLAGS_IBM_DEV = -c -qsmp=noopt -g9 -O0 -qfullpath -qkeepparm -qcheck -qsigtrap -qstackprotect=all
 FFLAGS_IBM_OPT = -c -qsmp=omp -O3
 FFLAGS_IBM_PRF = -c -qsmp=omp -g -O3
@@ -332,7 +338,7 @@ LTHREAD = $(LTHREAD_$(TOOLKIT))
 #LINKING:
 LFLAGS = $(MPI_LINK) $(LA_LINK) $(LTHREAD) $(CUDA_LINK) $(LIB)
 
-OBJS =  ./OBJ/dil_basic.o ./OBJ/stsubs.o ./OBJ/combinatoric.o ./OBJ/symm_index.o ./OBJ/timer.o ./OBJ/timers.o \
+OBJS =  ./OBJ/dil_basic.o ./OBJ/stsubs.o ./OBJ/combinatoric.o ./OBJ/symm_index.o ./OBJ/timer.o ./OBJ/timers.o ./OBJ/nvtx_profile.o \
 	./OBJ/tensor_algebra.o ./OBJ/tensor_algebra_cpu.o ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_dil_omp.o \
 	./OBJ/mem_manager.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/talshf.o ./OBJ/talshc.o ./OBJ/talsh_task.o
 
@@ -372,6 +378,9 @@ endif
 
 ./OBJ/timers.o: timers.F90 ./OBJ/timer.o
 	$(FCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(FFLAGS) timers.F90 -o ./OBJ/timers.o
+
+./OBJ/nvtx_profile.o: nvtx_profile.c nvtx_profile.h
+	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) nvtx_profile.c -o ./OBJ/nvtx_profile.o
 
 ./OBJ/tensor_algebra.o: tensor_algebra.F90 ./OBJ/dil_basic.o
 	$(FCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(FFLAGS) tensor_algebra.F90 -o ./OBJ/tensor_algebra.o

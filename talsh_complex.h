@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Complex arithmetic header.
-REVISION: 2017/05/17
+REVISION: 2019/01/04
 
-Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -21,16 +21,17 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------
 **/
 
-#ifndef _TALSH_COMPLEX_H
-#define _TALSH_COMPLEX_H
+#ifndef TALSH_COMPLEX_H_
+#define TALSH_COMPLEX_H_
+
+#include <math.h>
 
 #ifdef __cplusplus
 #include <complex>
 #endif
 
 #ifndef NO_GPU
-#include <cuda.h>
-#include <cuda_runtime.h>
+#include <cuComplex.h>
 #endif
 
 //DECLARATIONS:
@@ -59,142 +60,401 @@ inline talshComplex4 talshComplex4Conjg(talshComplex4 cmplx);
 inline talshComplex8 talshComplex8Conjg(talshComplex8 cmplx);
 inline float talshComplex4Abs(talshComplex4 cmplx);
 inline double talshComplex8Abs(talshComplex8 cmplx);
+inline float talshComplex4Asq(talshComplex4 cmplx);
+inline double talshComplex8Asq(talshComplex8 cmplx);
+inline talshComplex4 talshComplex4Add(talshComplex4 x, talshComplex4 y);
+inline talshComplex8 talshComplex8Add(talshComplex8 x, talshComplex8 y);
+inline void talshComplex4AddEq(talshComplex4 * x, talshComplex4 y);
+inline void talshComplex8AddEq(talshComplex8 * x, talshComplex8 y);
+inline talshComplex4 talshComplex4Sub(talshComplex4 x, talshComplex4 y);
+inline talshComplex8 talshComplex8Sub(talshComplex8 x, talshComplex8 y);
+inline void talshComplex4SubEq(talshComplex4 * x, talshComplex4 y);
+inline void talshComplex8SubEq(talshComplex8 * x, talshComplex8 y);
+inline talshComplex4 talshComplex4Mul(talshComplex4 x, talshComplex4 y);
+inline talshComplex8 talshComplex8Mul(talshComplex8 x, talshComplex8 y);
+inline void talshComplex4MulEq(talshComplex4 * x, talshComplex4 y);
+inline void talshComplex8MulEq(talshComplex8 * x, talshComplex8 y);
+inline talshComplex4 talshComplex4Div(talshComplex4 x, talshComplex4 y);
+inline talshComplex8 talshComplex8Div(talshComplex8 x, talshComplex8 y);
+inline void talshComplex4DivEq(talshComplex4 * x, talshComplex4 y);
+inline void talshComplex8DivEq(talshComplex8 * x, talshComplex8 y);
 */
 
 //DEFINITIONS:
-// Complex arithmetic:
+//Construct a complex number:
+#ifndef NO_GPU
+__host__ __device__ __forceinline__ talshComplex4 talshComplex4Set(float real, float imag)
+{
+ return make_cuFloatComplex(real,imag);
+}
+__host__ __device__ __forceinline__ talshComplex8 talshComplex8Set(double real, double imag)
+{
+ return make_cuDoubleComplex(real,imag);
+}
+#else
+#ifdef __cplusplus
 inline talshComplex4 talshComplex4Set(float real, float imag)
 {
-#ifndef NO_GPU
- talshComplex4 result = make_cuFloatComplex(real,imag);
-#else
-#ifdef __cplusplus
- talshComplex4 result(real,imag);
-#else
- talshComplex4 result = {real,imag};
-#endif
-#endif
- return result;
+ return talshComplex4(real,imag);
 }
-
 inline talshComplex8 talshComplex8Set(double real, double imag)
 {
-#ifndef NO_GPU
- talshComplex8 result = make_cuDoubleComplex(real,imag);
+ return talshComplex8(real,imag);
+}
 #else
-#ifdef __cplusplus
- talshComplex8 result(real,imag);
-#else
- talshComplex8 result = {real,imag};
-#endif
-#endif
+talshComplex4 talshComplex4Set(float real, float imag)
+{
+ talshComplex4 result = {real,imag};
  return result;
 }
+talshComplex8 talshComplex8Set(double real, double imag)
+{
+ talshComplex8 result = {real,imag};
+ return result;
+}
+#endif
+#endif
 
+//Get the real component of a complex number:
+#ifndef NO_GPU
+__host__ __device__ __forceinline__ float talshComplex4Real(talshComplex4 cmplx)
+{
+ return cuCrealf(cmplx);
+}
+__host__ __device__ __forceinline__ double talshComplex8Real(talshComplex8 cmplx)
+{
+ return cuCreal(cmplx);
+}
+#else
+#ifdef __cplusplus
 inline float talshComplex4Real(talshComplex4 cmplx)
 {
-#ifndef NO_GPU
- return cuCrealf(cmplx);
-#else
-#ifdef __cplusplus
  return cmplx.real();
-#else
- return cmplx.real;
-#endif
-#endif
 }
-
 inline double talshComplex8Real(talshComplex8 cmplx)
 {
+ return cmplx.real();
+}
+#else
+float talshComplex4Real(talshComplex4 cmplx)
+{
+ return cmplx.real;
+}
+double talshComplex8Real(talshComplex8 cmplx)
+{
+ return cmplx.real;
+}
+#endif
+#endif
+
+//Get the imaginary component of a complex number:
 #ifndef NO_GPU
- return cuCreal(cmplx);
+__host__ __device__ __forceinline__ float talshComplex4Imag(talshComplex4 cmplx)
+{
+ return cuCimagf(cmplx);
+}
+__host__ __device__ __forceinline__ double talshComplex8Imag(talshComplex8 cmplx)
+{
+ return cuCimag(cmplx);
+}
 #else
 #ifdef __cplusplus
- return cmplx.real();
-#else
- return cmplx.real;
-#endif
-#endif
-}
-
 inline float talshComplex4Imag(talshComplex4 cmplx)
 {
-#ifndef NO_GPU
- return cuCimagf(cmplx);
-#else
-#ifdef __cplusplus
  return cmplx.imag();
-#else
- return cmplx.imag;
-#endif
-#endif
 }
-
 inline double talshComplex8Imag(talshComplex8 cmplx)
 {
+ return cmplx.imag();
+}
+#else
+float talshComplex4Imag(talshComplex4 cmplx)
+{
+ return cmplx.imag;
+}
+double talshComplex8Imag(talshComplex8 cmplx)
+{
+ return cmplx.imag;
+}
+#endif
+#endif
+
+//Get the complex conjugate:
 #ifndef NO_GPU
- return cuCimag(cmplx);
+__host__ __device__ __forceinline__ talshComplex4 talshComplex4Conjg(talshComplex4 cmplx)
+{
+ return cuConjf(cmplx);
+}
+__host__ __device__ __forceinline__ talshComplex8 talshComplex8Conjg(talshComplex8 cmplx)
+{
+ return cuConj(cmplx);
+}
 #else
 #ifdef __cplusplus
- return cmplx.imag();
-#else
- return cmplx.imag;
-#endif
-#endif
-}
-
 inline talshComplex4 talshComplex4Conjg(talshComplex4 cmplx)
 {
-#ifndef NO_GPU
- return cuConjf(cmplx);
-#else
-#ifdef __cplusplus
  return std::conj(cmplx);
-#else
- talshComplex4 result = {cmplx.real,-cmplx.imag};
- return result;
-#endif
-#endif
 }
-
 inline talshComplex8 talshComplex8Conjg(talshComplex8 cmplx)
 {
-#ifndef NO_GPU
- return cuConj(cmplx);
-#else
-#ifdef __cplusplus
  return std::conj(cmplx);
+}
 #else
+talshComplex4 talshComplex4Conjg(talshComplex4 cmplx)
+{
+ talshComplex4 result = {cmplx.real,-cmplx.imag};
+ return result;
+}
+talshComplex8 talshComplex8Conjg(talshComplex8 cmplx)
+{
  talshComplex8 result = {cmplx.real,-cmplx.imag};
  return result;
-#endif
-#endif
 }
+#endif
+#endif
 
+//Get the absolute magnitude of a complex number:
+#ifndef NO_GPU
+__host__ __device__ __forceinline__ float talshComplex4Abs(talshComplex4 cmplx)
+{
+ return cuCabsf(cmplx);
+}
+__host__ __device__ __forceinline__ double talshComplex8Abs(talshComplex8 cmplx)
+{
+ return cuCabs(cmplx);
+}
+#else
+#ifdef __cplusplus
 inline float talshComplex4Abs(talshComplex4 cmplx)
 {
-#ifndef NO_GPU
- return cuCabsf(cmplx);
-#else
-#ifdef __cplusplus
  return std::abs(cmplx);
-#else
- return (float)sqrt((double)((cmplx.real)*(cmplx.real)) + (double)((cmplx.imag)*(cmplx.imag)));
-#endif
-#endif
 }
-
 inline double talshComplex8Abs(talshComplex8 cmplx)
 {
+ return std::abs(cmplx);
+}
+#else
+float talshComplex4Abs(talshComplex4 cmplx)
+{
+ return (float)sqrt((double)((cmplx.real)*(cmplx.real)) + (double)((cmplx.imag)*(cmplx.imag)));
+}
+double talshComplex8Abs(talshComplex8 cmplx)
+{
+ return sqrt(((cmplx.real)*(cmplx.real)) + ((cmplx.imag)*(cmplx.imag)));
+}
+#endif
+#endif
+
+//Get the squared magnitude of a complex number:
 #ifndef NO_GPU
- return cuCabs(cmplx);
+__host__ __device__ __forceinline__ float talshComplex4Asq(talshComplex4 cmplx)
+{
+ float rl = cuCrealf(cmplx); float im = cuCimagf(cmplx);
+ return (rl*rl + im*im);
+}
+__host__ __device__ __forceinline__ double talshComplex8Asq(talshComplex8 cmplx)
+{
+ double rl = cuCreal(cmplx); double im = cuCimag(cmplx);
+ return (rl*rl + im*im);
+}
 #else
 #ifdef __cplusplus
- return std::abs(cmplx);
-#else
- return sqrt(((cmplx.real)*(cmplx.real)) + ((cmplx.imag)*(cmplx.imag)));
-#endif
-#endif
+inline float talshComplex4Asq(talshComplex4 cmplx)
+{
+ float rl = cmplx.real(); float im = cmplx.imag();
+ return (rl*rl + im*im);
 }
+inline double talshComplex8Asq(talshComplex8 cmplx)
+{
+ double rl = cmplx.real(); double im = cmplx.imag();
+ return (rl*rl + im*im);
+}
+#else
+float talshComplex4Asq(talshComplex4 cmplx)
+{
+ return ((cmplx.real)*(cmplx.real) + (cmplx.imag)*(cmplx.imag));
+}
+double talshComplex8Asq(talshComplex8 cmplx)
+{
+ return ((cmplx.real)*(cmplx.real) + (cmplx.imag)*(cmplx.imag));
+}
+#endif
+#endif
 
-#endif /*_TALSH_COMPLEX_H*/
+//Add two complex numbers:
+#ifndef NO_GPU
+__host__ __device__ __forceinline__ talshComplex4 talshComplex4Add(talshComplex4 x, talshComplex4 y)
+{
+ return cuCaddf(x,y);
+}
+__host__ __device__ __forceinline__ talshComplex8 talshComplex8Add(talshComplex8 x, talshComplex8 y)
+{
+ return cuCadd(x,y);
+}
+#else
+#ifdef __cplusplus
+inline talshComplex4 talshComplex4Add(talshComplex4 x, talshComplex4 y)
+{
+ return x+y;
+}
+inline talshComplex8 talshComplex8Add(talshComplex8 x, talshComplex8 y)
+{
+ return x+y;
+}
+#else
+talshComplex4 talshComplex4Add(talshComplex4 x, talshComplex4 y)
+{
+ return talshComplex4Set(x.real+y.real,x.imag+y.imag);
+}
+talshComplex8 talshComplex8Add(talshComplex8 x, talshComplex8 y)
+{
+ return talshComplex8Set(x.real+y.real,x.imag+y.imag);
+}
+#endif
+#endif
+
+//Add two complex numbers in-place:
+#ifndef NO_GPU
+__host__ __device__ __forceinline__ void talshComplex4AddEq(talshComplex4 * x, talshComplex4 y)
+{
+ *x = cuCaddf(*x,y);
+ return;
+}
+__host__ __device__ __forceinline__ void talshComplex8AddEq(talshComplex8 * x, talshComplex8 y)
+{
+ *x = cuCadd(*x,y);
+ return;
+}
+#else
+#ifdef __cplusplus
+inline void talshComplex4AddEq(talshComplex4 * x, talshComplex4 y)
+{
+ *x = *x + y;
+ return;
+}
+inline void talshComplex8AddEq(talshComplex8 * x, talshComplex8 y)
+{
+ *x = *x + y;
+ return;
+}
+#else
+void talshComplex4AddEq(talshComplex4 * x, talshComplex4 y)
+{
+ *x = talshComplex4Set(x->real+y.real,x->imag+y.imag);
+ return;
+}
+void talshComplex8AddEq(talshComplex8 * x, talshComplex8 y)
+{
+ *x = talshComplex8Set(x->real+y.real,x->imag+y.imag);
+ return;
+}
+#endif
+#endif
+
+//Subtract two complex numbers:
+#ifndef NO_GPU
+__host__ __device__ __forceinline__ talshComplex4 talshComplex4Sub(talshComplex4 x, talshComplex4 y)
+{
+ return cuCsubf(x,y);
+}
+__host__ __device__ __forceinline__ talshComplex8 talshComplex8Sub(talshComplex8 x, talshComplex8 y)
+{
+ return cuCsub(x,y);
+}
+#else
+#ifdef __cplusplus
+inline talshComplex4 talshComplex4Sub(talshComplex4 x, talshComplex4 y)
+{
+ return x-y;
+}
+inline talshComplex8 talshComplex8Sub(talshComplex8 x, talshComplex8 y)
+{
+ return x-y;
+}
+#else
+talshComplex4 talshComplex4Sub(talshComplex4 x, talshComplex4 y)
+{
+ return talshComplex4Set(x.real-y.real,x.imag-y.imag);
+}
+talshComplex8 talshComplex8Sub(talshComplex8 x, talshComplex8 y)
+{
+ return talshComplex8Set(x.real-y.real,x.imag-y.imag);
+}
+#endif
+#endif
+
+//Multiply two complex numbers:
+#ifndef NO_GPU
+__host__ __device__ __forceinline__ talshComplex4 talshComplex4Mul(talshComplex4 x, talshComplex4 y)
+{
+ return cuCmulf(x,y);
+}
+__host__ __device__ __forceinline__ talshComplex8 talshComplex8Mul(talshComplex8 x, talshComplex8 y)
+{
+ return cuCmul(x,y);
+}
+#else
+#ifdef __cplusplus
+inline talshComplex4 talshComplex4Mul(talshComplex4 x, talshComplex4 y)
+{
+ return x*y;
+}
+inline talshComplex8 talshComplex8Mul(talshComplex8 x, talshComplex8 y)
+{
+ return x*y;
+}
+#else
+talshComplex4 talshComplex4Mul(talshComplex4 x, talshComplex4 y)
+{
+ float rlx = x.real; float imx = x.imag;
+ float rly = y.real; float imy = y.imag;
+ return talshComplex4Set(rlx*rly-imx*imy,rlx*imy+imx*rly);
+}
+talshComplex8 talshComplex8Mul(talshComplex8 x, talshComplex8 y)
+{
+ double rlx = x.real; double imx = x.imag;
+ double rly = y.real; double imy = y.imag;
+ return talshComplex8Set(rlx*rly-imx*imy,rlx*imy+imx*rly);
+}
+#endif
+#endif
+
+//Divide two complex numbers:
+#ifndef NO_GPU
+__host__ __device__ __forceinline__ talshComplex4 talshComplex4Div(talshComplex4 x, talshComplex4 y)
+{
+ return cuCdivf(x,y);
+}
+__host__ __device__ __forceinline__ talshComplex8 talshComplex8Div(talshComplex8 x, talshComplex8 y)
+{
+ return cuCdiv(x,y);
+}
+#else
+#ifdef __cplusplus
+inline talshComplex4 talshComplex4Div(talshComplex4 x, talshComplex4 y)
+{
+ return x/y;
+}
+inline talshComplex8 talshComplex8Div(talshComplex8 x, talshComplex8 y)
+{
+ return x/y;
+}
+#else
+talshComplex4 talshComplex4Div(talshComplex4 x, talshComplex4 y)
+{
+ float rlx = x.real; float imx = x.imag;
+ float rly = y.real; float imy = y.imag;
+ float dny = 1.0f/(rly*rly + imy*imy);
+ return talshComplex4Set((rlx*rly+imx*imy)*dny,(imx*rly-rlx*imy)*dny);
+}
+talshComplex8 talshComplex8Div(talshComplex8 x, talshComplex8 y)
+{
+ double rlx = x.real; double imx = x.imag;
+ double rly = y.real; double imy = y.imag;
+ double dny = 1.0/(rly*rly + imy*imy);
+ return talshComplex8Set((rlx*rly+imx*imy)*dny,(imx*rly-rlx*imy)*dny);
+}
+#endif
+#endif
+
+#endif /*TALSH_COMPLEX_H_*/

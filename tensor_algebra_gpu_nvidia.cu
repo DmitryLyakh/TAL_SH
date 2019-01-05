@@ -1,9 +1,9 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2017/10/20
+REVISION: 2019/01/05
 
-Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -99,8 +99,8 @@ TO BE FIXED:
 #ifdef __cplusplus
 extern "C" {
 #endif
- void get_contr_permutations(int lrank, int rrank, const int *cptrn, int *dprm, int *lprm, int *rprm,
-                             int *ncd, int *nlu, int *nru, int *ierr);
+ void get_contr_permutations(int lrank, int rrank, const int *cptrn, int conj_bits,
+                             int *dprm, int *lprm, int *rprm, int *ncd, int *nlu, int *nru, int *ierr);
 #ifdef __cplusplus
 }
 #endif
@@ -123,22 +123,25 @@ static int cuda_task_record(cudaTask_t *cuda_task, unsigned int coh_ctrl, unsign
 static int cuda_task_finalize(cudaTask_t *cuda_task);
 // CUDA KERNELS:
 template <typename T>
-__global__ void gpu_array_norm2__(size_t arr_size, const T * arr, volatile T * bnorm2);
+__global__ void gpu_array_norm2__(size_t tsize, const T * __restrict__ arr, volatile double * bnorm2);
 template <typename T>
 __global__ void gpu_array_init__(size_t tsize, T * arr, T val);
 template <typename T>
-__global__ void gpu_scalar_multiply__(const T * left_arg, const T * right_arg, T * dest_arg, T alpha);
+__global__ void gpu_scalar_multiply__(const T * left_arg, const T * right_arg, T * dest_arg, T alpha,
+                                      int left_conj = 0, int right_conj = 0);
 template <typename T>
-__global__ void gpu_array_scale__(size_t tsize, T * __restrict__ arr, T alpha);
+__global__ void gpu_array_scale__(size_t tsize, T * arr, T alpha);
 template <typename T>
-__global__ void gpu_array_add__(size_t tsize, T * __restrict__ arr0, const T * __restrict__ arr1, T alpha);
+__global__ void gpu_array_add__(size_t tsize, T * __restrict__ arr0, const T * __restrict__ arr1, T alpha, int left_conj = 0);
 template <typename T>
-__global__ void gpu_array_add__(size_t tsize, T * __restrict__ arr0, const T * __restrict__ arr1, const T * __restrict__ scalar, T alpha);
+__global__ void gpu_array_add__(size_t tsize, T * __restrict__ arr0, const T * __restrict__ arr1, const T * __restrict__ scalar,
+                                T alpha, int left_conj = 0);
 template <typename T>
-__global__ void gpu_array_dot_product__(size_t tsize, const T * __restrict__ arr1, const T * __restrict__ arr2, volatile T * dprod, T alpha);
+__global__ void gpu_array_dot_product__(size_t tsize, const T * arr1, const T * arr2, volatile T * dprod,
+                                        T alpha, int left_conj = 0, int right_conj = 0);
 template <typename T>
-__global__ void gpu_array_product__(size_t tsize1, const T * __restrict__ arr1, size_t tsize2, const T * __restrict__ arr2,
-                                    T * __restrict__ arr0, T alpha);
+__global__ void gpu_array_product__(size_t tsize1, const T * arr1, size_t tsize2, const T * arr2, T * arr0,
+                                    T alpha, int left_conj = 0, int right_conj = 0);
 template <typename T>
 __global__ void gpu_tensor_block_copy_dlf__(int dmo, int drc, int dim_num, int const_args_pos,
                                             const T * __restrict__ tens_in, T * __restrict__ tens_out);
@@ -146,8 +149,14 @@ template <typename T>
 __global__ void gpu_tensor_block_copy_scatter_dlf__(int dmo, int drc, int dim_num, int const_args_pos,
                                                     const T * __restrict__ tens_in, T * __restrict__ tens_out);
 template <typename T>
-__global__ void gpu_matrix_multiply_tn__(size_t ll, size_t lr, size_t lc, const T * __restrict__ arg1,
-                                         const T * __restrict__ arg2, T * __restrict__ arg0, T alpha);
+__global__ void gpu_matrix_multiply_tn__(size_t ll, size_t lr, size_t lc, const T * arg1, const T * arg2, T * arg0, T alpha);
+template <typename T>
+__global__ void gpu_matrix_multiply_nt__(size_t ll, size_t lr, size_t lc, const T * arg1, const T * arg2, T * arg0, T alpha);
+template <typename T>
+__global__ void gpu_matrix_multiply_nn__(size_t ll, size_t lr, size_t lc, const T * arg1, const T * arg2, T * arg0, T alpha);
+template <typename T>
+__global__ void gpu_matrix_multiply_tt__(size_t ll, size_t lr, size_t lc, const T * arg1, const T * arg2, T * arg0, T alpha);
+
 #endif /*NO_GPU*/
 //----------------------------------------------------------------------------------------------------
 //PARAMETERS:
@@ -204,14 +213,1041 @@ __device__ __constant__ static cuComplex cgemm_alpha={1.0f,0.0f};     //default 
 __device__ __constant__ static cuComplex cgemm_beta={1.0f,0.0f};      //default beta constant CGEMM
 __device__ __constant__ static cuDoubleComplex zgemm_alpha={1.0,0.0}; //default alpha constant ZGEMM
 __device__ __constant__ static cuDoubleComplex zgemm_beta={1.0,0.0};  //default beta constant ZGEMM
-// Infrastructure for functions <gpu_array_norm2__>:
+// Infrastructure for kernels <gpu_array_norm2__>:
 __device__ static int norm2_wr_lock=0; //write lock shared by all <gpu_array_norm2__> running on GPU
 // Infrastructure for kernels <gpu_array_dot_product__>:
 __device__ static int dot_product_wr_lock=0; //write lock shared by all <gpu_array_dot_product__> running on GPU
 #endif /*NO_GPU*/
-//-------------------------------------------------------------------------------------------------------------------
-//CUDA runtime (for Fortran):
+//---------------------------------------------------------------------------------------------------
 #ifndef NO_GPU
+//CUDA KERNELS:
+// SUM OF THE SQUARES OF ABSOLUTE VALUES OF ALL ARRAY ELEMENTS:
+// REAL:
+template <typename T>
+__global__ void gpu_array_norm2__(size_t tsize, const T * __restrict__ arr, volatile double * bnorm2)
+/** Computes the squared 2-norm of array arr(0:tsize-1)
+INPUT:
+ # tsize - size of the array;
+ # arr(0:tsize-1) - array;
+ # bnorm2 - must be zero on entrance (resides on device as well);
+OUTPUT:
+ # bnorm2 - squared 2-norm of the array (resides on device as well);
+**/
+{
+ size_t i,n;
+ double _thread_norm2;
+ extern __shared__ double thread_norms2[]; //size = blockDim.x*sizeof(double) Bytes per thread block
+
+ n=gridDim.x*blockDim.x; _thread_norm2=0.0;
+ for(i=blockIdx.x*blockDim.x+threadIdx.x;i<tsize;i+=n) _thread_norm2+=arr[i]*arr[i];
+ thread_norms2[threadIdx.x]=_thread_norm2;
+ __syncthreads();
+ if(threadIdx.x == 0){ //global reduction among thread blocks
+  _thread_norm2=thread_norms2[0];
+  for(i=1;i<blockDim.x;i++) _thread_norm2+=thread_norms2[i];
+  i=1; while(i == 1){i=atomicMax(&norm2_wr_lock,1);} //waiting for the lock to unlock, then lock
+  __threadfence();
+  *bnorm2+=_thread_norm2;
+  __threadfence();
+  i=atomicExch(&norm2_wr_lock,0); //unlock
+ }
+ __syncthreads();
+ return;
+}
+// COMPLEX4:
+template <>
+__global__ void gpu_array_norm2__<talshComplex4>(size_t tsize, const talshComplex4 * __restrict__ arr, volatile double * bnorm2)
+/** Computes the squared 2-norm of array arr(0:tsize-1)
+INPUT:
+ # tsize - size of the array;
+ # arr(0:tsize-1) - array;
+ # bnorm2 - must be zero on entrance (resides on device as well);
+OUTPUT:
+ # bnorm2 - squared 2-norm of the array (resides on device as well);
+**/
+{
+ size_t i,n;
+ double _thread_norm2;
+ extern __shared__ double thread_norms2[]; //size = blockDim.x*sizeof(double) Bytes per thread block
+
+ n=gridDim.x*blockDim.x; _thread_norm2=0.0;
+ for(i=blockIdx.x*blockDim.x+threadIdx.x;i<tsize;i+=n) _thread_norm2+=talshComplex4Asq(arr[i]);
+ thread_norms2[threadIdx.x]=_thread_norm2;
+ __syncthreads();
+ if(threadIdx.x == 0){ //global reduction among thread blocks (one thread per block)
+  _thread_norm2=thread_norms2[0];
+  for(i=1;i<blockDim.x;i++) _thread_norm2+=thread_norms2[i];
+  i=1; while(i == 1){i=atomicMax(&norm2_wr_lock,1);} //waiting for the lock to unlock, then lock
+  __threadfence();
+  *bnorm2+=_thread_norm2;
+  __threadfence();
+  i=atomicExch(&norm2_wr_lock,0); //unlock
+ }
+ __syncthreads();
+ return;
+}
+// COMPLEX8:
+template <>
+__global__ void gpu_array_norm2__<talshComplex8>(size_t tsize, const talshComplex8 * __restrict__ arr, volatile double * bnorm2)
+/** Computes the squared 2-norm of array arr(0:tsize-1)
+INPUT:
+ # tsize - size of the array;
+ # arr(0:tsize-1) - array;
+ # bnorm2 - must be zero on entrance (resides on device as well);
+OUTPUT:
+ # bnorm2 - squared 2-norm of the array (resides on device as well);
+**/
+{
+ size_t i,n;
+ double _thread_norm2;
+ extern __shared__ double thread_norms2[]; //size = blockDim.x*sizeof(double) Bytes per thread block
+
+ n=gridDim.x*blockDim.x; _thread_norm2=0.0;
+ for(i=blockIdx.x*blockDim.x+threadIdx.x;i<tsize;i+=n) _thread_norm2+=talshComplex8Asq(arr[i]);
+ thread_norms2[threadIdx.x]=_thread_norm2;
+ __syncthreads();
+ if(threadIdx.x == 0){ //global reduction among thread blocks (one thread per block)
+  _thread_norm2=thread_norms2[0];
+  for(i=1;i<blockDim.x;i++) _thread_norm2+=thread_norms2[i];
+  i=1; while(i == 1){i=atomicMax(&norm2_wr_lock,1);} //waiting for the lock to unlock, then lock
+  __threadfence();
+  *bnorm2+=_thread_norm2;
+  __threadfence();
+  i=atomicExch(&norm2_wr_lock,0); //unlock
+ }
+ __syncthreads();
+ return;
+}
+//------------------------------------------------------------
+// ARRAY INITIALIZATION:
+template <typename T>
+__global__ void gpu_array_init__(size_t tsize, T * arr, T val)
+/** arr(0:tsize-1)=val **/
+{
+ size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
+ size_t _gd = gridDim.x*blockDim.x;
+ for(size_t l = _ti; l < tsize; l += _gd) arr[l] = val;
+ return;
+}
+//---------------------------------------------------------------------------------------------------
+// SCALAR MULTIPLICATION:
+// REAL:
+template <typename T>
+__global__ void gpu_scalar_multiply__(const T * left_arg, const T * right_arg, T * dest_arg, T alpha,
+                                      int left_conj, int right_conj)
+/** Scalar += Scalar * Scalar * Alpha **/
+{
+ if(blockIdx.x == 0 && threadIdx.x == 0){
+  *dest_arg+=(*left_arg)*(*right_arg)*alpha;
+ }
+ return;
+}
+// COMPLEX4:
+template <>
+__global__ void gpu_scalar_multiply__<talshComplex4>(const talshComplex4 * left_arg, const talshComplex4 * right_arg,
+                                                     talshComplex4 * dest_arg, talshComplex4 alpha,
+                                                     int left_conj, int right_conj)
+/** Scalar += Scalar * Scalar * Alpha **/
+{
+ if(blockIdx.x == 0 && threadIdx.x == 0){
+  if(left_conj != 0){
+   if(right_conj != 0){
+    *dest_arg=talshComplex4Add(*dest_arg,talshComplex4Mul(talshComplex4Mul(talshComplex4Conjg(*left_arg),talshComplex4Conjg(*right_arg)),alpha));
+   }else{
+    *dest_arg=talshComplex4Add(*dest_arg,talshComplex4Mul(talshComplex4Mul(talshComplex4Conjg(*left_arg),*right_arg),alpha));
+   }
+  }else{
+   if(right_conj != 0){
+    *dest_arg=talshComplex4Add(*dest_arg,talshComplex4Mul(talshComplex4Mul(*left_arg,talshComplex4Conjg(*right_arg)),alpha));
+   }else{
+    *dest_arg=talshComplex4Add(*dest_arg,talshComplex4Mul(talshComplex4Mul(*left_arg,*right_arg),alpha));
+   }
+  }
+ }
+ return;
+}
+// COMPLEX8:
+template <>
+__global__ void gpu_scalar_multiply__<talshComplex8>(const talshComplex8 * left_arg, const talshComplex8 * right_arg,
+                                                     talshComplex8 * dest_arg, talshComplex8 alpha,
+                                                     int left_conj, int right_conj)
+/** Scalar += Scalar * Scalar * Alpha **/
+{
+ if(blockIdx.x == 0 && threadIdx.x == 0){
+  if(left_conj != 0){
+   if(right_conj != 0){
+    *dest_arg=talshComplex8Add(*dest_arg,talshComplex8Mul(talshComplex8Mul(talshComplex8Conjg(*left_arg),talshComplex8Conjg(*right_arg)),alpha));
+   }else{
+    *dest_arg=talshComplex8Add(*dest_arg,talshComplex8Mul(talshComplex8Mul(talshComplex8Conjg(*left_arg),*right_arg),alpha));
+   }
+  }else{
+   if(right_conj != 0){
+    *dest_arg=talshComplex8Add(*dest_arg,talshComplex8Mul(talshComplex8Mul(*left_arg,talshComplex8Conjg(*right_arg)),alpha));
+   }else{
+    *dest_arg=talshComplex8Add(*dest_arg,talshComplex8Mul(talshComplex8Mul(*left_arg,*right_arg),alpha));
+   }
+  }
+ }
+ return;
+}
+//---------------------------------------------------------------
+// ARRAY RESCALING:
+// REAL:
+template <typename T>
+__global__ void gpu_array_scale__(size_t tsize, T * arr, T alpha)
+/** arr(0:tsize-1)*=alpha **/
+{
+ size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
+ size_t _gd = gridDim.x*blockDim.x;
+ for(size_t l = _ti; l < tsize; l += _gd) arr[l]*=alpha;
+ return;
+}
+// COMPLEX4:
+template <>
+__global__ void gpu_array_scale__<talshComplex4>(size_t tsize, talshComplex4 * arr, talshComplex4 alpha)
+/** arr(0:tsize-1)*=alpha **/
+{
+ size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
+ size_t _gd = gridDim.x*blockDim.x;
+ for(size_t l = _ti; l < tsize; l += _gd) arr[l]=talshComplex4Mul(arr[l],alpha);
+ return;
+}
+// COMPLEX8:
+template <>
+__global__ void gpu_array_scale__<talshComplex8>(size_t tsize, talshComplex8 * arr, talshComplex8 alpha)
+/** arr(0:tsize-1)*=alpha **/
+{
+ size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
+ size_t _gd = gridDim.x*blockDim.x;
+ for(size_t l = _ti; l < tsize; l += _gd) arr[l]=talshComplex8Mul(arr[l],alpha);
+ return;
+}
+//-----------------------------------------------------------------------------------------------------------------------
+// ARRAY ADDITION:
+// REAL:
+template <typename T>
+__global__ void gpu_array_add__(size_t tsize, T * __restrict__ arr0, const T * __restrict__ arr1, T alpha, int left_conj)
+/** arr0(0:tsize-1)+=arr1(0:tsize-1)*alpha **/
+{
+ size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
+ size_t _gd = gridDim.x*blockDim.x;
+ for(size_t l = _ti; l < tsize; l += _gd) arr0[l]+=(arr1[l]*alpha);
+ return;
+}
+// COMPLEX4:
+template <>
+__global__ void gpu_array_add__<talshComplex4>(size_t tsize, talshComplex4 * __restrict__ arr0, const talshComplex4 * __restrict__ arr1,
+                                               talshComplex4 alpha, int left_conj)
+/** arr0(0:tsize-1)+=arr1(0:tsize-1)*alpha **/
+{
+ size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
+ size_t _gd = gridDim.x*blockDim.x;
+ if(left_conj != 0){
+  for(size_t l = _ti; l < tsize; l += _gd) arr0[l]=talshComplex4Add(arr0[l],talshComplex4Mul(talshComplex4Conjg(arr1[l]),alpha));
+ }else{
+  for(size_t l = _ti; l < tsize; l += _gd) arr0[l]=talshComplex4Add(arr0[l],talshComplex4Mul(arr1[l],alpha));
+ }
+ return;
+}
+// COMPLEX8:
+template <>
+__global__ void gpu_array_add__<talshComplex8>(size_t tsize, talshComplex8 * __restrict__ arr0, const talshComplex8 * __restrict__ arr1,
+                                               talshComplex8 alpha, int left_conj)
+/** arr0(0:tsize-1)+=arr1(0:tsize-1)*alpha **/
+{
+ size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
+ size_t _gd = gridDim.x*blockDim.x;
+ if(left_conj != 0){
+  for(size_t l = _ti; l < tsize; l += _gd) arr0[l]=talshComplex8Add(arr0[l],talshComplex8Mul(talshComplex8Conjg(arr1[l]),alpha));
+ }else{
+  for(size_t l = _ti; l < tsize; l += _gd) arr0[l]=talshComplex8Add(arr0[l],talshComplex8Mul(arr1[l],alpha));
+ }
+ return;
+}
+//------------------------------------------------------------------------------------------------------------------------------
+// ARRAY ADDITION AND SCALING:
+// REAL:
+template <typename T>
+__global__ void gpu_array_add__(size_t tsize, T * __restrict__ arr0, const T * __restrict__ arr1, const T * __restrict__ scalar,
+                                T alpha, int left_conj)
+/** arr0(0:tsize-1)+=arr1(0:tsize-1)*scalar*alpha **/
+{
+ size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
+ size_t _gd = gridDim.x*blockDim.x;
+ T pref = (*scalar) * alpha;
+ for(size_t l = _ti; l < tsize; l += _gd) arr0[l]+=(arr1[l]*pref);
+ return;
+}
+// COMPLEX4:
+template <>
+__global__ void gpu_array_add__<talshComplex4>(size_t tsize, talshComplex4 * __restrict__ arr0, const talshComplex4 * __restrict__ arr1,
+                                               const talshComplex4 * __restrict__ scalar, talshComplex4 alpha, int left_conj)
+/** arr0(0:tsize-1)+=arr1(0:tsize-1)*scalar*alpha **/
+{
+ size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
+ size_t _gd = gridDim.x*blockDim.x;
+ talshComplex4 pref = talshComplex4Mul(*scalar,alpha);
+ if(left_conj != 0){
+  for(size_t l = _ti; l < tsize; l += _gd) arr0[l]=talshComplex4Add(arr0[l],talshComplex4Mul(talshComplex4Conjg(arr1[l]),pref));
+ }else{
+  for(size_t l = _ti; l < tsize; l += _gd) arr0[l]=talshComplex4Add(arr0[l],talshComplex4Mul(arr1[l],pref));
+ }
+ return;
+}
+// COMPLEX8:
+template <>
+__global__ void gpu_array_add__<talshComplex8>(size_t tsize, talshComplex8 * __restrict__ arr0, const talshComplex8 * __restrict__ arr1,
+                                               const talshComplex8 * __restrict__ scalar, talshComplex8 alpha, int left_conj)
+/** arr0(0:tsize-1)+=arr1(0:tsize-1)*scalar*alpha **/
+{
+ size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
+ size_t _gd = gridDim.x*blockDim.x;
+ talshComplex8 pref = talshComplex8Mul(*scalar,alpha);
+ if(left_conj != 0){
+  for(size_t l = _ti; l < tsize; l += _gd) arr0[l]=talshComplex8Add(arr0[l],talshComplex8Mul(talshComplex8Conjg(arr1[l]),pref));
+ }else{
+  for(size_t l = _ti; l < tsize; l += _gd) arr0[l]=talshComplex8Add(arr0[l],talshComplex8Mul(arr1[l],pref));
+ }
+ return;
+}
+//-------------------------------------------------------------------------------------------------------
+// ARRAY DOT-PRODUCT:
+// REAL:
+template <typename T>
+__global__ void gpu_array_dot_product__(size_t tsize, const T * arr1, const T * arr2, volatile T * dprod,
+                                        T alpha, int left_conj, int right_conj)
+/** Scalar (GPU) += arr1(0:tsize-1) * arr2(0:tsize-1) * alpha **/
+{
+ extern __shared__ char sh_buf[]; //size = blockDim.x * sizeof(T) Bytes per thread block
+ T *dprs;
+ T dpr;
+ size_t l;
+ unsigned int j,s;
+ int i;
+
+ dprs=(T*)(&sh_buf[0]); //dynamic shared memory buffer
+ dpr=static_cast<T>(0.0);
+ for(l = blockIdx.x*blockDim.x+threadIdx.x; l < tsize; l += gridDim.x*blockDim.x) dpr+=arr1[l]*arr2[l];
+ dprs[threadIdx.x]=dpr*alpha;
+ __syncthreads();
+ s = blockDim.x;
+ while(s > 1){
+  j = (s+1U)>>1;
+  if(threadIdx.x + j < s) dprs[threadIdx.x] += dprs[threadIdx.x+j];
+  __syncthreads();
+  s=j;
+ }
+ if(threadIdx.x == 0){
+  i=1; while(i != 0){i=atomicMax(&dot_product_wr_lock,1); if(i == 0) *dprod+=dprs[0];}
+  __threadfence();
+  i=atomicExch(&dot_product_wr_lock,0); //unlock
+ }
+ __syncthreads();
+ return;
+}
+// COMPLEX4:
+template <>
+__global__ void gpu_array_dot_product__<talshComplex4>(size_t tsize, const talshComplex4 * arr1, const talshComplex4 * arr2,
+                                                       volatile talshComplex4 * dprod, talshComplex4 alpha,
+                                                       int left_conj, int right_conj)
+/** Scalar (GPU) += arr1(0:tsize-1) * arr2(0:tsize-1) * alpha **/
+{
+ extern __shared__ char sh_buf[]; //size = blockDim.x * sizeof(T) Bytes per thread block
+ talshComplex4 *dprs;
+ talshComplex4 dpr;
+ size_t l;
+ unsigned int j,s;
+ int i;
+
+ dprs=(talshComplex4*)(&sh_buf[0]); //dynamic shared memory buffer
+ dpr=talshComplex4Set(0.0f,0.0f);
+ if(left_conj != 0){
+  if(right_conj != 0){
+   for(l = blockIdx.x*blockDim.x+threadIdx.x; l < tsize; l += gridDim.x*blockDim.x){
+    dpr=talshComplex4Add(dpr,talshComplex4Mul(talshComplex4Conjg(arr1[l]),talshComplex4Conjg(arr2[l])));
+   }
+  }else{
+   for(l = blockIdx.x*blockDim.x+threadIdx.x; l < tsize; l += gridDim.x*blockDim.x){
+    dpr=talshComplex4Add(dpr,talshComplex4Mul(talshComplex4Conjg(arr1[l]),arr2[l]));
+   }
+  }
+ }else{
+  if(right_conj != 0){
+   for(l = blockIdx.x*blockDim.x+threadIdx.x; l < tsize; l += gridDim.x*blockDim.x){
+    dpr=talshComplex4Add(dpr,talshComplex4Mul(arr1[l],talshComplex4Conjg(arr2[l])));
+   }
+  }else{
+   for(l = blockIdx.x*blockDim.x+threadIdx.x; l < tsize; l += gridDim.x*blockDim.x){
+    dpr=talshComplex4Add(dpr,talshComplex4Mul(arr1[l],arr2[l]));
+   }
+  }
+ }
+ dprs[threadIdx.x]=talshComplex4Mul(dpr,alpha);
+ __syncthreads();
+ s = blockDim.x;
+ while(s > 1){
+  j = (s+1U)>>1;
+  if(threadIdx.x + j < s) dprs[threadIdx.x] = talshComplex4Add(dprs[threadIdx.x],dprs[threadIdx.x+j]);
+  __syncthreads();
+  s=j;
+ }
+ if(threadIdx.x == 0){
+  i=1; while(i != 0){
+   i=atomicMax(&dot_product_wr_lock,1);
+   if(i == 0){
+    dprod->x += talshComplex4Real(dprs[0]);
+    dprod->y += talshComplex4Imag(dprs[0]);
+   }
+  }
+  __threadfence();
+  i=atomicExch(&dot_product_wr_lock,0); //unlock
+ }
+ __syncthreads();
+ return;
+}
+// COMPLEX8:
+template <>
+__global__ void gpu_array_dot_product__<talshComplex8>(size_t tsize, const talshComplex8 * arr1, const talshComplex8 * arr2,
+                                                       volatile talshComplex8 * dprod, talshComplex8 alpha,
+                                                       int left_conj, int right_conj)
+/** Scalar (GPU) += arr1(0:tsize-1) * arr2(0:tsize-1) * alpha **/
+{
+ extern __shared__ char sh_buf[]; //size = blockDim.x * sizeof(T) Bytes per thread block
+ talshComplex8 *dprs;
+ talshComplex8 dpr;
+ size_t l;
+ unsigned int j,s;
+ int i;
+
+ dprs=(talshComplex8*)(&sh_buf[0]); //dynamic shared memory buffer
+ dpr=talshComplex8Set(0.0,0.0);
+ if(left_conj != 0){
+  if(right_conj != 0){
+   for(l = blockIdx.x*blockDim.x+threadIdx.x; l < tsize; l += gridDim.x*blockDim.x){
+    dpr=talshComplex8Add(dpr,talshComplex8Mul(talshComplex8Conjg(arr1[l]),talshComplex8Conjg(arr2[l])));
+   }
+  }else{
+   for(l = blockIdx.x*blockDim.x+threadIdx.x; l < tsize; l += gridDim.x*blockDim.x){
+    dpr=talshComplex8Add(dpr,talshComplex8Mul(talshComplex8Conjg(arr1[l]),arr2[l]));
+   }
+  }
+ }else{
+  if(right_conj != 0){
+   for(l = blockIdx.x*blockDim.x+threadIdx.x; l < tsize; l += gridDim.x*blockDim.x){
+    dpr=talshComplex8Add(dpr,talshComplex8Mul(arr1[l],talshComplex8Conjg(arr2[l])));
+   }
+  }else{
+   for(l = blockIdx.x*blockDim.x+threadIdx.x; l < tsize; l += gridDim.x*blockDim.x){
+    dpr=talshComplex8Add(dpr,talshComplex8Mul(arr1[l],arr2[l]));
+   }
+  }
+ }
+ dprs[threadIdx.x]=talshComplex8Mul(dpr,alpha);
+ __syncthreads();
+ s = blockDim.x;
+ while(s > 1){
+  j = (s+1U)>>1;
+  if(threadIdx.x + j < s) dprs[threadIdx.x] = talshComplex8Add(dprs[threadIdx.x],dprs[threadIdx.x+j]);
+  __syncthreads();
+  s=j;
+ }
+ if(threadIdx.x == 0){
+  i=1; while(i != 0){
+   i=atomicMax(&dot_product_wr_lock,1);
+   if(i == 0){
+    dprod->x += talshComplex8Real(dprs[0]);
+    dprod->y += talshComplex8Imag(dprs[0]);
+   }
+  }
+  __threadfence();
+  i=atomicExch(&dot_product_wr_lock,0); //unlock
+ }
+ __syncthreads();
+ return;
+}
+//---------------------------------------------------------------------------------------------------------
+// ARRAY DIRECT PRODUCT:
+// REAL:
+template <typename T>
+__global__ void gpu_array_product__(size_t tsize1, const T * arr1, size_t tsize2, const T * arr2, T * arr0,
+                                    T alpha, int left_conj, int right_conj)
+/** arr0[0:tsize2-1][0:tsize1-1]+=arr1[0:tsize1-1]*arr2[0:tsize2-1]*alpha **/
+{
+ __shared__ T lbuf[THRDS_ARRAY_PRODUCT+1],rbuf[THRDS_ARRAY_PRODUCT];
+ size_t _ib,_in,_jb,_jn,_tx,_jc;
+
+ _tx=(size_t)threadIdx.x;
+ for(_jb = blockIdx.y*THRDS_ARRAY_PRODUCT; _jb < tsize2; _jb += gridDim.y*THRDS_ARRAY_PRODUCT){
+  if(_jb+THRDS_ARRAY_PRODUCT > tsize2){_jn=tsize2-_jb;}else{_jn=THRDS_ARRAY_PRODUCT;}
+  if(_tx < _jn) rbuf[_tx]=arr2[_jb+_tx]*alpha;
+  for(_ib = blockIdx.x*THRDS_ARRAY_PRODUCT; _ib < tsize1; _ib += gridDim.x*THRDS_ARRAY_PRODUCT){
+   if(_ib+THRDS_ARRAY_PRODUCT > tsize1){_in=tsize1-_ib;}else{_in=THRDS_ARRAY_PRODUCT;}
+   if(_tx < _in) lbuf[_tx]=arr1[_ib+_tx];
+   __syncthreads();
+   for(_jc = 0; _jc < _jn; _jc++){if(_tx < _in) arr0[(_jb+_jc)*tsize1+_ib+_tx]+=lbuf[_tx]*rbuf[_jc];}
+   __syncthreads();
+  }
+ }
+ return;
+}
+// COMPLEX4:
+template <>
+__global__ void gpu_array_product__<talshComplex4>(size_t tsize1, const talshComplex4 * arr1,
+                                                   size_t tsize2, const talshComplex4 * arr2,
+                                                   talshComplex4 * arr0, talshComplex4 alpha,
+                                                   int left_conj, int right_conj)
+/** arr0[0:tsize2-1][0:tsize1-1]+=arr1[0:tsize1-1]*arr2[0:tsize2-1]*alpha **/
+{
+ __shared__ talshComplex4 lbuf[THRDS_ARRAY_PRODUCT+1],rbuf[THRDS_ARRAY_PRODUCT];
+ size_t _ib,_in,_jb,_jn,_tx,_jc,_ja;
+
+ _tx=(size_t)threadIdx.x;
+ for(_jb = blockIdx.y*THRDS_ARRAY_PRODUCT; _jb < tsize2; _jb += gridDim.y*THRDS_ARRAY_PRODUCT){
+  if(_jb+THRDS_ARRAY_PRODUCT > tsize2){_jn=tsize2-_jb;}else{_jn=THRDS_ARRAY_PRODUCT;}
+  if(right_conj != 0){
+   if(_tx < _jn) rbuf[_tx]=talshComplex4Mul(talshComplex4Conjg(arr2[_jb+_tx]),alpha);
+  }else{
+   if(_tx < _jn) rbuf[_tx]=talshComplex4Mul(arr2[_jb+_tx],alpha);
+  }
+  for(_ib = blockIdx.x*THRDS_ARRAY_PRODUCT; _ib < tsize1; _ib += gridDim.x*THRDS_ARRAY_PRODUCT){
+   if(_ib+THRDS_ARRAY_PRODUCT > tsize1){_in=tsize1-_ib;}else{_in=THRDS_ARRAY_PRODUCT;}
+   if(left_conj != 0){
+    if(_tx < _in) lbuf[_tx]=talshComplex4Conjg(arr1[_ib+_tx]);
+   }else{
+    if(_tx < _in) lbuf[_tx]=arr1[_ib+_tx];
+   }
+   __syncthreads();
+   for(_jc = 0; _jc < _jn; _jc++){
+    if(_tx < _in){
+     _ja = (_jb+_jc)*tsize1 + (_ib+_tx);
+     arr0[_ja]=talshComplex4Add(arr0[_ja],talshComplex4Mul(lbuf[_tx],rbuf[_jc]));
+    }
+   }
+   __syncthreads();
+  }
+ }
+ return;
+}
+// COMPLEX8:
+template <>
+__global__ void gpu_array_product__<talshComplex8>(size_t tsize1, const talshComplex8 * arr1,
+                                                   size_t tsize2, const talshComplex8 * arr2,
+                                                   talshComplex8 * arr0, talshComplex8 alpha,
+                                                   int left_conj, int right_conj)
+/** arr0[0:tsize2-1][0:tsize1-1]+=arr1[0:tsize1-1]*arr2[0:tsize2-1]*alpha **/
+{
+ __shared__ talshComplex8 lbuf[THRDS_ARRAY_PRODUCT+1],rbuf[THRDS_ARRAY_PRODUCT];
+ size_t _ib,_in,_jb,_jn,_tx,_jc,_ja;
+
+ _tx=(size_t)threadIdx.x;
+ for(_jb = blockIdx.y*THRDS_ARRAY_PRODUCT; _jb < tsize2; _jb += gridDim.y*THRDS_ARRAY_PRODUCT){
+  if(_jb+THRDS_ARRAY_PRODUCT > tsize2){_jn=tsize2-_jb;}else{_jn=THRDS_ARRAY_PRODUCT;}
+  if(right_conj != 0){
+   if(_tx < _jn) rbuf[_tx]=talshComplex8Mul(talshComplex8Conjg(arr2[_jb+_tx]),alpha);
+  }else{
+   if(_tx < _jn) rbuf[_tx]=talshComplex8Mul(arr2[_jb+_tx],alpha);
+  }
+  for(_ib = blockIdx.x*THRDS_ARRAY_PRODUCT; _ib < tsize1; _ib += gridDim.x*THRDS_ARRAY_PRODUCT){
+   if(_ib+THRDS_ARRAY_PRODUCT > tsize1){_in=tsize1-_ib;}else{_in=THRDS_ARRAY_PRODUCT;}
+   if(left_conj != 0){
+    if(_tx < _in) lbuf[_tx]=talshComplex8Conjg(arr1[_ib+_tx]);
+   }else{
+    if(_tx < _in) lbuf[_tx]=arr1[_ib+_tx];
+   }
+   __syncthreads();
+   for(_jc = 0; _jc < _jn; _jc++){
+    if(_tx < _in){
+     _ja = (_jb+_jc)*tsize1 + (_ib+_tx);
+     arr0[_ja]=talshComplex8Add(arr0[_ja],talshComplex8Mul(lbuf[_tx],rbuf[_jc]));
+    }
+   }
+   __syncthreads();
+  }
+ }
+ return;
+}
+//----------------------------------------------------------------------------------------------------
+// TENSOR TRANSPOSE (legacy shared-memory version):
+template <typename T>
+__global__ void gpu_tensor_block_copy_dlf__(int dmo, int drc, int dim_num, int const_args_pos,
+                                            const T * __restrict__ tens_in, T * __restrict__ tens_out)
+/**
+Shared-memory version of tensor transpose: tens_out=TRN(tens_in):
+INPUT:
+ # dmo - dimension extents order (0: normal, as it is in <const_args>; not 0: permuted dimension order will be imposed);
+ # drc - index permutation direction (0: normal, as it is in <const_args>; not 0: inversed permutation will be used);
+ # dim_num - tensor block rank;
+ # const_args_pos - entry in the __constant__ memory bank where tensor block dimension extents (const_args_dims)
+                    and index permutation (const_args_prmn) are stored;
+ # tens_in[0:] - input tensor;
+OUTPUT:
+ # tens_out[0:] - output (transposed) tensor;
+NOTES:
+ # Minimal CUDA execution configuration is <<<1,warpSize>>>
+ # Number of threads per block must be multiple of the warpSize!
+**/
+{
+ __shared__ T buf0[TENS_TRANSP_BUF_SIZE];
+ __shared__ float val;
+ __shared__ size_t base_in[MAX_TENSOR_RANK],base_out[MAX_TENSOR_RANK];
+ __shared__ size_t ftb[TENS_TRANSP_TAB_SIZE],gtb[TENS_TRANSP_TAB_SIZE];
+ __shared__ int htb[TENS_TRANSP_TAB_SIZE],stb[TENS_TRANSP_TAB_SIZE];
+ __shared__ int dim_in[MAX_TENSOR_RANK],dim_out[MAX_TENSOR_RANK],o2n[MAX_TENSOR_RANK],n2o[MAX_TENSOR_RANK];
+ __shared__ int pri[MAX_TENSOR_RANK],tmp0[MAX_TENSOR_RANK];
+ __shared__ int err_code,minor,minor_in,minor_out,s1_ind,s1_ond,s1_step,s1_dim,s2_ind,s2_ond,s2_step,s2_dim,ns1,ns2;
+ __shared__ size_t vol,vol_ext;
+ size_t _vol,_addr_in,_addr_out,_addr,_work_piece;
+ int i,j,k,l,m,n,_vol_minor,_vol_in,_vol_out,_s1,_s2;
+/*
+SHARED MEMORY USE (bytes) =
+ + TENS_TRANSP_BUF_SIZE*sizeof(T)
+ + MAX_TENSOR_RANK*(8+8+4+4+4+4+4+4)
+ + TENS_TRANSP_TAB_SIZE*(8+8+4+4)
+ + 4*15 + 8*2
+MIN REGISTER USE (bytes) per thread =
+ + 4*4 + 4*11 + 8*5 = 100
+*/
+
+//Determine the minor index set (only the master thread in each thread block):
+ if(threadIdx.x == 0){
+  err_code=0;
+  if(dim_num >= 0 && dim_num <= MAX_TENSOR_RANK && blockDim.x >= warpSize && blockDim.x%warpSize == 0){
+   s1_ind=dim_num+1; s2_ind=dim_num-1;
+   _vol=1; for(i=0;i<dim_num;i++){
+    _vol*=const_args_dims[const_args_pos][i]; if(const_args_prmn[const_args_pos][i] != i+1) s1_ind=0;
+   }; vol=_vol; //total volume (number of tensor elements)
+   if(s1_ind == 0){ //non-trivial permutation
+// Set input/output permutations and dimension extents:
+    if(drc == 0){ //normal index permutation
+     for(i=0;i<dim_num;i++) o2n[i]=const_args_prmn[const_args_pos][i]-1; for(i=0;i<dim_num;i++) n2o[o2n[i]]=i;
+    }else{ //inversed index permutation
+     for(i=0;i<dim_num;i++) n2o[i]=const_args_prmn[const_args_pos][i]-1; for(i=0;i<dim_num;i++) o2n[n2o[i]]=i;
+    }
+    if(dmo == 0){ //normal dimension order
+     for(i=0;i<dim_num;i++) dim_in[i]=const_args_dims[const_args_pos][i];
+     for(i=0;i<dim_num;i++) dim_out[o2n[i]]=dim_in[i];
+    }else{ //inversed dimension order
+     for(i=0;i<dim_num;i++) dim_out[i]=const_args_dims[const_args_pos][i];
+     for(i=0;i<dim_num;i++) dim_in[n2o[i]]=dim_out[i];
+    }
+    s1_step=dim_in[s1_ind]; s2_step=dim_in[s2_ind];
+    if(_vol > TENS_TRANSP_BUF_SIZE){ //tensor block does not fit into the shared memory buffer
+// Determine the input/output minor index sets and the combined minor index set:
+     l=(int)(sqrt((float)TENS_TRANSP_BUF_SIZE));
+     minor_in=0; _vol_in=1; for(i=0;i<dim_num;i++){j=_vol_in*dim_in[i]; if(j>l) break; minor_in++; _vol_in=j;}
+     minor_out=0; _vol_out=1; for(i=0;i<dim_num;i++){j=_vol_out*dim_out[i]; if(j>l) break; minor_out++; _vol_out=j;}
+     minor=minor_in; _vol_minor=_vol_in; for(i=0;i<minor_out;i++){if(n2o[i]>=minor_in){minor++; _vol_minor*=dim_out[i];}}
+     m=1; _s1=0; _s2=0;
+     while(_vol_minor < TENS_TRANSP_BUF_SIZE && m != 0){
+      m=0;
+      if(_s1 == 0){for(i=minor_in;i<dim_num;i++){if(o2n[i]<minor_out){minor_in++; _vol_in*=dim_in[i];}else{break;}}}
+      if(_s2 == 0){for(i=minor_out;i<dim_num;i++){if(n2o[i]<minor_in){minor_out++; _vol_out*=dim_out[i];}else{break;}}}
+      j=dim_in[minor_in]; l=dim_out[minor_out];
+      if(minor_in == n2o[minor_out] && _s1+_s2 == 0){ //same candidate index to both the input and output index sets
+       if(j > 1 && TENS_TRANSP_BUF_SIZE < _vol_minor*2) break;
+       if(_vol_minor*j > TENS_TRANSP_BUF_SIZE){s1_ind=minor_in; s1_step=TENS_TRANSP_BUF_SIZE/_vol_minor; _s1++; _s2++;}
+       minor_in++; _vol_in*=j; minor_out++; _vol_out*=j; minor++; _vol_minor*=j; m++;
+      }else{ //the input and output index sets consider two different candidates
+       if(_vol_minor*j*l <= TENS_TRANSP_BUF_SIZE && _s1+_s2 == 0){ //accept both, no splitting
+        minor_in++; _vol_in*=j; minor_out++; _vol_out*=l; minor+=2; _vol_minor*=(j*l); m++;
+       }else{ //try to accept either one of the two OR both with splitting
+        if(j == 1 || l == 1){
+         if(j == 1 && _s1 == 0){minor_in++; minor++; m++;}
+         if(l == 1 && _s2 == 0){minor_out++; minor++; m++;}
+        }else{
+         if(_vol_minor*j <= TENS_TRANSP_BUF_SIZE && _vol_minor*l > TENS_TRANSP_BUF_SIZE &&
+            _vol_out >= warpSize && _s1 == 0){ //accept the input index, no splitting
+          minor_in++; _vol_in*=j; minor++; _vol_minor*=j; m++;
+         }else if(_vol_minor*j > TENS_TRANSP_BUF_SIZE && _vol_minor*l <= TENS_TRANSP_BUF_SIZE &&
+                  _vol_in >= warpSize && _s2 == 0){ //accept the output index, no splitting
+          minor_out++; _vol_out*=l; minor++; _vol_minor*=l; m++;
+         }else{ //splitting is unavoidable (both OR one OR none)
+          if(TENS_TRANSP_BUF_SIZE >= _vol_minor*2){
+           if(j >= 4 && l >= 4){ //dimension extents are large enough to be split
+            if(_vol_minor*4 > TENS_TRANSP_BUF_SIZE){ //impossible to split both indices
+             if(_vol_in <= _vol_out && _s1 == 0){ //split the input candidate index
+              s1_ind=minor_in; s1_step=TENS_TRANSP_BUF_SIZE/_vol_minor;
+              minor_in++; _vol_in*=j; minor++; _vol_minor*=j; _s1++; m++;
+             }else{ //split the output candidate index
+              if(_s2 == 0){
+               s1_ind=n2o[minor_out]; s1_step=TENS_TRANSP_BUF_SIZE/_vol_minor;
+               minor_out++; _vol_out*=l; minor++; _vol_minor*=l; _s2++; m++;
+              }
+             }
+            }else{ //possible to split both indices
+             i=(int)sqrt(((float)TENS_TRANSP_BUF_SIZE)/(float)_vol_minor); if(i < 2) i=2; //uniform splitting
+             s1_step=i; s2_step=i; val=(float)_vol_out/(float)_vol_in;
+             if(val < 1.0f){ //scale the initial uniform splitting to reflect the disbalance between _vol_in and _vol_out
+              if(val*(float)i < 1.0f) val=1.0f/(float)i; if(val*(float)l < (float)i) val=(float)i/(float)l;
+             }else{
+              if(val*(float)i > (float)j) val=(float)j/(float)i; if(val > float(i)) val=(float)i;
+             }
+             s1_step=(int)(((float)i)*val); s2_step=(int)(((float)i)/val);
+             if(s1_step >= 2 && _s1 == 0){ //&& s1_step <= dim_in[minor_in]
+              s1_ind=minor_in; minor_in++; _vol_in*=j; minor++; _vol_minor*=j; _s1++; m++;
+             }else{
+              s1_step=dim_in[s1_ind];
+             }
+             if(s2_step >= 2 && _s2 == 0){ //&& s2_step <= dim_out[minor_out]
+              s2_ind=n2o[minor_out]; minor_out++; _vol_out*=l; minor++; _vol_minor*=l; _s2++; m++;
+             }else{
+              s2_step=dim_in[s2_ind];
+             }
+            }
+           }else if(j >= 4 && l < 4 && _s1 == 0){ //split the input candidate index
+            s1_ind=minor_in; s1_step=TENS_TRANSP_BUF_SIZE/_vol_minor;
+            minor_in++; _vol_in*=j; minor++; _vol_minor*=j; _s1++; m++;
+           }else if(j < 4 && l >= 4 && _s2 == 0){ //split the output candidate index
+            s1_ind=n2o[minor_out]; s1_step=TENS_TRANSP_BUF_SIZE/_vol_minor;
+            minor_out++; _vol_out*=l; minor++; _vol_minor*=l; _s2++; m++;
+           }else{ //both candidate indices have too small extent to be split: try to add one of them fully
+            if(_vol_minor*j <= TENS_TRANSP_BUF_SIZE && _s1 == 0){
+             minor_in++; _vol_in*=j; minor++; _vol_minor*=j; m++;
+            }else if(_vol_minor*l <= TENS_TRANSP_BUF_SIZE && _s2 == 0){
+             minor_out++; _vol_out*=l; minor++; _vol_minor*=l; m++;
+            }
+           }
+          }else{ //unable to add more indices in the minor set
+           break;
+          }
+         }
+        }
+       }
+      }
+     }
+     if(s1_ind == dim_num-1 && s2_ind == dim_num-1){s2_ind=0; s2_step=dim_in[0];} //s1_ind was set while s2_ind was not
+    }else{ //tensor block fits into the shared memory buffer from the beginning
+     minor=dim_num; minor_in=dim_num; minor_out=dim_num; _vol_minor=_vol; _vol_in=_vol; _vol_out=_vol;
+    }
+// Share the tensor transpose configuration with other threads in each block:
+    vol_ext=_vol/_vol_minor; s1_dim=dim_in[s1_ind]; s2_dim=dim_in[s2_ind];
+// Set indexing bases (OUT:{out,in_c,ext_in}_new; IN:{in,out_c,ext_in}_old):
+//  OUTPUT indexing (dim_out[], base_out[]: prioritized new numeration):
+    for(i=0;i<dim_num;i++){tmp0[i]=dim_out[i];} //save output dimension extents (new numeration)
+    j=0; for(i=0;i<minor_out;i++){pri[j++]=i;} //output minor index set (new numeration))
+    for(i=0;i<dim_num;i++){if(o2n[i]>=minor_out) pri[j++]=o2n[i];} //{compl.input minor + external} index set (new numeration)
+    j=1; for(i=0;i<dim_num;i++){dim_out[i]=j; j*=tmp0[i];} //output bases (new numeration)
+    for(i=0;i<dim_num;i++){base_out[i]=dim_out[pri[i]];} //output bases (prioritized new numeration)
+    for(i=0;i<dim_num;i++){dim_out[i]=tmp0[pri[i]];} //output extents (prioritized new numeration)
+    for(i=0;i<dim_num;i++){if(n2o[pri[i]]==s1_ind){s1_ond=i;}else if(n2o[pri[i]]==s2_ind){s2_ond=i;}} //split indices (prioritized new numeration)
+//  INPUT indexing (dim_in[], base_in[]: prioritized old numeration):
+    for(i=0;i<dim_num;i++){tmp0[i]=dim_in[i];} //save input dimension extents (old numeration)
+    j=0; for(i=0;i<minor_in;i++){pri[j++]=i;} //input minor index set (old numeration)
+    for(i=0;i<minor_out;i++){if(n2o[i]>=minor_in) pri[j++]=n2o[i];} //compl.output minor idex set (old numeration)
+    for(i=j;i<dim_num;i++){pri[i]=n2o[pri[i]];} //external index set (just convert new numbers to old ones for consistency)
+    j=1; for(i=0;i<dim_num;i++){dim_in[i]=j; j*=tmp0[i];} //input bases (old numeration)
+    for(i=0;i<dim_num;i++){base_in[i]=dim_in[pri[i]];} //input bases (prioritized old numeration)
+    for(i=0;i<dim_num;i++){dim_in[i]=tmp0[pri[i]];} //input extents (prioritized old numeration)
+    for(i=0;i<dim_num;i++){if(pri[i]==s1_ind){_s1=i;}else if(pri[i]==s2_ind){_s2=i;}} //split indices (prioritized old numeration)
+    s1_ind=_s1; s2_ind=_s2;
+    ns1=1+(s1_dim-1)/s1_step; //number of segments from the 1st split minor index
+    ns2=1+(s2_dim-1)/s2_step; //number of segments from the 2nd split minor index
+//  Index position correspondence for the minor index set (pri-new --> pri-old):
+    j=0; for(i=0;i<minor_out;i++){if(n2o[i]<minor_in){pri[i]=n2o[i];}else{pri[i]=(minor_in+j); j++;}}
+    j=0; for(i=0;i<minor_in;i++){if(o2n[i]<minor_out){pri[o2n[i]]=i;}else{pri[minor_out+j]=i; j++;}}
+// Check tensor transpose configuration parameters:
+    if(minor <= 0 || minor_in <= 0 || minor_out <= 0 || _vol <= 0 || _vol_minor <= 0) err_code+=5000; //trap
+    if(s1_ind >= dim_num || s2_ind >= dim_num || s1_ond >= dim_num || s2_ond >= dim_num ||
+       s1_ind == s2_ind || s1_ond == s2_ond || s1_step <= 0 || s2_step <= 0) err_code+=1000; //trap
+    if((s1_step != dim_in[s1_ind] && s1_ind != minor_in-1 && s1_ond != minor_out-1) ||
+       (s2_step != dim_in[s2_ind] && s2_ind != minor_in-1 && s2_ond != minor_out-1)) err_code+=500; //trap
+    if((_vol_minor*s1_step*s2_step)/(s1_dim*s2_dim) > TENS_TRANSP_BUF_SIZE) err_code+=100; //trap
+   } //endif: non-trivial permutation
+  }else{
+   err_code=1+2*blockDim.x%warpSize;
+  }
+ } //endif: Master thread.
+#ifdef DEBUG_GPU
+//DEBUG RECORD begin:
+ if(blockIdx.x == 0 && threadIdx.x == 0){
+  j=0; gpu_debug_dump[j++]=dim_num;
+  for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=const_args_dims[const_args_pos][i];
+  for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=const_args_prmn[const_args_pos][i];
+  for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=base_in[i];
+  for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=base_out[i];
+  gpu_debug_dump[j++]=vol; gpu_debug_dump[j++]=vol_ext; gpu_debug_dump[j++]=vol/vol_ext;
+  gpu_debug_dump[j++]=minor; gpu_debug_dump[j++]=minor_in; gpu_debug_dump[j++]=minor_out;
+  gpu_debug_dump[j++]=s1_ind; gpu_debug_dump[j++]=s1_ond; gpu_debug_dump[j++]=s1_step; gpu_debug_dump[j++]=s1_dim;
+  gpu_debug_dump[j++]=s2_ind; gpu_debug_dump[j++]=s2_ond; gpu_debug_dump[j++]=s2_step; gpu_debug_dump[j++]=s2_dim;
+  for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=pri[i];
+  gpu_debug_dump[j++]=err_code; gpu_debug_dump[j++]=-1;
+ }
+//DEBUG RECORD end.
+#endif /*DEBUG_GPU*/
+ __syncthreads();
+
+//Proceed:
+ if(err_code == 0){
+  if(s1_ind > dim_num){ //tag of a trivial permutation
+// Direct copy:
+   _vol=vol; j=gridDim.x*blockDim.x; i=blockIdx.x*blockDim.x+threadIdx.x; _addr_in=_vol-_vol%j;
+   for(_addr=0;_addr<_addr_in;_addr+=j){
+    _addr_out=_addr+i; tens_out[_addr_out]=tens_in[_addr_out];
+   }
+   _addr_out=_addr_in+i; if(_addr_out<_vol) tens_out[_addr_out]=tens_in[_addr_out];
+  }else{ //non-trivial permutation
+   l=threadIdx.x/warpSize; //l: warp number
+// Distribute work accross CUDA blocks (external multi-index + splitting):
+   for(_work_piece=blockIdx.x;_work_piece<vol_ext*ns1*ns2;_work_piece+=gridDim.x){ //(ns1*ns2*vol_ext) is the total number of independent tasks
+    _addr=_work_piece; _addr/=vol_ext; _vol=_work_piece-_addr*vol_ext; _s2=(int)(_addr/ns1); _s1=(int)(_addr-_s2*ns1); //{_addr_ext,_s1,_s2} --> tensor subblock (CUDA block)
+//  Modify dimension extents due to possible dimension splitting:
+    if(threadIdx.x == 0){
+     if(_s1+1 == ns1){ //last segment of the 1st split index
+      j=s1_dim-_s1*s1_step; dim_in[s1_ind]=j; dim_out[s1_ond]=j;
+     }else{ //internal segment of the 1st split index
+      dim_in[s1_ind]=s1_step; dim_out[s1_ond]=s1_step;
+     }
+     if(_s2+1 == ns2){ //last segment of the 2nd split index
+      j=s2_dim-_s2*s2_step; dim_in[s2_ind]=j; dim_out[s2_ond]=j;
+     }else{ //internal segment of the 2nd split index
+      dim_in[s2_ind]=s2_step; dim_out[s2_ond]=s2_step;
+     }
+     j=1; for(i=0;i<minor;i++){tmp0[i]=j; j*=dim_in[i];} //minor buffer bases (pri-old)
+     for(i=0;i<minor;i++) n2o[i]=tmp0[pri[i]]; //look up table to accelerate further accesses to tmp0[]
+    }
+    __syncthreads();
+//  Mount input/output volumes and bases:
+    _vol_in=dim_in[0]; for(i=1;i<minor_in;i++){_vol_in*=dim_in[i];}
+    _vol_out=dim_out[0]; for(i=1;i<minor_out;i++){_vol_out*=dim_out[i];}
+    _vol_minor=_vol_out; for(i=minor_out;i<minor;i++){_vol_minor*=dim_out[i];}
+    _addr_in=(_s1*s1_step)*base_in[s1_ind]+(_s2*s2_step)*base_in[s2_ind]; _addr_out=_vol;
+    for(i=minor;i<dim_num;i++){_addr=_vol/dim_in[i]; _addr_in+=(_vol-_addr*dim_in[i])*base_in[i]; _vol=_addr;}
+    _vol=_addr_out; _addr_out=(_s1*s1_step)*base_out[s1_ond]+(_s2*s2_step)*base_out[s2_ond];
+    for(i=minor;i<dim_num;i++){_addr=_vol/dim_out[i]; _addr_out+=(_vol-_addr*dim_out[i])*base_out[i]; _vol=_addr;}
+    if(_vol_out > TENS_TRANSP_TAB_SIZE || _vol_minor > _vol_in*TENS_TRANSP_TAB_SIZE ||
+       _vol_minor > _vol_out*TENS_TRANSP_TAB_SIZE){
+//  Algorithm 0 (slower):
+//   Read the minor volume into the buffer from the input tensor block:
+     _vol_minor/=_vol_in; //vol_in_c
+     _s1=1+(_vol_in-1)/warpSize; //number of warps (lines) which fully cover the input volume
+     _s2=blockDim.x/warpSize; //number of whole warps in a thread block (each warp treats one line)
+     for(j=l;j<_s1*_vol_minor;j+=_s2){ //j: Line number
+      m=j/_s1; _addr=_addr_in; n=m; //n: Input column number (in_c)
+      for(i=minor_in;i<minor;i++){k=m/dim_in[i]; _addr+=(m-k*dim_in[i])*base_in[i]; m=k;}
+//    m=(j%_s1)*warpSize+threadIdx.x%warpSize; //elemental offset in the input volume
+      m=threadIdx.x+(j-n*_s1-l)*warpSize; //elemental offset in the input volume (alternative)
+      if(m < _vol_in){buf0[n*_vol_in+m]=tens_in[_addr+m];}
+     }
+     __syncthreads();
+//   Write the minor volume from the buffer into the output tensor block:
+     _vol_minor=(_vol_minor*_vol_in)/_vol_out; //vol_out_c
+     _s1=1+(_vol_out-1)/warpSize; //number of warps (lines) which fully cover the output volume
+     for(j=l;j<_s1*_vol_minor;j+=_s2){ //j: Line number
+      n=j/_s1; _addr=_addr_out; _vol=n; _vol_in=0; //_vol: Output column number (out_c)
+//    for(i=minor_out;i<minor;i++){m=n%dim_out[i]; n/=dim_out[i]; _addr+=m*base_out[i]; _vol_in+=m*tmp0[pri[i]];}
+      for(i=minor_out;i<minor;i++){k=n/dim_out[i]; m=n-k*dim_out[i]; n=k; _addr+=m*base_out[i]; _vol_in+=m*n2o[i];}
+//    m=(j%_s1)*warpSize+threadIdx.x%warpSize; //elemental offset in the output volume
+      m=threadIdx.x+(j-(int)_vol*_s1-l)*warpSize; //elemental offset in the output volume (alternative)
+      if(m < _vol_out){
+       _addr+=m;
+//     for(i=0;i<minor_out;i++){_vol_in+=(m%dim_out[i])*tmp0[pri[i]]; m/=dim_out[i];}
+       for(i=0;i<minor_out;i++){k=m/dim_out[i]; _vol_in+=(m-k*dim_out[i])*n2o[i]; m=k;}
+       tens_out[_addr]=buf0[_vol_in];
+      }
+     }
+     __syncthreads();
+    }else{
+//  Algorithm 1 (presumably faster):
+//   Create per-block look-up tables:
+     m=_vol_minor/_vol_in; //vol_in_c
+     for(j=threadIdx.x;j<m;j+=blockDim.x){ //column number (input)
+      _addr=0; _s1=j;
+//    for(i=minor_in;i<minor;i++){_addr+=(_s1%dim_in[i])*base_in[i]; _s1/=dim_in[i];}
+      for(i=minor_in;i<minor;i++){_s2=_s1/dim_in[i]; _addr+=(_s1-_s2*dim_in[i])*base_in[i]; _s1=_s2;}
+      ftb[j]=_addr;
+     }
+     m=_vol_minor/_vol_out; //vol_out_c
+     for(j=threadIdx.x;j<m;j+=blockDim.x){ //column number (output)
+      _addr=0; _s1=j;
+//    for(i=minor_out;i<minor;i++){_addr+=(_s1%dim_out[i])*base_out[i]; _s1/=dim_out[i];}
+      for(i=minor_out;i<minor;i++){_s2=_s1/dim_out[i]; _addr+=(_s1-_s2*dim_out[i])*base_out[i]; _s1=_s2;}
+      gtb[j]=_addr;
+     }
+     for(j=threadIdx.x;j<m;j+=blockDim.x){ //column number (output)
+      n=0; _s1=j;
+//    for(i=minor_out;i<minor;i++){n+=(_s1%dim_out[i])*n2o[i]; _s1/=dim_out[i];}
+      for(i=minor_out;i<minor;i++){_s2=_s1/dim_out[i]; n+=(_s1-_s2*dim_out[i])*n2o[i]; _s1=_s2;}
+      htb[j]=n;
+     }
+     for(j=threadIdx.x;j<_vol_out;j+=blockDim.x){
+      n=0; _s1=j;
+//    for(i=0;i<minor_out;i++){n+=(_s1%dim_out[i])*n2o[i]; _s1/=dim_out[i];}
+      for(i=0;i<minor_out;i++){_s2=_s1/dim_out[i]; n+=(_s1-_s2*dim_out[i])*n2o[i]; _s1=_s2;}
+      stb[j]=n;
+     }
+     __syncthreads();
+//   Read the minor volume into the buffer from the input tensor block:
+     _vol_minor/=_vol_in; //vol_in_c
+     _s1=1+(_vol_in-1)/warpSize; //number of warps (lines) which fully cover the input volume
+     _s2=blockDim.x/warpSize; //number of whole warps in a thread block (each warp treats one line)
+     for(j=l;j<_s1*_vol_minor;j+=_s2){ //j: Line number
+      m=j/_s1; n=threadIdx.x+(j-m*_s1-l)*warpSize; //m: Input column number (in_c); n: Offset in the column
+      if(n < _vol_in){_addr=_addr_in+ftb[m]+n; buf0[m*_vol_in+n]=tens_in[_addr];}
+     }
+     __syncthreads();
+//   Write the minor volume from the buffer into the output tensor block:
+     _vol_minor=(_vol_minor*_vol_in)/_vol_out; //vol_out_c
+     _s1=1+(_vol_out-1)/warpSize; //number of warps (lines) which fully cover the output volume
+     for(j=l;j<_s1*_vol_minor;j+=_s2){ //j: Line number
+      m=j/_s1; n=threadIdx.x+(j-m*_s1-l)*warpSize; //m: Output column number (out_c); n: Offset in the column
+      if(n < _vol_out){_addr=_addr_out+gtb[m]+n; _vol_in=htb[m]+stb[n]; tens_out[_addr]=buf0[_vol_in];}
+     }
+     __syncthreads();
+    }
+   } //enddo _work_piece: independent work distribution among thread blocks
+  }
+ }
+//Record errors if occured (for each block):
+ if(threadIdx.x == 0){if(err_code != 0) i=atomicAdd(&gpu_error_count,1);}
+ return;
+}
+//------------------------------------------------------------------------------------------------------------
+// TENSOR TRANSPOSE (brute-force scatter version):
+template <typename T>
+__global__ void gpu_tensor_block_copy_scatter_dlf__(int dmo, int drc, int dim_num, int const_args_pos,
+                                                    const T * __restrict__ tens_in, T * __restrict__ tens_out)
+/**
+Scattering version of tensor transpose: tens_out=TRN(tens_in):
+INPUT:
+ # dmo - dimension extents order (0: normal, as it is in <const_args>; not 0: permuted dimension order will be imposed);
+ # drc - index permutation direction (0: normal, as it is in <const_args>; not 0: inversed permutation will be used);
+ # dim_num - tensor block rank;
+ # const_args_pos - entry in the __constant__ memory bank where tensor block dimension extents (const_args_dims)
+                    and index permutation (const_args_prmn) are stored;
+ # tens_in[0:] - input tensor;
+OUTPUT:
+ # tens_out[0:] - output (transposed) tensor;
+**/
+{
+ __shared__ int n2o[MAX_TENSOR_RANK];
+ __shared__ size_t vol,base_in[MAX_TENSOR_RANK],base_out[MAX_TENSOR_RANK];
+ int i,j,k;
+ size_t _vol,_addr_in,_addr_out,_si;
+
+ if(dim_num == 0){
+  if(blockIdx.x == 0 && threadIdx.x == 0) tens_out[0]=tens_in[0];
+ }else if(dim_num == 1){
+  _vol=const_args_dims[const_args_pos][0];
+  j=blockIdx.x*blockDim.x+threadIdx.x;
+  for(_addr_in=j;_addr_in<_vol;_addr_in+=gridDim.x*blockDim.x){tens_out[_addr_in]=tens_in[_addr_in];}
+ }else if(dim_num > 1){
+  if(threadIdx.x == 0){
+   k=0; for(i=0;i<dim_num;i++){j=const_args_prmn[const_args_pos][i]-1; n2o[j]=i; if(j!=i) k=1;}
+   if(k == 0){ //trivial permutation
+    n2o[0]=dim_num; //trivial permutation flag
+    _vol=1; for(i=0;i<dim_num;i++){_vol*=const_args_dims[const_args_pos][i];}; vol=_vol;
+   }else{ //non-trivial permutation
+    if(dmo == 0){ //normal dimension order
+     _vol=1; for(i=0;i<dim_num;i++){base_in[i]=_vol; _vol*=const_args_dims[const_args_pos][i];}; vol=_vol;
+     if(drc == 0){ //normal index permutation
+      _vol=1; for(i=0;i<dim_num;i++){k=n2o[i]; base_out[k]=_vol; _vol*=const_args_dims[const_args_pos][k];}
+     }else{ //inversed index permutation
+      _vol=1; for(i=0;i<dim_num;i++){
+       k=const_args_prmn[const_args_pos][i]-1; base_out[k]=_vol; _vol*=const_args_dims[const_args_pos][k];
+      }
+     }
+    }else{ //inversed dimension order
+     if(drc == 0){ //normal index permutation
+      _vol=1; for(i=0;i<dim_num;i++){
+       k=const_args_prmn[const_args_pos][i]-1; base_in[i]=_vol; _vol*=const_args_dims[const_args_pos][k];
+      }; vol=_vol;
+      _vol=1; for(i=0;i<dim_num;i++){k=n2o[i]; base_out[k]=_vol; _vol*=const_args_dims[const_args_pos][i];}
+     }else{ //inversed index permutation
+      _vol=1; for(i=0;i<dim_num;i++){
+       k=n2o[i]; base_in[i]=_vol; _vol*=const_args_dims[const_args_pos][k];
+      }; vol=_vol;
+      _vol=1; for(i=0;i<dim_num;i++){
+       k=const_args_prmn[const_args_pos][i]-1; base_out[k]=_vol; _vol*=const_args_dims[const_args_pos][i];
+      }
+     }
+    }
+   }
+  }
+#ifdef DEBUG_GPU
+//DEBUG RECORD begin:
+  if(blockIdx.x == 0 && threadIdx.x == 0){
+   j=0; gpu_debug_dump[j++]=dim_num;
+   for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=const_args_dims[const_args_pos][i];
+   for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=const_args_prmn[const_args_pos][i];
+   for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=base_in[i];
+   for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=base_out[i];
+   gpu_debug_dump[j++]=vol; gpu_debug_dump[j++]=-1;
+  }
+//DEBUG RECORD end.
+#endif /*DEBUG_GPU*/
+  __syncthreads();
+  _vol=vol;
+  if(n2o[0] >= dim_num){ //trivial permutation
+   k=gridDim.x*blockDim.x; j=blockIdx.x*blockDim.x+threadIdx.x;
+   for(_addr_in=j;_addr_in<_vol;_addr_in+=k){tens_out[_addr_in]=tens_in[_addr_in];}
+  }else{ //non-trivial permutation
+   j=blockIdx.x*blockDim.x+threadIdx.x;
+   for(_addr_in=j;_addr_in<_vol;_addr_in+=gridDim.x*blockDim.x){
+    _addr_out=0; _si=_addr_in; for(i=dim_num-1;i>=0;i--){_addr_out+=(_si/base_in[i])*base_out[i]; _si%=base_in[i];}
+    tens_out[_addr_out]=tens_in[_addr_in];
+   }
+  }
+ }else{ //dim_num < 0
+  if(threadIdx.x == 0) i=atomicAdd(&gpu_error_count,1); //record an error (for each thread block)
+ }
+ return;
+}
+//--------------------------------------------------------------------------------------------------------------------------
+// MATRIX MULTIPLICATION (slow):
+template <typename T>
+__global__ void gpu_matrix_multiply_tn__(size_t ll, size_t lr, size_t lc, const T * arg1, const T * arg2, T * arg0, T alpha)
+/** arg0(0:ll-1,0:lr-1)+=arg1(0:lc-1,0:ll-1)*arg2(0:lc-1,0:lr-1)*alpha
+NOTES:
+ # Thread block dimensions (.x and .y) must be equal to MAT_MULT_TILE_DIM(X,Y), respectively.
+**/
+{
+ __shared__ T buf1[MAT_MULT_TILE_DIMX+1][MAT_MULT_TILE_DIMX+1],buf2[MAT_MULT_TILE_DIMY+1][MAT_MULT_TILE_DIMX+1];
+ size_t k,_col,_row,_col_base,_row_base;
+ int i,j,l,m;
+ T _val;
+
+ if(lc > 0 && ll > 0 && lr > 0 && blockDim.x == MAT_MULT_TILE_DIMX && blockDim.y == MAT_MULT_TILE_DIMY){
+  _val=static_cast<T>(0.0); j=threadIdx.y; i=threadIdx.x;
+  _col_base=blockIdx.y*MAT_MULT_TILE_DIMY;
+  while(_col_base < lr){
+   _row_base=blockIdx.x*MAT_MULT_TILE_DIMX;
+   while(_row_base < ll){
+    for(k=0;k<lc;k+=MAT_MULT_TILE_DIMX){
+     _col=_col_base+j; _row=_row_base+j;
+// Load two blocks into shared memory:
+     if(k+MAT_MULT_TILE_DIMX > lc){m=lc-k;}else{m=MAT_MULT_TILE_DIMX;}
+     if(i < m){ //(k+i)<lc
+      for(l=0;l<MAT_MULT_TILE_DIMX;l+=MAT_MULT_TILE_DIMY){
+       if(_row < ll){buf1[l+j][i]=arg1[_row*lc+(k+i)]*alpha;} // Load a block of the 1st argument into the shared memory
+       _row+=MAT_MULT_TILE_DIMY;
+      }
+      if(_col < lr){buf2[j][i]=arg2[_col*lc+(k+i)];} // Load a block of the 2nd argument into the shared memory
+     }
+     __syncthreads();
+// Multiply the two blocks:
+     _row=_row_base+i;
+     if(_col < lr){
+      if(_row < ll){
+       _col=_col*ll+_row;
+       for(l=0;l<m;l++){_val+=buf1[i][l]*buf2[j][l];}
+       arg0[_col]+=_val; _val=static_cast<T>(0.0);
+      }
+     }
+     __syncthreads();
+    }
+    _row_base+=gridDim.x*MAT_MULT_TILE_DIMX;
+   }
+   _col_base+=gridDim.y*MAT_MULT_TILE_DIMY;
+  }
+ }else{
+  if(threadIdx.x == 0 && threadIdx.y == 0) i=atomicAdd(&gpu_error_count,1); //record an error (for each thread block)
+ }
+ return;
+}
+#endif //NO_GPU
+//----------------------------------------------------------------------------------------------
+#ifndef NO_GPU
+//CUDA runtime (for Fortran):
 int cuda_get_device_count(int * dev_count)
 /** Returns the total number of NVIDIA GPUs found on the node. **/
 {
@@ -2738,10 +3774,10 @@ NOTES:
  if(gpu_num != cur_gpu) errc=gpu_activate(cur_gpu);
  return stat; //either 0 (success) or NOT_CLEAN (warning)
 }
-//-------------------------------------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------
 // TENSOR ADDITION (non-blocking):
-__host__ int gpu_tensor_block_add(const int *cptrn, tensBlck_t *ltens, tensBlck_t *dtens,
-                                  unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id, double scale_real, double scale_imag)
+__host__ int gpu_tensor_block_add(const int *cptrn, tensBlck_t *ltens, tensBlck_t *dtens, unsigned int coh_ctrl,
+                                  cudaTask_t *cuda_task, int gpu_id, double scale_real, double scale_imag, int conj_bits)
 /**
 dtens(:)+=ltens(:)*scalar
 INPUT:
@@ -2754,6 +3790,7 @@ INPUT:
  # gpu_id - suggested GPU ID on which the operation is to be scheduled (-1: defaults to the optimal one);
  # scale_real - real part of the GEMM alpha coefficient (defaults to 1.0);
  # scale_imag - imaginary part of the GEMM alpha coefficient (defaults to 0.0);
+ # conj_bits - tensor argument complex conjugation bits, one bit per argument: {0:D,1:L};
 OUTPUT:
  # dtens - updated destination tensor;
  # cuda_task - recorded CUDA task (either successfully scheduled or failed).
@@ -2769,12 +3806,14 @@ NOTES:
    based on argument residence and the current load of GPU(s).
 **/
 {
- int i,j,drank,lrank,tds_d,tds_l,gpu_d,gpu_l,perm_d,perm_l,ncd,nlu,nru,gpu_num,cur_gpu,targ_dev,bx,errc,stat;
+ int i,j,drank,lrank,tds_d,tds_l,gpu_d,gpu_l,perm_d,perm_l,ncd,nlu,nru,gpu_num,cur_gpu,targ_dev,bx,errc,stat,conj_l;
  int dprm[1+MAX_TENSOR_RANK],lprm[1+MAX_TENSOR_RANK],rprm[1]; //the 1st element is the sign of the permutation
  size_t vol_d,vol_l,dsize,lsize;
  unsigned int coh;
  const unsigned int TWO_BITS_SET = 3; //two right bits are set
  void *darg,*larg;
+ talshComplex4 scale_cmplx4;
+ talshComplex8 scale_cmplx8;
  cudaStream_t *cuda_stream;
  cudaEvent_t *cuda_start,*cuda_comput,*cuda_output,*cuda_finish,*dep_event;
 #ifdef GPU_FINE_TIMING
@@ -2817,6 +3856,12 @@ NOTES:
   }
  }
  for(i=0;i<drank;i++) if(dprm[i] != 1) return -27;
+//Check argument complex conjugation bits:
+ conj_bits = conj_bits & 3; //keep only first two bits, one per tensor argument {0:D,1:L}
+ if(conj_bits & 1){ //destination tensor argument conjugation = inverse conjugation of the left argument
+  conj_bits = conj_bits ^ 3; //XOR with 0b111 will invert bits
+ }
+ conj_l = 0; if((conj_bits & 2) != 0) conj_l = 1; //left argument conjugation flag
 //Activate the right GPU:
  if(gpu_id < 0 || gpu_id >= MAX_GPUS_PER_NODE){gpu_num=tens_op_best_gpu(dtens,ltens);}else{gpu_num=gpu_id;}
  if(gpu_is_mine(gpu_num) <= GPU_OFF) return -28; //GPU is not mine or error
@@ -2891,7 +3936,7 @@ NOTES:
  if(cuda_mmend == NULL){errc=cuda_task_record(cuda_task,coh_ctrl,8); errc=gpu_activate(cur_gpu); return 8;}
 #endif
 //Determine the volume and required matricization permutation for each tensor argument:
- get_contr_permutations(lrank,0,cptrn,dprm,lprm,rprm,&ncd,&nlu,&nru,&errc); //permutations and numbers of dimensions
+ get_contr_permutations(lrank,0,cptrn,0,dprm,lprm,rprm,&ncd,&nlu,&nru,&errc); //permutations and numbers of dimensions
  if(errc){i=cuda_task_record(cuda_task,coh_ctrl,9); i=gpu_activate(cur_gpu); return 9;}
  for(i=0;i<drank;i++) cuda_task->tens_args[0].prmn_p[i]=dprm[1+i]; //ignore the permutaion sign
  perm_d=non_trivial_prmn(drank,cuda_task->tens_args[0].prmn_p);    //trivial or not
@@ -3104,6 +4149,16 @@ NOTES:
      gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
       (0,1,drank,cuda_task->tens_args[0].const_mem_entry,(double*)(dtens->dst_rsc->gmem_p),(double*)(dtens->tmp_rsc->gmem_p));
      break;
+    case C4:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (0,1,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (0,1,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex8*)(dtens->dst_rsc->gmem_p),(talshComplex8*)(dtens->tmp_rsc->gmem_p));
+     break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,38); errc=gpu_activate(cur_gpu); return 38;
    }
@@ -3131,6 +4186,16 @@ NOTES:
      gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
       (0,1,drank,cuda_task->tens_args[0].const_mem_entry,(double*)(dtens->dst_rsc->gmem_p),(double*)(dtens->tmp_rsc->gmem_p));
      break;
+    case C4:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (0,1,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (0,1,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex8*)(dtens->dst_rsc->gmem_p),(talshComplex8*)(dtens->tmp_rsc->gmem_p));
+     break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,39); errc=gpu_activate(cur_gpu); return 39;
    }
@@ -3153,6 +4218,16 @@ NOTES:
     case R8:
      gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
       (0,0,lrank,cuda_task->tens_args[1].const_mem_entry,(double*)(ltens->dst_rsc->gmem_p),(double*)(ltens->tmp_rsc->gmem_p));
+     break;
+    case C4:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
+       (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
+       (talshComplex8*)(ltens->dst_rsc->gmem_p),(talshComplex8*)(ltens->tmp_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,40); errc=gpu_activate(cur_gpu); return 40;
@@ -3180,6 +4255,16 @@ NOTES:
     case R8:
      gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
       (0,0,lrank,cuda_task->tens_args[1].const_mem_entry,(double*)(ltens->dst_rsc->gmem_p),(double*)(ltens->tmp_rsc->gmem_p));
+     break;
+    case C4:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
+       (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
+       (talshComplex8*)(ltens->dst_rsc->gmem_p),(talshComplex8*)(ltens->tmp_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,41); errc=gpu_activate(cur_gpu); return 41;
@@ -3210,6 +4295,14 @@ NOTES:
   case R8:
    gpu_array_add__<<<bx,THRDS_ARRAY_ADD,0,*cuda_stream>>>(vol_d,(double*)darg,(double*)larg,scale_real);
    break;
+  case C4:
+   scale_cmplx4 = talshComplex4Set((float)scale_real,(float)scale_imag);
+   gpu_array_add__<<<bx,THRDS_ARRAY_ADD,0,*cuda_stream>>>(vol_d,(talshComplex4*)darg,(talshComplex4*)larg,scale_cmplx4,conj_l);
+   break;
+  case C8:
+   scale_cmplx8 = talshComplex8Set(scale_real,scale_imag);
+   gpu_array_add__<<<bx,THRDS_ARRAY_ADD,0,*cuda_stream>>>(vol_d,(talshComplex8*)darg,(talshComplex8*)larg,scale_cmplx8,conj_l);
+   break;
   default:
    errc=cuda_task_record(cuda_task,coh_ctrl,48); errc=gpu_activate(cur_gpu); return 48;
  }
@@ -3235,6 +4328,16 @@ NOTES:
     case R8:
      gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
       (1,0,drank,cuda_task->tens_args[0].const_mem_entry,(double*)(dtens->tmp_rsc->gmem_p),(double*)(dtens->dst_rsc->gmem_p));
+     break;
+    case C4:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (1,0,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (1,0,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex8*)(dtens->tmp_rsc->gmem_p),(talshComplex8*)(dtens->dst_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,54); errc=gpu_activate(cur_gpu); return 54;
@@ -3263,6 +4366,16 @@ NOTES:
     case R8:
      gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
       (1,0,drank,cuda_task->tens_args[0].const_mem_entry,(double*)(dtens->tmp_rsc->gmem_p),(double*)(dtens->dst_rsc->gmem_p));
+     break;
+    case C4:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (1,0,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (1,0,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex8*)(dtens->tmp_rsc->gmem_p),(talshComplex8*)(dtens->dst_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,55); errc=gpu_activate(cur_gpu); return 55;
@@ -3302,10 +4415,11 @@ NOTES:
  if(gpu_num != cur_gpu) errc=gpu_activate(cur_gpu);
  return stat; //either 0 (success) or NOT_CLEAN (warning)
 }
-//----------------------------------------------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------------
 // TENSOR CONTRACTION (non-blocking):
 __host__ int gpu_tensor_block_contract_dlf(const int *cptrn, tensBlck_t *ltens, tensBlck_t *rtens, tensBlck_t *dtens,
-                                           unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id, double scale_real, double scale_imag)
+                                           unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id,
+                                           double scale_real, double scale_imag, int conj_bits)
 /**
 dtens(:)+=ltens(:)*rtens(:)
 INPUT:
@@ -3319,6 +4433,7 @@ INPUT:
  # gpu_id - suggested GPU ID on which the operation is to be scheduled (-1: defaults to the optimal one);
  # scale_real - real part of the GEMM alpha coefficient (defaults to 1.0);
  # scale_imag - imaginary part of the GEMM alpha coefficient (defaults to 0.0);
+ # conj_bits - tensor argument complex conjugation bits, one bit per argument: {0:D,1:L,2:R};
 OUTPUT:
  # dtens - updated destination tensor;
  # cuda_task - recorded CUDA task (either successfully scheduled or failed).
@@ -3334,12 +4449,15 @@ NOTES:
    based on argument residence and the current load of GPU(s).
 **/
 {
- int i,j,drank,lrank,rrank,tds_d,tds_l,tds_r,gpu_d,gpu_l,gpu_r,perm_d,perm_l,perm_r,ncd,nlu,nru,gpu_num,cur_gpu,targ_dev,bx,by,errc,stat;
+ int i,j,drank,lrank,rrank,tds_d,tds_l,tds_r,gpu_d,gpu_l,gpu_r,perm_d,perm_l,perm_r;
+ int ncd,nlu,nru,gpu_num,cur_gpu,targ_dev,bx,by,errc,stat,conj_l,conj_r;
  int dprm[1+MAX_TENSOR_RANK],lprm[1+MAX_TENSOR_RANK],rprm[1+MAX_TENSOR_RANK]; //the 1st element is the sign of the permutation
  size_t vol_d,vol_l,vol_r,dsize,lsize,rsize,lc,ll,lr,pofs;
  unsigned int coh;
  const unsigned int TWO_BITS_SET = 3; //two right bits are set
  void *darg,*larg,*rarg,*alpha_p,*beta_p;
+ talshComplex4 scale_cmplx4;
+ talshComplex8 scale_cmplx8;
  cudaStream_t *cuda_stream;
  cudaEvent_t *cuda_start,*cuda_comput,*cuda_output,*cuda_finish,*dep_event;
 #ifdef GPU_FINE_TIMING
@@ -3349,6 +4467,7 @@ NOTES:
  const char *err_msg;
 #ifndef NO_BLAS
  cublasStatus_t err_cublas;
+ cublasOperation_t left_conj,right_conj;
 #endif
 #ifdef USE_CUTT
  cuttHandle cutt_d,cutt_l,cutt_r;
@@ -3376,7 +4495,7 @@ NOTES:
  if(tensDevRsc_is_empty(dtens->src_rsc) != NOPE) return -8;  //source resource must be present (tensor body)
  if(tensDevRsc_is_empty(ltens->src_rsc) != NOPE) return -9;  //source resource must be present (tensor body)
  if(tensDevRsc_is_empty(rtens->src_rsc) != NOPE) return -10; //source resource must be present (tensor body)
-//Check the contraction pattern and dimension extent correspondence:
+//Check the contraction pattern and tensor dimension extent correspondence:
  for(i=0;i<drank;i++) dprm[i]=0; for(i=0;i<lrank;i++) lprm[i]=0; for(i=0;i<rrank;i++) rprm[i]=0;
  for(i=0;i<lrank;i++){ //position in ltens
   j=cptrn[i];
@@ -3409,6 +4528,24 @@ NOTES:
   }
  }
  for(i=0;i<drank;i++) if(dprm[i] != 1) return -27;
+//Check argument complex conjugation bits:
+#ifndef NO_BLAS
+ left_conj=CUBLAS_OP_T; right_conj=CUBLAS_OP_N; //default is TN GEMM
+#endif
+ conj_bits = conj_bits & 7; //keep only first three bits, one per tensor argument {0:D,1:L,2:R}
+ if(conj_bits & 1){ //destination tensor argument conjugation = inverse conjugation of left and right tensor arguments
+  conj_bits = conj_bits ^ 7; //XOR with 0b111 will invert bits
+ }
+ if(dtens->data_kind == C4 || dtens->data_kind == C8){ //conjugation may apply to complex data kinds
+  conj_l = 0; if((conj_bits & 2) != 0) conj_l=1; //left tensor argument conjugation flag
+  conj_r = 0; if((conj_bits & 4) != 0) conj_r=1; //right tensor argument conjugation flag
+#ifndef NO_BLAS
+  if(conj_l != 0) left_conj = CUBLAS_OP_C;
+  if(conj_r != 0) right_conj = CUBLAS_OP_C;
+#endif
+ }else{
+  conj_bits = 0; conj_l = 0; conj_r = 0; //no conjugation for real data kinds
+ }
 //Activate the right GPU:
  if(gpu_id < 0 || gpu_id >= MAX_GPUS_PER_NODE){gpu_num=tens_op_best_gpu(dtens,ltens,rtens);}else{gpu_num=gpu_id;}
  if(gpu_is_mine(gpu_num) <= GPU_OFF) return -28; //GPU is not mine or error
@@ -3504,7 +4641,11 @@ NOTES:
  if(cuda_mmend == NULL){errc=cuda_task_record(cuda_task,coh_ctrl,10); errc=gpu_activate(cur_gpu); return 10;}
 #endif
 //Determine the volume and required matricization permutation for each tensor argument:
- get_contr_permutations(lrank,rrank,cptrn,dprm,lprm,rprm,&ncd,&nlu,&nru,&errc); //permutations and numbers of dimensions
+ if(drank > 0 && lrank > 0 && rrank > 0 && drank < (lrank + rrank)){ //GEMM mapped tensor contraction: {TN,NT,NN,TT}
+  get_contr_permutations(lrank,rrank,cptrn,conj_bits,dprm,lprm,rprm,&ncd,&nlu,&nru,&errc); //permutations and numbers of dimensions
+ }else{ //custom kernel mapped tensor contraction (complex conjugation does not require modified permutations)
+  get_contr_permutations(lrank,rrank,cptrn,0,dprm,lprm,rprm,&ncd,&nlu,&nru,&errc); //permutations and numbers of dimensions
+ }
  if(errc){i=cuda_task_record(cuda_task,coh_ctrl,11); i=gpu_activate(cur_gpu); return 11;}
  for(i=0;i<drank;i++) cuda_task->tens_args[0].prmn_p[i]=dprm[1+i]; //ignore the permutaion sign
  perm_d=non_trivial_prmn(drank,cuda_task->tens_args[0].prmn_p);    //trivial or not
@@ -3803,6 +4944,16 @@ NOTES:
      gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
       (0,1,drank,cuda_task->tens_args[0].const_mem_entry,(double*)(dtens->dst_rsc->gmem_p),(double*)(dtens->tmp_rsc->gmem_p));
      break;
+    case C4:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (0,1,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (0,1,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex8*)(dtens->dst_rsc->gmem_p),(talshComplex8*)(dtens->tmp_rsc->gmem_p));
+     break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,40); errc=gpu_activate(cur_gpu); return 40;
    }
@@ -3830,6 +4981,16 @@ NOTES:
      gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
       (0,1,drank,cuda_task->tens_args[0].const_mem_entry,(double*)(dtens->dst_rsc->gmem_p),(double*)(dtens->tmp_rsc->gmem_p));
      break;
+    case C4:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (0,1,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (0,1,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex8*)(dtens->dst_rsc->gmem_p),(talshComplex8*)(dtens->tmp_rsc->gmem_p));
+     break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,44); errc=gpu_activate(cur_gpu); return 44;
    }
@@ -3852,6 +5013,16 @@ NOTES:
     case R8:
      gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
       (0,0,lrank,cuda_task->tens_args[1].const_mem_entry,(double*)(ltens->dst_rsc->gmem_p),(double*)(ltens->tmp_rsc->gmem_p));
+     break;
+    case C4:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
+       (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
+       (talshComplex8*)(ltens->dst_rsc->gmem_p),(talshComplex8*)(ltens->tmp_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,46); errc=gpu_activate(cur_gpu); return 46;
@@ -3880,6 +5051,16 @@ NOTES:
      gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
       (0,0,lrank,cuda_task->tens_args[1].const_mem_entry,(double*)(ltens->dst_rsc->gmem_p),(double*)(ltens->tmp_rsc->gmem_p));
      break;
+    case C4:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
+       (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
+       (talshComplex8*)(ltens->dst_rsc->gmem_p),(talshComplex8*)(ltens->tmp_rsc->gmem_p));
+     break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,50); errc=gpu_activate(cur_gpu); return 50;
    }
@@ -3902,6 +5083,16 @@ NOTES:
     case R8:
      gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
       (0,0,rrank,cuda_task->tens_args[2].const_mem_entry,(double*)(rtens->dst_rsc->gmem_p),(double*)(rtens->tmp_rsc->gmem_p));
+     break;
+    case C4:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (0,0,rrank,cuda_task->tens_args[2].const_mem_entry,
+       (talshComplex4*)(rtens->dst_rsc->gmem_p),(talshComplex4*)(rtens->tmp_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (0,0,rrank,cuda_task->tens_args[2].const_mem_entry,
+       (talshComplex8*)(rtens->dst_rsc->gmem_p),(talshComplex8*)(rtens->tmp_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,52); errc=gpu_activate(cur_gpu); return 52;
@@ -3930,6 +5121,16 @@ NOTES:
      gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
       (0,0,rrank,cuda_task->tens_args[2].const_mem_entry,(double*)(rtens->dst_rsc->gmem_p),(double*)(rtens->tmp_rsc->gmem_p));
      break;
+    case C4:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (0,0,rrank,cuda_task->tens_args[2].const_mem_entry,
+       (talshComplex4*)(rtens->dst_rsc->gmem_p),(talshComplex4*)(rtens->tmp_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (0,0,rrank,cuda_task->tens_args[2].const_mem_entry,
+       (talshComplex8*)(rtens->dst_rsc->gmem_p),(talshComplex8*)(rtens->tmp_rsc->gmem_p));
+     break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,56); errc=gpu_activate(cur_gpu); return 56;
    }
@@ -3941,7 +5142,7 @@ NOTES:
   rarg=rtens->dst_rsc->gmem_p;
  }
 //Schedule the appropriate computation kernel:
-// Set up prefactor:
+// Set up the prefactor (in mapped Host memory):
  errc=0;
  switch(dtens->data_kind){
   case R4:
@@ -4010,6 +5211,16 @@ NOTES:
    case R8:
     gpu_scalar_multiply__<<<1,1,0,*cuda_stream>>>((double*)larg,(double*)rarg,(double*)darg,scale_real);
     break;
+   case C4:
+    scale_cmplx4 = talshComplex4Set((float)scale_real,(float)scale_imag);
+    gpu_scalar_multiply__<<<1,1,0,*cuda_stream>>>((talshComplex4*)larg,(talshComplex4*)rarg,(talshComplex4*)darg,
+                                                  scale_cmplx4,conj_l,conj_r);
+    break;
+   case C8:
+    scale_cmplx8 = talshComplex8Set(scale_real,scale_imag);
+    gpu_scalar_multiply__<<<1,1,0,*cuda_stream>>>((talshComplex8*)larg,(talshComplex8*)rarg,(talshComplex8*)darg,
+                                                  scale_cmplx8,conj_l,conj_r);
+    break;
    default:
     errc=cuda_task_record(cuda_task,coh_ctrl,64); errc=gpu_activate(cur_gpu); return 64;
   }
@@ -4023,6 +5234,16 @@ NOTES:
    case R8:
     gpu_array_add__<<<bx,THRDS_ARRAY_ADD,0,*cuda_stream>>>(vol_d,(double*)(darg),(double*)(rarg),(double*)(larg),scale_real);
     break;
+   case C4:
+    scale_cmplx4 = talshComplex4Set((float)scale_real,(float)scale_imag);
+    gpu_array_add__<<<bx,THRDS_ARRAY_ADD,0,*cuda_stream>>>(vol_d,(talshComplex4*)(darg),(talshComplex4*)(rarg),
+                                                           (talshComplex4*)(larg),scale_cmplx4,conj_r);
+    break;
+   case C8:
+    scale_cmplx8 = talshComplex8Set(scale_real,scale_imag);
+    gpu_array_add__<<<bx,THRDS_ARRAY_ADD,0,*cuda_stream>>>(vol_d,(talshComplex8*)(darg),(talshComplex8*)(rarg),
+                                                           (talshComplex8*)(larg),scale_cmplx8,conj_r);
+    break;
    default:
     errc=cuda_task_record(cuda_task,coh_ctrl,65); errc=gpu_activate(cur_gpu); return 65;
   }
@@ -4035,6 +5256,16 @@ NOTES:
     break;
    case R8:
     gpu_array_add__<<<bx,THRDS_ARRAY_ADD,0,*cuda_stream>>>(vol_d,(double*)(darg),(double*)(larg),(double*)(rarg),scale_real);
+    break;
+   case C4:
+    scale_cmplx4 = talshComplex4Set((float)scale_real,(float)scale_imag);
+    gpu_array_add__<<<bx,THRDS_ARRAY_ADD,0,*cuda_stream>>>(vol_d,(talshComplex4*)(darg),(talshComplex4*)(larg),
+                                                           (talshComplex4*)(rarg),scale_cmplx4,conj_l);
+    break;
+   case C8:
+    scale_cmplx8 = talshComplex8Set(scale_real,scale_imag);
+    gpu_array_add__<<<bx,THRDS_ARRAY_ADD,0,*cuda_stream>>>(vol_d,(talshComplex8*)(darg),(talshComplex8*)(larg),
+                                                           (talshComplex8*)(rarg),scale_cmplx8,conj_l);
     break;
    default:
     errc=cuda_task_record(cuda_task,coh_ctrl,66); errc=gpu_activate(cur_gpu); return 66;
@@ -4050,6 +5281,16 @@ NOTES:
    case R8:
     gpu_array_dot_product__<<<bx,THRDS_ARRAY_SCALE,THRDS_ARRAY_SCALE*sizeof(double),*cuda_stream>>>
                              (vol_l,(double*)larg,(double*)rarg,(double*)darg,scale_real);
+    break;
+   case C4:
+    scale_cmplx4 = talshComplex4Set((float)scale_real,(float)scale_imag);
+    gpu_array_dot_product__<<<bx,THRDS_ARRAY_SCALE,THRDS_ARRAY_SCALE*sizeof(talshComplex4),*cuda_stream>>>
+                             (vol_l,(talshComplex4*)larg,(talshComplex4*)rarg,(talshComplex4*)darg,scale_cmplx4,conj_l,conj_r);
+    break;
+   case C8:
+    scale_cmplx8 = talshComplex8Set(scale_real,scale_imag);
+    gpu_array_dot_product__<<<bx,THRDS_ARRAY_SCALE,THRDS_ARRAY_SCALE*sizeof(talshComplex8),*cuda_stream>>>
+                             (vol_l,(talshComplex8*)larg,(talshComplex8*)rarg,(talshComplex8*)darg,scale_cmplx8,conj_l,conj_r);
     break;
    default:
     errc=cuda_task_record(cuda_task,coh_ctrl,67); errc=gpu_activate(cur_gpu); return 67;
@@ -4067,6 +5308,16 @@ NOTES:
     gpu_array_product__<<<blcks,THRDS_ARRAY_PRODUCT,0,*cuda_stream>>>
                           (vol_l,(double*)larg,vol_r,(double*)rarg,(double*)darg,scale_real);
     break;
+   case C4:
+    scale_cmplx4 = talshComplex4Set((float)scale_real,(float)scale_imag);
+    gpu_array_product__<<<blcks,THRDS_ARRAY_PRODUCT,0,*cuda_stream>>>
+                          (vol_l,(talshComplex4*)larg,vol_r,(talshComplex4*)rarg,(talshComplex4*)darg,scale_cmplx4,conj_l,conj_r);
+    break;
+   case C8:
+    scale_cmplx8 = talshComplex8Set(scale_real,scale_imag);
+    gpu_array_product__<<<blcks,THRDS_ARRAY_PRODUCT,0,*cuda_stream>>>
+                          (vol_l,(talshComplex8*)larg,vol_r,(talshComplex8*)rarg,(talshComplex8*)darg,scale_cmplx8,conj_l,conj_r);
+    break;
    default:
     errc=cuda_task_record(cuda_task,coh_ctrl,68); errc=gpu_activate(cur_gpu); return 68;
   }
@@ -4078,12 +5329,34 @@ NOTES:
    if(err_cublas != CUBLAS_STATUS_SUCCESS){errc=cuda_task_record(cuda_task,coh_ctrl,69); errc=gpu_activate(cur_gpu); return 69;}
    switch(dtens->data_kind){
     case R4:
-     err_cublas=cublasSgemm(cublas_handle[gpu_num],CUBLAS_OP_T,CUBLAS_OP_N,(int)ll,(int)lr,(int)lc,
-                    (float*)alpha_p,(float*)larg,(int)lc,(float*)rarg,(int)lc,(float*)beta_p,(float*)darg,(int)ll);
+     err_cublas=cublasSgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
+                (float*)alpha_p,(float*)larg,(int)lc,(float*)rarg,(int)lc,(float*)beta_p,(float*)darg,(int)ll);
      break;
     case R8:
-     err_cublas=cublasDgemm(cublas_handle[gpu_num],CUBLAS_OP_T,CUBLAS_OP_N,(int)ll,(int)lr,(int)lc,
-                    (double*)alpha_p,(double*)larg,(int)lc,(double*)rarg,(int)lc,(double*)beta_p,(double*)darg,(int)ll);
+     err_cublas=cublasDgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
+                (double*)alpha_p,(double*)larg,(int)lc,(double*)rarg,(int)lc,(double*)beta_p,(double*)darg,(int)ll);
+     break;
+    case C4:
+     if(conj_r){
+      err_cublas=cublasCgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
+                 (talshComplex4*)alpha_p,(talshComplex4*)larg,(int)lc,(talshComplex4*)rarg,(int)lr,(talshComplex4*)beta_p,
+                 (talshComplex4*)darg,(int)ll);
+     }else{
+      err_cublas=cublasCgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
+                 (talshComplex4*)alpha_p,(talshComplex4*)larg,(int)lc,(talshComplex4*)rarg,(int)lc,(talshComplex4*)beta_p,
+                 (talshComplex4*)darg,(int)ll);
+     }
+     break;
+    case C8:
+     if(conj_r){
+      err_cublas=cublasZgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
+                 (talshComplex8*)alpha_p,(talshComplex8*)larg,(int)lc,(talshComplex8*)rarg,(int)lr,(talshComplex8*)beta_p,
+                 (talshComplex8*)darg,(int)ll);
+     }else{
+      err_cublas=cublasZgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
+                 (talshComplex8*)alpha_p,(talshComplex8*)larg,(int)lc,(talshComplex8*)rarg,(int)lc,(talshComplex8*)beta_p,
+                 (talshComplex8*)darg,(int)ll);
+     }
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,70); errc=gpu_activate(cur_gpu); return 70;
@@ -4101,7 +5374,7 @@ NOTES:
     case R8:
      gpu_matrix_multiply_tn__<<<blcks,thrds,0,*cuda_stream>>>(ll,lr,lc,(double*)larg,(double*)rarg,(double*)darg,scale_real);
      break;
-    default:
+    default: //`Add complex cases with and without conjugation
      errc=cuda_task_record(cuda_task,coh_ctrl,72); errc=gpu_activate(cur_gpu); return 72;
    }
 #ifndef NO_BLAS
@@ -4131,6 +5404,16 @@ NOTES:
      gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
       (1,0,drank,cuda_task->tens_args[0].const_mem_entry,(double*)(dtens->tmp_rsc->gmem_p),(double*)(dtens->dst_rsc->gmem_p));
      break;
+    case C4:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (1,0,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_dlf__<<<bx,THRDS_TENSOR_COPY,0,*cuda_stream>>>
+      (1,0,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex8*)(dtens->tmp_rsc->gmem_p),(talshComplex8*)(dtens->dst_rsc->gmem_p));
+     break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,74); errc=gpu_activate(cur_gpu); return 74;
    }
@@ -4158,6 +5441,16 @@ NOTES:
     case R8:
      gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
       (1,0,drank,cuda_task->tens_args[0].const_mem_entry,(double*)(dtens->tmp_rsc->gmem_p),(double*)(dtens->dst_rsc->gmem_p));
+     break;
+    case C4:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (1,0,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
+     break;
+    case C8:
+     gpu_tensor_block_copy_scatter_dlf__<<<bx,THRDS_TENSOR_COPY_SCAT,0,*cuda_stream>>>
+      (1,0,drank,cuda_task->tens_args[0].const_mem_entry,
+       (talshComplex8*)(dtens->tmp_rsc->gmem_p),(talshComplex8*)(dtens->dst_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,78); errc=gpu_activate(cur_gpu); return 78;
@@ -4197,627 +5490,5 @@ NOTES:
  if(gpu_num != cur_gpu) errc=gpu_activate(cur_gpu);
  return stat; //either 0 (success) or NOT_CLEAN (warning)
 }
-//------------------------------------------------------------------------------------
-//CUDA KERNELS:
-// SUM OF THE SQUARES OF ALL ARRAY ELEMENTS:
-template <typename T>
-__global__ void gpu_array_norm2__(size_t arr_size, const T * arr, volatile T * bnorm2)
-/** Computes the squared 2-norm of array arr(0:arr_size-1)
-INPUT:
- # arr_size - size of the array;
- # arr(0:arr_size-1) - array;
-OUTPUT:
- # bnorm2 - squared 2-norm of the array (resides on device as well);
-**/
-{
- size_t i,n;
- T _thread_norm2;
- extern __shared__ T thread_norms2[];
 
- n=gridDim.x*blockDim.x; _thread_norm2=static_cast<T>(0.0);
- for(i=blockIdx.x*blockDim.x+threadIdx.x;i<arr_size;i+=n){_thread_norm2+=arr[i]*arr[i];}
- thread_norms2[threadIdx.x]=_thread_norm2;
- __syncthreads();
- if(threadIdx.x == 0){
-  _thread_norm2=thread_norms2[0]; for(i=1;i<blockDim.x;i++){_thread_norm2+=thread_norms2[i];}
-  i=1; while(i == 1){i=atomicMax(&norm2_wr_lock,1);} //waiting for the lock to unlock, then lock
-  *bnorm2+=_thread_norm2;
-  __threadfence();
-  i=atomicExch(&norm2_wr_lock,0); //unlock
- }
- __syncthreads();
- return;
-}
-//-----------------------------------------------------------
-// ARRAY INITIALIZATION:
-template <typename T>
-__global__ void gpu_array_init__(size_t tsize, T* arr, T val)
-/** arr(:)=val **/
-{
- size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
- size_t _gd = gridDim.x*blockDim.x;
- for(size_t l=_ti;l<tsize;l+=_gd){arr[l]=val;}
- return;
-}
-//---------------------------------------------------------------------------------------------------
-// SCALAR MULTIPLICATION:
-template <typename T>
-__global__ void gpu_scalar_multiply__(const T * left_arg, const T * right_arg, T * dest_arg, T alpha)
-/** Scalar += Scalar * Scalar * Alpha **/
-{
- if(blockIdx.x == 0 && threadIdx.x == 0){
-  *dest_arg+=(*left_arg)*(*right_arg)*alpha;
- }
- return;
-}
-//----------------------------------------------------------------------------
-// ARRAY RESCALING:
-template <typename T>
-__global__ void gpu_array_scale__(size_t tsize, T * __restrict__ arr, T alpha)
-/** arr(:)*=alpha **/
-{
- size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
- size_t _gd = gridDim.x*blockDim.x;
- for(size_t l=_ti;l<tsize;l+=_gd){arr[l]*=alpha;}
- return;
-}
-//--------------------------------------------------------------------------------------------------------
-// ARRAY ADDITION:
-template <typename T>
-__global__ void gpu_array_add__(size_t tsize, T * __restrict__ arr0, const T * __restrict__ arr1, T alpha)
-/** arr0(:)+=arr1(:)*alpha **/
-{
- size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
- size_t _gd = gridDim.x*blockDim.x;
- for(size_t l=_ti;l<tsize;l+=_gd){arr0[l]+=(arr1[l]*alpha);}
- return;
-}
-template <typename T>
-__global__ void gpu_array_add__(size_t tsize, T * __restrict__ arr0, const T * __restrict__ arr1, const T * __restrict__ scalar, T alpha)
-{
- size_t _ti = blockIdx.x*blockDim.x + threadIdx.x;
- size_t _gd = gridDim.x*blockDim.x;
- T pref = (*scalar) * alpha;
- for(size_t l=_ti;l<tsize;l+=_gd){arr0[l]+=(arr1[l]*pref);}
- return;
-}
-//-------------------------------------------------------------------------------------------------------------
-// ARRAY DOT-PRODUCT:
-template <typename T>
-__global__ void gpu_array_dot_product__(size_t tsize, const T * __restrict__ arr1, const T * __restrict__ arr2,
-                                        volatile T * dprod, T alpha)
-/** Scalar (GPU) += arr1(:) * arr2(:) * alpha **/
-{
- extern __shared__ char sh_buf[]; //size = blockDim.x * sizeof(T)
- T dpr;
- T *dprs;
- size_t l;
- int j,s;
-
- dprs=(T*)(&sh_buf[0]); //dynamic shared memory buffer
- dpr=static_cast<T>(0.0);
- for(l=blockIdx.x*blockDim.x+threadIdx.x;l<tsize;l+=gridDim.x*blockDim.x){dpr+=arr1[l]*arr2[l]*alpha;}
- dprs[threadIdx.x]=dpr;
- __syncthreads();
- s=blockDim.x;
- while(s > 1){
-  j=(s+1)/2;
-  if(threadIdx.x + j < s) dprs[threadIdx.x]+=dprs[threadIdx.x+j];
-  __syncthreads();
-  s=j;
- }
- if(threadIdx.x == 0){
-  j=1; while(j){s=atomicMax(&dot_product_wr_lock,1); if(s == 0){*dprod+=dprs[0]; j=0;}}
-  __threadfence();
-  s=atomicExch(&dot_product_wr_lock,0); //unlock
- }
- __syncthreads();
- return;
-}
-//-------------------------------------------------------------------------------------------------------------------------
-// ARRAY DIRECT PRODUCT:
-template <typename T>
-__global__ void gpu_array_product__(size_t tsize1, const T * __restrict__ arr1, size_t tsize2, const T * __restrict__ arr2,
-                                    T * __restrict__ arr0, T alpha)
-/** arr0[0:tsize2-1][0:tsize1-1]+=arr1[0:tsize1-1]*arr2[0:tsize2-1]*alpha **/
-{
- __shared__ T lbuf[THRDS_ARRAY_PRODUCT+1],rbuf[THRDS_ARRAY_PRODUCT];
- size_t _ib,_in,_jb,_jn,_tx,_jc;
- _tx=(size_t)threadIdx.x;
-//if(tsize1 >= THRDS_ARRAY_PRODUCT){ //large or medium size L
-  for(_jb=blockIdx.y*THRDS_ARRAY_PRODUCT;_jb<tsize2;_jb+=gridDim.y*THRDS_ARRAY_PRODUCT){
-   if(_jb+THRDS_ARRAY_PRODUCT > tsize2){_jn=tsize2-_jb;}else{_jn=THRDS_ARRAY_PRODUCT;}
-   if(_tx < _jn) rbuf[_tx]=arr2[_jb+_tx]*alpha;
-   for(_ib=blockIdx.x*THRDS_ARRAY_PRODUCT;_ib<tsize1;_ib+=gridDim.x*THRDS_ARRAY_PRODUCT){
-    if(_ib+THRDS_ARRAY_PRODUCT > tsize1){_in=tsize1-_ib;}else{_in=THRDS_ARRAY_PRODUCT;}
-    if(_tx < _in) lbuf[_tx]=arr1[_ib+_tx];
-    __syncthreads();
-    for(_jc=0;_jc<_jn;_jc++){if(_tx < _in) arr0[(_jb+_jc)*tsize1+_ib+_tx]+=lbuf[_tx]*rbuf[_jc];}
-    __syncthreads();
-   }
-  }
-//}else{ //small size L
-  //`Write
-//}
- return;
-}
-//----------------------------------------------------------------------------------------------------
-// TENSOR TRANSPOSE (legacy shared-memory version):
-template <typename T>
-__global__ void gpu_tensor_block_copy_dlf__(int dmo, int drc, int dim_num, int const_args_pos,
-                                            const T * __restrict__ tens_in, T * __restrict__ tens_out)
-/**
-Shared-memory version of tensor transpose: tens_out=TRN(tens_in):
-INPUT:
- # dmo - dimension extents order (0: normal, as it is in <const_args>; not 0: permuted dimension order will be imposed);
- # drc - index permutation direction (0: normal, as it is in <const_args>; not 0: inversed permutation will be used);
- # dim_num - tensor block rank;
- # const_args_pos - entry in the __constant__ memory bank where tensor block dimension extents (const_args_dims)
-                    and index permutation (const_args_prmn) are stored;
- # tens_in[0:] - input tensor;
-OUTPUT:
- # tens_out[0:] - output (transposed) tensor;
-NOTES:
- # Minimal CUDA execution configuration is <<<1,warpSize>>>
- # Number of threads per block must be multiple of the warpSize!
-**/
-{
- __shared__ T buf0[TENS_TRANSP_BUF_SIZE];
- __shared__ float val;
- __shared__ size_t base_in[MAX_TENSOR_RANK],base_out[MAX_TENSOR_RANK];
- __shared__ size_t ftb[TENS_TRANSP_TAB_SIZE],gtb[TENS_TRANSP_TAB_SIZE];
- __shared__ int htb[TENS_TRANSP_TAB_SIZE],stb[TENS_TRANSP_TAB_SIZE];
- __shared__ int dim_in[MAX_TENSOR_RANK],dim_out[MAX_TENSOR_RANK],o2n[MAX_TENSOR_RANK],n2o[MAX_TENSOR_RANK];
- __shared__ int pri[MAX_TENSOR_RANK],tmp0[MAX_TENSOR_RANK];
- __shared__ int err_code,minor,minor_in,minor_out,s1_ind,s1_ond,s1_step,s1_dim,s2_ind,s2_ond,s2_step,s2_dim,ns1,ns2;
- __shared__ size_t vol,vol_ext;
- size_t _vol,_addr_in,_addr_out,_addr,_work_piece;
- int i,j,k,l,m,n,_vol_minor,_vol_in,_vol_out,_s1,_s2;
-/*
-SHARED MEMORY USE (bytes) =
- + TENS_TRANSP_BUF_SIZE*sizeof(T)
- + MAX_TENSOR_RANK*(8+8+4+4+4+4+4+4)
- + TENS_TRANSP_TAB_SIZE*(8+8+4+4)
- + 4*15 + 8*2
-MIN REGISTER USE (bytes) per thread =
- + 4*4 + 4*11 + 8*5 = 100
-*/
-
-//Determine the minor index set (only the master thread in each thread block):
- if(threadIdx.x == 0){
-  err_code=0;
-  if(dim_num >= 0 && dim_num <= MAX_TENSOR_RANK && blockDim.x >= warpSize && blockDim.x%warpSize == 0){
-   s1_ind=dim_num+1; s2_ind=dim_num-1;
-   _vol=1; for(i=0;i<dim_num;i++){
-    _vol*=const_args_dims[const_args_pos][i]; if(const_args_prmn[const_args_pos][i] != i+1) s1_ind=0;
-   }; vol=_vol; //total volume (number of tensor elements)
-   if(s1_ind == 0){ //non-trivial permutation
-// Set input/output permutations and dimension extents:
-    if(drc == 0){ //normal index permutation
-     for(i=0;i<dim_num;i++) o2n[i]=const_args_prmn[const_args_pos][i]-1; for(i=0;i<dim_num;i++) n2o[o2n[i]]=i;
-    }else{ //inversed index permutation
-     for(i=0;i<dim_num;i++) n2o[i]=const_args_prmn[const_args_pos][i]-1; for(i=0;i<dim_num;i++) o2n[n2o[i]]=i;
-    }
-    if(dmo == 0){ //normal dimension order
-     for(i=0;i<dim_num;i++) dim_in[i]=const_args_dims[const_args_pos][i];
-     for(i=0;i<dim_num;i++) dim_out[o2n[i]]=dim_in[i];
-    }else{ //inversed dimension order
-     for(i=0;i<dim_num;i++) dim_out[i]=const_args_dims[const_args_pos][i];
-     for(i=0;i<dim_num;i++) dim_in[n2o[i]]=dim_out[i];
-    }
-    s1_step=dim_in[s1_ind]; s2_step=dim_in[s2_ind];
-    if(_vol > TENS_TRANSP_BUF_SIZE){ //tensor block does not fit into the shared memory buffer
-// Determine the input/output minor index sets and the combined minor index set:
-     l=(int)(sqrt((float)TENS_TRANSP_BUF_SIZE));
-     minor_in=0; _vol_in=1; for(i=0;i<dim_num;i++){j=_vol_in*dim_in[i]; if(j>l) break; minor_in++; _vol_in=j;}
-     minor_out=0; _vol_out=1; for(i=0;i<dim_num;i++){j=_vol_out*dim_out[i]; if(j>l) break; minor_out++; _vol_out=j;}
-     minor=minor_in; _vol_minor=_vol_in; for(i=0;i<minor_out;i++){if(n2o[i]>=minor_in){minor++; _vol_minor*=dim_out[i];}}
-     m=1; _s1=0; _s2=0;
-     while(_vol_minor < TENS_TRANSP_BUF_SIZE && m != 0){
-      m=0;
-      if(_s1 == 0){for(i=minor_in;i<dim_num;i++){if(o2n[i]<minor_out){minor_in++; _vol_in*=dim_in[i];}else{break;}}}
-      if(_s2 == 0){for(i=minor_out;i<dim_num;i++){if(n2o[i]<minor_in){minor_out++; _vol_out*=dim_out[i];}else{break;}}}
-      j=dim_in[minor_in]; l=dim_out[minor_out];
-      if(minor_in == n2o[minor_out] && _s1+_s2 == 0){ //same candidate index to both the input and output index sets
-       if(j > 1 && TENS_TRANSP_BUF_SIZE < _vol_minor*2) break;
-       if(_vol_minor*j > TENS_TRANSP_BUF_SIZE){s1_ind=minor_in; s1_step=TENS_TRANSP_BUF_SIZE/_vol_minor; _s1++; _s2++;}
-       minor_in++; _vol_in*=j; minor_out++; _vol_out*=j; minor++; _vol_minor*=j; m++;
-      }else{ //the input and output index sets consider two different candidates
-       if(_vol_minor*j*l <= TENS_TRANSP_BUF_SIZE && _s1+_s2 == 0){ //accept both, no splitting
-        minor_in++; _vol_in*=j; minor_out++; _vol_out*=l; minor+=2; _vol_minor*=(j*l); m++;
-       }else{ //try to accept either one of the two OR both with splitting
-        if(j == 1 || l == 1){
-         if(j == 1 && _s1 == 0){minor_in++; minor++; m++;}
-         if(l == 1 && _s2 == 0){minor_out++; minor++; m++;}
-        }else{
-         if(_vol_minor*j <= TENS_TRANSP_BUF_SIZE && _vol_minor*l > TENS_TRANSP_BUF_SIZE &&
-            _vol_out >= warpSize && _s1 == 0){ //accept the input index, no splitting
-          minor_in++; _vol_in*=j; minor++; _vol_minor*=j; m++;
-         }else if(_vol_minor*j > TENS_TRANSP_BUF_SIZE && _vol_minor*l <= TENS_TRANSP_BUF_SIZE &&
-                  _vol_in >= warpSize && _s2 == 0){ //accept the output index, no splitting
-          minor_out++; _vol_out*=l; minor++; _vol_minor*=l; m++;
-         }else{ //splitting is unavoidable (both OR one OR none)
-          if(TENS_TRANSP_BUF_SIZE >= _vol_minor*2){
-           if(j >= 4 && l >= 4){ //dimension extents are large enough to be split
-            if(_vol_minor*4 > TENS_TRANSP_BUF_SIZE){ //impossible to split both indices
-             if(_vol_in <= _vol_out && _s1 == 0){ //split the input candidate index
-              s1_ind=minor_in; s1_step=TENS_TRANSP_BUF_SIZE/_vol_minor;
-              minor_in++; _vol_in*=j; minor++; _vol_minor*=j; _s1++; m++;
-             }else{ //split the output candidate index
-              if(_s2 == 0){
-               s1_ind=n2o[minor_out]; s1_step=TENS_TRANSP_BUF_SIZE/_vol_minor;
-               minor_out++; _vol_out*=l; minor++; _vol_minor*=l; _s2++; m++;
-              }
-             }
-            }else{ //possible to split both indices
-             i=(int)sqrt(((float)TENS_TRANSP_BUF_SIZE)/(float)_vol_minor); if(i < 2) i=2; //uniform splitting
-             s1_step=i; s2_step=i; val=(float)_vol_out/(float)_vol_in;
-             if(val < 1.0f){ //scale the initial uniform splitting to reflect the disbalance between _vol_in and _vol_out
-              if(val*(float)i < 1.0f) val=1.0f/(float)i; if(val*(float)l < (float)i) val=(float)i/(float)l;
-             }else{
-              if(val*(float)i > (float)j) val=(float)j/(float)i; if(val > float(i)) val=(float)i;
-             }
-             s1_step=(int)(((float)i)*val); s2_step=(int)(((float)i)/val);
-             if(s1_step >= 2 && _s1 == 0){ //&& s1_step <= dim_in[minor_in]
-              s1_ind=minor_in; minor_in++; _vol_in*=j; minor++; _vol_minor*=j; _s1++; m++;
-             }else{
-              s1_step=dim_in[s1_ind];
-             }
-             if(s2_step >= 2 && _s2 == 0){ //&& s2_step <= dim_out[minor_out]
-              s2_ind=n2o[minor_out]; minor_out++; _vol_out*=l; minor++; _vol_minor*=l; _s2++; m++;
-             }else{
-              s2_step=dim_in[s2_ind];
-             }
-            }
-           }else if(j >= 4 && l < 4 && _s1 == 0){ //split the input candidate index
-            s1_ind=minor_in; s1_step=TENS_TRANSP_BUF_SIZE/_vol_minor;
-            minor_in++; _vol_in*=j; minor++; _vol_minor*=j; _s1++; m++;
-           }else if(j < 4 && l >= 4 && _s2 == 0){ //split the output candidate index
-            s1_ind=n2o[minor_out]; s1_step=TENS_TRANSP_BUF_SIZE/_vol_minor;
-            minor_out++; _vol_out*=l; minor++; _vol_minor*=l; _s2++; m++;
-           }else{ //both candidate indices have too small extent to be split: try to add one of them fully
-            if(_vol_minor*j <= TENS_TRANSP_BUF_SIZE && _s1 == 0){
-             minor_in++; _vol_in*=j; minor++; _vol_minor*=j; m++;
-            }else if(_vol_minor*l <= TENS_TRANSP_BUF_SIZE && _s2 == 0){
-             minor_out++; _vol_out*=l; minor++; _vol_minor*=l; m++;
-            }
-           }
-          }else{ //unable to add more indices in the minor set
-           break;
-          }
-         }
-        }
-       }
-      }
-     }
-     if(s1_ind == dim_num-1 && s2_ind == dim_num-1){s2_ind=0; s2_step=dim_in[0];} //s1_ind was set while s2_ind was not
-    }else{ //tensor block fits into the shared memory buffer from the beginning
-     minor=dim_num; minor_in=dim_num; minor_out=dim_num; _vol_minor=_vol; _vol_in=_vol; _vol_out=_vol;
-    }
-// Share the tensor transpose configuration with other threads in each block:
-    vol_ext=_vol/_vol_minor; s1_dim=dim_in[s1_ind]; s2_dim=dim_in[s2_ind];
-// Set indexing bases (OUT:{out,in_c,ext_in}_new; IN:{in,out_c,ext_in}_old):
-//  OUTPUT indexing (dim_out[], base_out[]: prioritized new numeration):
-    for(i=0;i<dim_num;i++){tmp0[i]=dim_out[i];} //save output dimension extents (new numeration)
-    j=0; for(i=0;i<minor_out;i++){pri[j++]=i;} //output minor index set (new numeration))
-    for(i=0;i<dim_num;i++){if(o2n[i]>=minor_out) pri[j++]=o2n[i];} //{compl.input minor + external} index set (new numeration)
-    j=1; for(i=0;i<dim_num;i++){dim_out[i]=j; j*=tmp0[i];} //output bases (new numeration)
-    for(i=0;i<dim_num;i++){base_out[i]=dim_out[pri[i]];} //output bases (prioritized new numeration)
-    for(i=0;i<dim_num;i++){dim_out[i]=tmp0[pri[i]];} //output extents (prioritized new numeration)
-    for(i=0;i<dim_num;i++){if(n2o[pri[i]]==s1_ind){s1_ond=i;}else if(n2o[pri[i]]==s2_ind){s2_ond=i;}} //split indices (prioritized new numeration)
-//  INPUT indexing (dim_in[], base_in[]: prioritized old numeration):
-    for(i=0;i<dim_num;i++){tmp0[i]=dim_in[i];} //save input dimension extents (old numeration)
-    j=0; for(i=0;i<minor_in;i++){pri[j++]=i;} //input minor index set (old numeration)
-    for(i=0;i<minor_out;i++){if(n2o[i]>=minor_in) pri[j++]=n2o[i];} //compl.output minor idex set (old numeration)
-    for(i=j;i<dim_num;i++){pri[i]=n2o[pri[i]];} //external index set (just convert new numbers to old ones for consistency)
-    j=1; for(i=0;i<dim_num;i++){dim_in[i]=j; j*=tmp0[i];} //input bases (old numeration)
-    for(i=0;i<dim_num;i++){base_in[i]=dim_in[pri[i]];} //input bases (prioritized old numeration)
-    for(i=0;i<dim_num;i++){dim_in[i]=tmp0[pri[i]];} //input extents (prioritized old numeration)
-    for(i=0;i<dim_num;i++){if(pri[i]==s1_ind){_s1=i;}else if(pri[i]==s2_ind){_s2=i;}} //split indices (prioritized old numeration)
-    s1_ind=_s1; s2_ind=_s2;
-    ns1=1+(s1_dim-1)/s1_step; //number of segments from the 1st split minor index
-    ns2=1+(s2_dim-1)/s2_step; //number of segments from the 2nd split minor index
-//  Index position correspondence for the minor index set (pri-new --> pri-old):
-    j=0; for(i=0;i<minor_out;i++){if(n2o[i]<minor_in){pri[i]=n2o[i];}else{pri[i]=(minor_in+j); j++;}}
-    j=0; for(i=0;i<minor_in;i++){if(o2n[i]<minor_out){pri[o2n[i]]=i;}else{pri[minor_out+j]=i; j++;}}
-// Check tensor transpose configuration parameters:
-    if(minor <= 0 || minor_in <= 0 || minor_out <= 0 || _vol <= 0 || _vol_minor <= 0) err_code+=5000; //trap
-    if(s1_ind >= dim_num || s2_ind >= dim_num || s1_ond >= dim_num || s2_ond >= dim_num ||
-       s1_ind == s2_ind || s1_ond == s2_ond || s1_step <= 0 || s2_step <= 0) err_code+=1000; //trap
-    if((s1_step != dim_in[s1_ind] && s1_ind != minor_in-1 && s1_ond != minor_out-1) ||
-       (s2_step != dim_in[s2_ind] && s2_ind != minor_in-1 && s2_ond != minor_out-1)) err_code+=500; //trap
-    if((_vol_minor*s1_step*s2_step)/(s1_dim*s2_dim) > TENS_TRANSP_BUF_SIZE) err_code+=100; //trap
-   } //endif: non-trivial permutation
-  }else{
-   err_code=1+2*blockDim.x%warpSize;
-  }
- } //endif: Master thread.
-#ifdef DEBUG_GPU
-//DEBUG RECORD begin:
- if(blockIdx.x == 0 && threadIdx.x == 0){
-  j=0; gpu_debug_dump[j++]=dim_num;
-  for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=const_args_dims[const_args_pos][i];
-  for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=const_args_prmn[const_args_pos][i];
-  for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=base_in[i];
-  for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=base_out[i];
-  gpu_debug_dump[j++]=vol; gpu_debug_dump[j++]=vol_ext; gpu_debug_dump[j++]=vol/vol_ext;
-  gpu_debug_dump[j++]=minor; gpu_debug_dump[j++]=minor_in; gpu_debug_dump[j++]=minor_out;
-  gpu_debug_dump[j++]=s1_ind; gpu_debug_dump[j++]=s1_ond; gpu_debug_dump[j++]=s1_step; gpu_debug_dump[j++]=s1_dim;
-  gpu_debug_dump[j++]=s2_ind; gpu_debug_dump[j++]=s2_ond; gpu_debug_dump[j++]=s2_step; gpu_debug_dump[j++]=s2_dim;
-  for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=pri[i];
-  gpu_debug_dump[j++]=err_code; gpu_debug_dump[j++]=-1;
- }
-//DEBUG RECORD end.
-#endif /*DEBUG_GPU*/
- __syncthreads();
-
-//Proceed:
- if(err_code == 0){
-  if(s1_ind > dim_num){ //tag of a trivial permutation
-// Direct copy:
-   _vol=vol; j=gridDim.x*blockDim.x; i=blockIdx.x*blockDim.x+threadIdx.x; _addr_in=_vol-_vol%j;
-   for(_addr=0;_addr<_addr_in;_addr+=j){
-    _addr_out=_addr+i; tens_out[_addr_out]=tens_in[_addr_out];
-   }
-   _addr_out=_addr_in+i; if(_addr_out<_vol) tens_out[_addr_out]=tens_in[_addr_out];
-  }else{ //non-trivial permutation
-   l=threadIdx.x/warpSize; //l: warp number
-// Distribute work accross CUDA blocks (external multi-index + splitting):
-   for(_work_piece=blockIdx.x;_work_piece<vol_ext*ns1*ns2;_work_piece+=gridDim.x){ //(ns1*ns2*vol_ext) is the total number of independent tasks
-    _addr=_work_piece; _addr/=vol_ext; _vol=_work_piece-_addr*vol_ext; _s2=(int)(_addr/ns1); _s1=(int)(_addr-_s2*ns1); //{_addr_ext,_s1,_s2} --> tensor subblock (CUDA block)
-//  Modify dimension extents due to possible dimension splitting:
-    if(threadIdx.x == 0){
-     if(_s1+1 == ns1){ //last segment of the 1st split index
-      j=s1_dim-_s1*s1_step; dim_in[s1_ind]=j; dim_out[s1_ond]=j;
-     }else{ //internal segment of the 1st split index
-      dim_in[s1_ind]=s1_step; dim_out[s1_ond]=s1_step;
-     }
-     if(_s2+1 == ns2){ //last segment of the 2nd split index
-      j=s2_dim-_s2*s2_step; dim_in[s2_ind]=j; dim_out[s2_ond]=j;
-     }else{ //internal segment of the 2nd split index
-      dim_in[s2_ind]=s2_step; dim_out[s2_ond]=s2_step;
-     }
-     j=1; for(i=0;i<minor;i++){tmp0[i]=j; j*=dim_in[i];} //minor buffer bases (pri-old)
-     for(i=0;i<minor;i++) n2o[i]=tmp0[pri[i]]; //look up table to accelerate further accesses to tmp0[]
-    }
-    __syncthreads();
-//  Mount input/output volumes and bases:
-    _vol_in=dim_in[0]; for(i=1;i<minor_in;i++){_vol_in*=dim_in[i];}
-    _vol_out=dim_out[0]; for(i=1;i<minor_out;i++){_vol_out*=dim_out[i];}
-    _vol_minor=_vol_out; for(i=minor_out;i<minor;i++){_vol_minor*=dim_out[i];}
-    _addr_in=(_s1*s1_step)*base_in[s1_ind]+(_s2*s2_step)*base_in[s2_ind]; _addr_out=_vol;
-    for(i=minor;i<dim_num;i++){_addr=_vol/dim_in[i]; _addr_in+=(_vol-_addr*dim_in[i])*base_in[i]; _vol=_addr;}
-    _vol=_addr_out; _addr_out=(_s1*s1_step)*base_out[s1_ond]+(_s2*s2_step)*base_out[s2_ond];
-    for(i=minor;i<dim_num;i++){_addr=_vol/dim_out[i]; _addr_out+=(_vol-_addr*dim_out[i])*base_out[i]; _vol=_addr;}
-    if(_vol_out > TENS_TRANSP_TAB_SIZE || _vol_minor > _vol_in*TENS_TRANSP_TAB_SIZE ||
-       _vol_minor > _vol_out*TENS_TRANSP_TAB_SIZE){
-//  Algorithm 0 (slower):
-//   Read the minor volume into the buffer from the input tensor block:
-     _vol_minor/=_vol_in; //vol_in_c
-     _s1=1+(_vol_in-1)/warpSize; //number of warps (lines) which fully cover the input volume
-     _s2=blockDim.x/warpSize; //number of whole warps in a thread block (each warp treats one line)
-     for(j=l;j<_s1*_vol_minor;j+=_s2){ //j: Line number
-      m=j/_s1; _addr=_addr_in; n=m; //n: Input column number (in_c)
-      for(i=minor_in;i<minor;i++){k=m/dim_in[i]; _addr+=(m-k*dim_in[i])*base_in[i]; m=k;}
-//    m=(j%_s1)*warpSize+threadIdx.x%warpSize; //elemental offset in the input volume
-      m=threadIdx.x+(j-n*_s1-l)*warpSize; //elemental offset in the input volume (alternative)
-      if(m < _vol_in){buf0[n*_vol_in+m]=tens_in[_addr+m];}
-     }
-     __syncthreads();
-//   Write the minor volume from the buffer into the output tensor block:
-     _vol_minor=(_vol_minor*_vol_in)/_vol_out; //vol_out_c
-     _s1=1+(_vol_out-1)/warpSize; //number of warps (lines) which fully cover the output volume
-     for(j=l;j<_s1*_vol_minor;j+=_s2){ //j: Line number
-      n=j/_s1; _addr=_addr_out; _vol=n; _vol_in=0; //_vol: Output column number (out_c)
-//    for(i=minor_out;i<minor;i++){m=n%dim_out[i]; n/=dim_out[i]; _addr+=m*base_out[i]; _vol_in+=m*tmp0[pri[i]];}
-      for(i=minor_out;i<minor;i++){k=n/dim_out[i]; m=n-k*dim_out[i]; n=k; _addr+=m*base_out[i]; _vol_in+=m*n2o[i];}
-//    m=(j%_s1)*warpSize+threadIdx.x%warpSize; //elemental offset in the output volume
-      m=threadIdx.x+(j-(int)_vol*_s1-l)*warpSize; //elemental offset in the output volume (alternative)
-      if(m < _vol_out){
-       _addr+=m;
-//     for(i=0;i<minor_out;i++){_vol_in+=(m%dim_out[i])*tmp0[pri[i]]; m/=dim_out[i];}
-       for(i=0;i<minor_out;i++){k=m/dim_out[i]; _vol_in+=(m-k*dim_out[i])*n2o[i]; m=k;}
-       tens_out[_addr]=buf0[_vol_in];
-      }
-     }
-     __syncthreads();
-    }else{
-//  Algorithm 1 (presumably faster):
-//   Create per-block look-up tables:
-     m=_vol_minor/_vol_in; //vol_in_c
-     for(j=threadIdx.x;j<m;j+=blockDim.x){ //column number (input)
-      _addr=0; _s1=j;
-//    for(i=minor_in;i<minor;i++){_addr+=(_s1%dim_in[i])*base_in[i]; _s1/=dim_in[i];}
-      for(i=minor_in;i<minor;i++){_s2=_s1/dim_in[i]; _addr+=(_s1-_s2*dim_in[i])*base_in[i]; _s1=_s2;}
-      ftb[j]=_addr;
-     }
-     m=_vol_minor/_vol_out; //vol_out_c
-     for(j=threadIdx.x;j<m;j+=blockDim.x){ //column number (output)
-      _addr=0; _s1=j;
-//    for(i=minor_out;i<minor;i++){_addr+=(_s1%dim_out[i])*base_out[i]; _s1/=dim_out[i];}
-      for(i=minor_out;i<minor;i++){_s2=_s1/dim_out[i]; _addr+=(_s1-_s2*dim_out[i])*base_out[i]; _s1=_s2;}
-      gtb[j]=_addr;
-     }
-     for(j=threadIdx.x;j<m;j+=blockDim.x){ //column number (output)
-      n=0; _s1=j;
-//    for(i=minor_out;i<minor;i++){n+=(_s1%dim_out[i])*n2o[i]; _s1/=dim_out[i];}
-      for(i=minor_out;i<minor;i++){_s2=_s1/dim_out[i]; n+=(_s1-_s2*dim_out[i])*n2o[i]; _s1=_s2;}
-      htb[j]=n;
-     }
-     for(j=threadIdx.x;j<_vol_out;j+=blockDim.x){
-      n=0; _s1=j;
-//    for(i=0;i<minor_out;i++){n+=(_s1%dim_out[i])*n2o[i]; _s1/=dim_out[i];}
-      for(i=0;i<minor_out;i++){_s2=_s1/dim_out[i]; n+=(_s1-_s2*dim_out[i])*n2o[i]; _s1=_s2;}
-      stb[j]=n;
-     }
-     __syncthreads();
-//   Read the minor volume into the buffer from the input tensor block:
-     _vol_minor/=_vol_in; //vol_in_c
-     _s1=1+(_vol_in-1)/warpSize; //number of warps (lines) which fully cover the input volume
-     _s2=blockDim.x/warpSize; //number of whole warps in a thread block (each warp treats one line)
-     for(j=l;j<_s1*_vol_minor;j+=_s2){ //j: Line number
-      m=j/_s1; n=threadIdx.x+(j-m*_s1-l)*warpSize; //m: Input column number (in_c); n: Offset in the column
-      if(n < _vol_in){_addr=_addr_in+ftb[m]+n; buf0[m*_vol_in+n]=tens_in[_addr];}
-     }
-     __syncthreads();
-//   Write the minor volume from the buffer into the output tensor block:
-     _vol_minor=(_vol_minor*_vol_in)/_vol_out; //vol_out_c
-     _s1=1+(_vol_out-1)/warpSize; //number of warps (lines) which fully cover the output volume
-     for(j=l;j<_s1*_vol_minor;j+=_s2){ //j: Line number
-      m=j/_s1; n=threadIdx.x+(j-m*_s1-l)*warpSize; //m: Output column number (out_c); n: Offset in the column
-      if(n < _vol_out){_addr=_addr_out+gtb[m]+n; _vol_in=htb[m]+stb[n]; tens_out[_addr]=buf0[_vol_in];}
-     }
-     __syncthreads();
-    }
-   } //enddo _work_piece: independent work distribution among thread blocks
-  }
- }
-//Record errors if occured (for each block):
- if(threadIdx.x == 0){if(err_code != 0) i=atomicAdd(&gpu_error_count,1);}
- return;
-}
-//------------------------------------------------------------------------------------------------------------
-// TENSOR TRANSPOSE (brute-force scatter version):
-template <typename T>
-__global__ void gpu_tensor_block_copy_scatter_dlf__(int dmo, int drc, int dim_num, int const_args_pos,
-                                                    const T * __restrict__ tens_in, T * __restrict__ tens_out)
-/**
-Scattering version of tensor transpose: tens_out=TRN(tens_in):
-INPUT:
- # dmo - dimension extents order (0: normal, as it is in <const_args>; not 0: permuted dimension order will be imposed);
- # drc - index permutation direction (0: normal, as it is in <const_args>; not 0: inversed permutation will be used);
- # dim_num - tensor block rank;
- # const_args_pos - entry in the __constant__ memory bank where tensor block dimension extents (const_args_dims)
-                    and index permutation (const_args_prmn) are stored;
- # tens_in[0:] - input tensor;
-OUTPUT:
- # tens_out[0:] - output (transposed) tensor;
-**/
-{
- __shared__ int n2o[MAX_TENSOR_RANK];
- __shared__ size_t vol,base_in[MAX_TENSOR_RANK],base_out[MAX_TENSOR_RANK];
- int i,j,k;
- size_t _vol,_addr_in,_addr_out,_si;
-
- if(dim_num == 0){
-  if(blockIdx.x == 0 && threadIdx.x == 0) tens_out[0]=tens_in[0];
- }else if(dim_num == 1){
-  _vol=const_args_dims[const_args_pos][0];
-  j=blockIdx.x*blockDim.x+threadIdx.x;
-  for(_addr_in=j;_addr_in<_vol;_addr_in+=gridDim.x*blockDim.x){tens_out[_addr_in]=tens_in[_addr_in];}
- }else if(dim_num > 1){
-  if(threadIdx.x == 0){
-   k=0; for(i=0;i<dim_num;i++){j=const_args_prmn[const_args_pos][i]-1; n2o[j]=i; if(j!=i) k=1;}
-   if(k == 0){ //trivial permutation
-    n2o[0]=dim_num; //trivial permutation flag
-    _vol=1; for(i=0;i<dim_num;i++){_vol*=const_args_dims[const_args_pos][i];}; vol=_vol;
-   }else{ //non-trivial permutation
-    if(dmo == 0){ //normal dimension order
-     _vol=1; for(i=0;i<dim_num;i++){base_in[i]=_vol; _vol*=const_args_dims[const_args_pos][i];}; vol=_vol;
-     if(drc == 0){ //normal index permutation
-      _vol=1; for(i=0;i<dim_num;i++){k=n2o[i]; base_out[k]=_vol; _vol*=const_args_dims[const_args_pos][k];}
-     }else{ //inversed index permutation
-      _vol=1; for(i=0;i<dim_num;i++){
-       k=const_args_prmn[const_args_pos][i]-1; base_out[k]=_vol; _vol*=const_args_dims[const_args_pos][k];
-      }
-     }
-    }else{ //inversed dimension order
-     if(drc == 0){ //normal index permutation
-      _vol=1; for(i=0;i<dim_num;i++){
-       k=const_args_prmn[const_args_pos][i]-1; base_in[i]=_vol; _vol*=const_args_dims[const_args_pos][k];
-      }; vol=_vol;
-      _vol=1; for(i=0;i<dim_num;i++){k=n2o[i]; base_out[k]=_vol; _vol*=const_args_dims[const_args_pos][i];}
-     }else{ //inversed index permutation
-      _vol=1; for(i=0;i<dim_num;i++){
-       k=n2o[i]; base_in[i]=_vol; _vol*=const_args_dims[const_args_pos][k];
-      }; vol=_vol;
-      _vol=1; for(i=0;i<dim_num;i++){
-       k=const_args_prmn[const_args_pos][i]-1; base_out[k]=_vol; _vol*=const_args_dims[const_args_pos][i];
-      }
-     }
-    }
-   }
-  }
-#ifdef DEBUG_GPU
-//DEBUG RECORD begin:
-  if(blockIdx.x == 0 && threadIdx.x == 0){
-   j=0; gpu_debug_dump[j++]=dim_num;
-   for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=const_args_dims[const_args_pos][i];
-   for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=const_args_prmn[const_args_pos][i];
-   for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=base_in[i];
-   for(i=0;i<dim_num;i++) gpu_debug_dump[j++]=base_out[i];
-   gpu_debug_dump[j++]=vol; gpu_debug_dump[j++]=-1;
-  }
-//DEBUG RECORD end.
-#endif /*DEBUG_GPU*/
-  __syncthreads();
-  _vol=vol;
-  if(n2o[0] >= dim_num){ //trivial permutation
-   k=gridDim.x*blockDim.x; j=blockIdx.x*blockDim.x+threadIdx.x;
-   for(_addr_in=j;_addr_in<_vol;_addr_in+=k){tens_out[_addr_in]=tens_in[_addr_in];}
-  }else{ //non-trivial permutation
-   j=blockIdx.x*blockDim.x+threadIdx.x;
-   for(_addr_in=j;_addr_in<_vol;_addr_in+=gridDim.x*blockDim.x){
-    _addr_out=0; _si=_addr_in; for(i=dim_num-1;i>=0;i--){_addr_out+=(_si/base_in[i])*base_out[i]; _si%=base_in[i];}
-    tens_out[_addr_out]=tens_in[_addr_in];
-   }
-  }
- }else{ //dim_num < 0
-  if(threadIdx.x == 0) i=atomicAdd(&gpu_error_count,1); //record an error (for each thread block)
- }
- return;
-}
-//----------------------------------------------------------------------------------------------------
-// MATRIX MULTIPLICATION (slow):
-template <typename T>
-__global__ void gpu_matrix_multiply_tn__(size_t ll, size_t lr, size_t lc, const T * __restrict__ arg1,
-                                         const T * __restrict__ arg2, T * __restrict__ arg0, T alpha)
-/** arg0(0:ll-1,0:lr-1)+=arg1(0:lc-1,0:ll-1)*arg2(0:lc-1,0:lr-1)*alpha
-NOTES:
- # Thread block dimensions (.x and .y) must be equal to MAT_MULT_TILE_DIM(X,Y), respectively.
-**/
-{
- __shared__ T buf1[MAT_MULT_TILE_DIMX+1][MAT_MULT_TILE_DIMX+1],buf2[MAT_MULT_TILE_DIMY+1][MAT_MULT_TILE_DIMX+1];
- size_t k,_col,_row,_col_base,_row_base;
- int i,j,l,m;
- T _val;
-
- if(lc > 0 && ll > 0 && lr > 0 && blockDim.x == MAT_MULT_TILE_DIMX && blockDim.y == MAT_MULT_TILE_DIMY){
-  _val=static_cast<T>(0.0); j=threadIdx.y; i=threadIdx.x;
-  _col_base=blockIdx.y*MAT_MULT_TILE_DIMY;
-  while(_col_base < lr){
-   _row_base=blockIdx.x*MAT_MULT_TILE_DIMX;
-   while(_row_base < ll){
-    for(k=0;k<lc;k+=MAT_MULT_TILE_DIMX){
-     _col=_col_base+j; _row=_row_base+j;
-// Load two blocks into shared memory:
-     if(k+MAT_MULT_TILE_DIMX > lc){m=lc-k;}else{m=MAT_MULT_TILE_DIMX;}
-     if(i < m){ //(k+i)<lc
-      for(l=0;l<MAT_MULT_TILE_DIMX;l+=MAT_MULT_TILE_DIMY){
-       if(_row < ll){buf1[l+j][i]=arg1[_row*lc+(k+i)]*alpha;} // Load a block of the 1st argument into the shared memory
-       _row+=MAT_MULT_TILE_DIMY;
-      }
-      if(_col < lr){buf2[j][i]=arg2[_col*lc+(k+i)];} // Load a block of the 2nd argument into the shared memory
-     }
-     __syncthreads();
-// Multiply the two blocks:
-     _row=_row_base+i;
-     if(_col < lr){
-      if(_row < ll){
-       _col=_col*ll+_row;
-       for(l=0;l<m;l++){_val+=buf1[i][l]*buf2[j][l];}
-       arg0[_col]+=_val; _val=static_cast<T>(0.0);
-      }
-     }
-     __syncthreads();
-    }
-    _row_base+=gridDim.x*MAT_MULT_TILE_DIMX;
-   }
-   _col_base+=gridDim.y*MAT_MULT_TILE_DIMY;
-  }
- }else{
-  if(threadIdx.x == 0 && threadIdx.y == 0) i=atomicAdd(&gpu_error_count,1); //record an error (for each thread block)
- }
- return;
-}
 #endif /*NO_GPU*/

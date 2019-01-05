@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2018/08/19
+REVISION: 2018/12/06
 
-Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2018 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2018 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -21,8 +21,8 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------
 **/
 
-#ifndef _TALSHXX_HPP
-#define _TALSHXX_HPP
+#ifndef TALSHXX_HPP_
+#define TALSHXX_HPP_
 
 #include <complex>
 #include <initializer_list>
@@ -215,4 +215,4 @@ void shutdown();
 //Template definition:
 #include "talshxx.cpp"
 
-#endif //_TALSHXX_HPP
+#endif //TALSHXX_HPP_

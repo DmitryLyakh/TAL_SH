@@ -1,9 +1,9 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2018/08/21
+!REVISION: 2019/01/05
 
-!Copyright (C) 2013-2017 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2013-2019 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -37,7 +37,7 @@
 !PREPROCESSOR:
 ! -D NO_OMP: Do not use OpenMP (serial);
 ! -D NO_BLAS: Replace BLAS calls with in-house routines (slower);
-! -D USE_MKL: USE Intel MKL library for BLAS;
+! -D USE_MKL: Use Intel MKL library interface for BLAS;
 ! -D NO_PHI: Ignore Intel MIC (Xeon Phi);
        module tensor_algebra_cpu
 !       use, intrinsic:: ISO_C_BINDING
@@ -47,20 +47,27 @@
         use combinatoric
         use timers
         use symm_index
+#ifdef USE_MKL
+        !use blas95
+        !use lapack95
+        !use f95_precision
+        !use mkl_service
+#endif
 #ifndef NO_OMP
         use omp_lib
-#endif
-#ifdef USE_MKL
-        use mkl95_blas
-        use mkl95_lapack
-        use mkl95_precision
-#endif
         implicit none
         public
+#else
+        implicit none
+        public
+        integer, external:: omp_get_max_threads,omp_set_num_threads
+#endif
 !PARAMETERS:
  !Default output for the module procedures:
         integer, private:: CONS_OUT=6     !default output device for this module (also used for INTEL MIC TAL)
         logical, private:: VERBOSE=.TRUE. !verbosity (also used for INTEL MIC TAL)
+        integer, private:: DEBUG=0        !debugging mode
+        integer, private:: LOGGING=0      !logging mode
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: CONS_OUT,VERBOSE
 !DIR$ ATTRIBUTES ALIGN:128:: CONS_OUT,VERBOSE
@@ -2987,7 +2994,7 @@
 !------------------------------------------------
         integer:: i,j,k,l,m,n,k0,k1,k2,k3,ks,kf
         integer(LONGINT):: l0,l1,l2,l3,lld,lrd,lcd
-        integer:: ltb,rtb,dtb,lrank,rrank,drank,nlu,nru,ncd,tst,contr_case,conj,dn2o(0:max_tensor_rank)
+        integer:: ltb,rtb,dtb,lrank,nthr,rrank,drank,nlu,nru,ncd,tst,contr_case,conj,dn2o(0:max_tensor_rank)
         integer, target:: lo2n(0:max_tensor_rank),ro2n(0:max_tensor_rank),do2n(0:max_tensor_rank)
         integer, pointer:: trn(:)
         type(tensor_block_t), pointer:: tens_in,tens_out,ltp,rtp,dtp
@@ -2995,11 +3002,15 @@
         character(2):: dtk
         character(1):: ltrm,rtrm
         real(4):: d_r4
-        real(8):: d_r8,start_gemm
+        real(8):: d_r8,start_gemm,finish_gemm
         complex(8):: d_c8,l_c8,r_c8,alf
         logical:: contr_ok,ltransp,rtransp,dtransp,transp,lconj,rconj,dconj
 
         ierr=0
+        nthr=omp_get_max_threads()
+#ifdef USE_MKL
+        call mkl_set_num_threads(nthr)
+#endif
 !Get the argument types:
         ltb=tensor_block_layout(ltens,ierr); if(ierr.ne.0) then; ierr=1; return; endif !left-tensor storage layout type
         rtb=tensor_block_layout(rtens,ierr); if(ierr.ne.0) then; ierr=2; return; endif !right-tensor storage layout type
@@ -3163,7 +3174,7 @@
          if(rtrm.eq.'C') then; l2=lrd; else; l2=lcd; endif !leading dimension for the right matrix
  !Multiply two matrices (dtp += ltp * rtp):
          if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
-!	 start_gemm=thread_wtime() !debug
+	 start_gemm=thread_wtime() !debug
 	 select case(contr_case)
 	 case(PARTIAL_CONTRACTION) !destination is an array
 	  select case(dtk)
@@ -3244,7 +3255,7 @@
 	  if(rconj) then; r_c8=conjg(rtp%scalar_value); else; r_c8=rtp%scalar_value; endif
 	  dtp%scalar_value=dtp%scalar_value+l_c8*r_c8*alf
 	 end select
-!	 write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): GEMM time: ",F10.4)') thread_wtime(start_gemm) !debug
+	 finish_gemm=thread_wtime()
  !Transpose the matrix-result back into the output tensor:
 	 if(dtransp) then
 !	  write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): permutation to be performed for ",i2)') 0 !debug
@@ -3278,6 +3289,10 @@
 	  if(dtransp) then; call tensor_block_destroy(dta,j); if(j.ne.0) ierr=ierr+2000+j; endif
 	 case(MULTIPLY_SCALARS)
 	 end select
+	 if(LOGGING.gt.0) then
+	  write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): Max threads = ",i3,": GEMM time ",F10.4)')&
+          &nthr,finish_gemm-start_gemm !debug
+	 endif
 	else
 	 ierr=30
 	endif
@@ -4007,35 +4022,43 @@
         endif
         return
         end subroutine get_contr_pattern_sym
-!-------------------------------------------------------------------------------------------
-	subroutine get_contr_permutations(lrank,rrank,cptrn,dprm,lprm,rprm,ncd,nlu,nru,ierr) bind(c,name='get_contr_permutations') !SERIAL
+!------------------------------------------------------------------------------------------------------
+	subroutine get_contr_permutations(lrank,rrank,cptrn,conj_bits,dprm,lprm,rprm,ncd,nlu,nru,ierr)&
+                                         &bind(c,name='get_contr_permutations') !SERIAL
 !This subroutine returns all tensor index permutations necessary for the tensor
 !contraction specified by <cptrn> (implemented via a matrix multiplication).
 !INPUT:
 ! - cptrn(1:lrank+rrank) - digital contraction pattern;
+! - conj_bits - complex conjugation bits {0:D,1:L,2:R};
 !OUTPUT:
-! - dprm(0:drank) - index permutation for the destination tensor (N2O, numeration starts from 1);
-! - lprm(0:lrank) - index permutation for the left tensor argument (O2N, numeration starts from 1);
-! - rprm(0:rrank) - index permutation for the right tensor argument (O2N, numeration starts from 1);
+! - dprm(0:drank) - signed index permutation for the destination tensor (N2O, numeration starts from 1);
+! - lprm(0:lrank) - signed index permutation for the left tensor argument (O2N, numeration starts from 1);
+! - rprm(0:rrank) - signed index permutation for the right tensor argument (O2N, numeration starts from 1);
 ! - ncd - total number of contracted indices;
 ! - nlu - number of left uncontracted indices;
 ! - nru - number of right uncontracted indices;
 ! - ierr - error code (0:success).
-!	use, intrinsic:: ISO_C_BINDING
 	implicit none
 !------------------------------------------------
 	logical, parameter:: check_pattern=.TRUE.
 !------------------------------------------------
 	integer(C_INT), intent(in), value:: lrank,rrank
 	integer(C_INT), intent(in):: cptrn(1:*)
+	integer(C_INT), intent(in), value:: conj_bits
 	integer(C_INT), intent(out):: dprm(0:*),lprm(0:*),rprm(0:*),ncd,nlu,nru
 	integer(C_INT), intent(inout):: ierr
-	integer(C_INT) i,j,k,drank,jkey(1:lrank+rrank),jtrn0(0:lrank+rrank),jtrn1(0:lrank+rrank)
-	logical pattern_ok,simple
+	integer(C_INT):: i,j,k,drank,jkey(1:lrank+rrank),jtrn0(0:lrank+rrank),jtrn1(0:lrank+rrank)
+	logical:: pattern_ok,simple,left_conj,right_conj
 
 	ierr=0
 	if(check_pattern) then; pattern_ok=contr_pattern_ok(); else; pattern_ok=.TRUE.; endif
 	if(pattern_ok.and.lrank.ge.0.and.rrank.ge.0) then
+ !Check conjugation bits:
+         left_conj=btest(conj_bits,1)
+         right_conj=btest(conj_bits,2)
+         if(btest(conj_bits,0)) then
+          left_conj=.not.left_conj; right_conj=.not.right_conj
+         endif
  !Destination operand:
 	 drank=0; dprm(0)=+1
 	 do i=1,lrank; if(cptrn(i).gt.0) then; drank=drank+1; dprm(drank)=cptrn(i); endif; enddo
@@ -4048,7 +4071,7 @@
 	 enddo
 	 if(simple) dprm(1:drank)=(/(j,j=1,drank)/)
  !Right tensor operand:
-	 nru=0; ncd=0; rprm(0)=+1 !numbers of the right uncontracted and contracted dimensions
+	 rprm(0)=+1; nru=0; ncd=0 !numbers of the right uncontracted and contracted dimensions
 	 if(rrank.gt.0) then
 	  j=0; do i=1,rrank; if(cptrn(lrank+i).lt.0) then; j=j+1; rprm(i)=j; endif; enddo; ncd=j !contracted dimensions
 	  nru=rrank-ncd !uncontracted dimensions
@@ -4059,7 +4082,7 @@
 	  endif
 	 endif
  !Left tensor operand:
-	 lprm(0)=+1 !number of the left uncontracted dimensions
+	 lprm(0)=+1
 	 if(lrank.gt.0) then
 	  j=0; do i=1,lrank; if(cptrn(i).lt.0) then; j=j+1; jtrn1(j)=i; jkey(j)=abs(cptrn(i)); endif; enddo
 	  jtrn0(0:j)=(/+1,(k,k=1,j)/); if(j.ge.2) call merge_sort_key_int(j,jkey,jtrn0)
@@ -4070,6 +4093,25 @@
 	   do i=1,lrank; if(cptrn(i).gt.0) then; j=j+1; lprm(i)=j; endif; enddo
 	  endif
 	 endif
+ !Apply conjugation if needed (swap contracted and uncontracted positions):
+         if(left_conj.and..FALSE.) then !left argument is already processed as a transposed matrix
+          do i=1,lrank
+           if(lprm(i).le.ncd) then
+            lprm(i)=lprm(i)+nlu
+           else
+            lprm(i)=lprm(i)-ncd
+           endif
+          enddo
+         endif
+         if(right_conj) then
+          do i=1,rrank
+           if(rprm(i).le.ncd) then
+            rprm(i)=rprm(i)+nru
+           else
+            rprm(i)=rprm(i)-ncd
+           endif
+          enddo
+         endif
 	else !invalid lrank or rrank or cptrn(:)
 	 ierr=1
 	endif
@@ -4078,7 +4120,8 @@
 	contains
 
 	 logical function contr_pattern_ok()
-	 integer(C_INT) j0,j1,jc,jl
+	 integer(C_INT):: j0,j1,jc,jl
+
 	 contr_pattern_ok=.TRUE.; jl=lrank+rrank
 	 if(jl.gt.0) then
 	  jkey(1:jl)=0; jc=0
@@ -5425,7 +5468,7 @@
 !DIR$ ATTRIBUTES ALIGN:128:: im,n2o,ipr,dim_beg,dim_end,bases_in,bases_out,bases_pri,segs
 #endif
 	ierr=0
-!	time_beg=thread_wtime() !debug
+	time_beg=thread_wtime() !debug
 	if(dim_num.lt.0) then; ierr=1; return; elseif(dim_num.eq.0) then; tens_out(0)=tens_in(0); return; endif
 !Check the index permutation:
 	trivial=.TRUE.; do i=1,dim_num; if(dim_transp(i).ne.i) then; trivial=.FALSE.; exit; endif; enddo
@@ -5619,9 +5662,11 @@
          endif
 !$OMP END PARALLEL
 	endif !trivial or not
-!       tm=thread_wtime(time_beg) !debug
-!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_r4): Done: ",F10.4," sec, ",F10.4," GB/s, error ",i3)') &
-!        tm,dble(2_LONGINT*bs*real_kind)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	tm=thread_wtime(time_beg) !debug
+	if(LOGGING.gt.0) then
+	 write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_r4): Done: ",F10.4," sec, ",F10.4," GB/s, error ",i3)') &
+	 tm,dble(2_LONGINT*bs*real_kind)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	endif
 	return
 	end subroutine tensor_block_copy_dlf_r4
 !------------------------------------------------------------------------------------------------
@@ -5667,7 +5712,7 @@
 !DIR$ ATTRIBUTES ALIGN:128:: im,n2o,ipr,dim_beg,dim_end,bases_in,bases_out,bases_pri,segs
 #endif
 	ierr=0
-!	time_beg=thread_wtime() !debug
+	time_beg=thread_wtime() !debug
 	if(dim_num.lt.0) then; ierr=1; return; elseif(dim_num.eq.0) then; tens_out(0)=tens_in(0); return; endif
 !Check the index permutation:
 	trivial=.TRUE.; do i=1,dim_num; if(dim_transp(i).ne.i) then; trivial=.FALSE.; exit; endif; enddo
@@ -5861,9 +5906,11 @@
          endif
 !$OMP END PARALLEL
 	endif !trivial or not
-!	tm=thread_wtime(time_beg) !debug
-!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_r8): Done: ",F10.4," sec, ",F10.4," GB/s, error ",i3)')&
-!	&tm,dble(2_LONGINT*bs*real_kind)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	tm=thread_wtime(time_beg) !debug
+	if(LOGGING.gt.0) then
+	 write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_r8): Done: ",F10.4," sec, ",F10.4," GB/s, error ",i3)')&
+	 &tm,dble(2_LONGINT*bs*real_kind)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	endif
 	return
 	end subroutine tensor_block_copy_dlf_r8
 !-------------------------------------------------------------------------------------------------------
@@ -5911,7 +5958,7 @@
 !DIR$ ATTRIBUTES ALIGN:128:: im,n2o,ipr,dim_beg,dim_end,bases_in,bases_out,bases_pri,segs
 #endif
 	ierr=0
-!	time_beg=thread_wtime() !debug
+	time_beg=thread_wtime() !debug
 	if(present(conjug)) then; conj=conjug; else; conj=.FALSE.; endif !optional complex conjugation
 	if(dim_num.lt.0) then
 	 ierr=1; return
@@ -6136,9 +6183,11 @@
          endif
 !$OMP END PARALLEL
 	endif !trivial or not
-!       tm=thread_wtime(time_beg) !debug
-!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_c8): Done: ",F10.4," sec, ",F10.4," GB/s, error ",i3)') &
-!        tm,dble(2_LONGINT*bs*real_kind*2_LONGINT)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	tm=thread_wtime(time_beg) !debug
+	if(LOGGING.gt.0) then
+	 write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_c8): Done: ",F10.4," sec, ",F10.4," GB/s, error ",i3)') &
+	 tm,dble(2_LONGINT*bs*real_kind*2_LONGINT)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	endif
 	return
 	end subroutine tensor_block_copy_dlf_c8
 !--------------------------------------------------------------------------------------------------------

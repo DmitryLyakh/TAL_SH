@@ -1,8 +1,8 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2018/09/21
+!REVISION: 2018/12/06
 
-!Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2014-2018 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2018 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -37,6 +37,7 @@
         public get_contr_pattern      !
         public get_contr_pattern_sym  !
         public contr_pattern_rnd      !
+        public prof_push,prof_pop     !profiling
 !PARAMETERS:
  !Generic:
         integer(INTD), private:: CONS_OUT=6 !default output device for this module
@@ -292,7 +293,7 @@
           import
           implicit none
           type(talsh_task_t), intent(inout):: talsh_task
-          type(C_PTR):: dev_kind
+          type(C_PTR), value:: dev_kind
          end function talshTaskDevId_
   !Get the TAL-SH task status:
          integer(C_INT) function talshTaskStatus(talsh_task) bind(c,name='talshTaskStatus')
@@ -1094,12 +1095,14 @@
 !---------------------------------------------------------------------
         function talsh_task_dev_id(talsh_task,dev_kind) result(dev_id)
          implicit none
-         integer(C_INT):: dev_id                                  !out: flat or kind-specific device id
-         type(talsh_task_t), intent(inout):: talsh_task           !in: value-defined TAL-SH task
-         integer(C_INT), intent(out), optional, target:: dev_kind !out: device kind (if present, <dev_id> is kind-specific, if absent <dev_id> is flat)
+         integer(C_INT):: dev_id                          !out: flat or kind-specific device id
+         type(talsh_task_t), intent(inout):: talsh_task   !in: value-defined TAL-SH task
+         integer(C_INT), intent(out), optional:: dev_kind !out: device kind (if present, <dev_id> is kind-specific, if absent <dev_id> is flat)
+         integer(C_INT), target:: devk
 
          if(present(dev_kind)) then
-          dev_id=talshTaskDevId_(talsh_task,c_loc(dev_kind))
+          dev_id=talshTaskDevId_(talsh_task,c_loc(devk))
+          dev_kind=devk
          else
           dev_id=talshTaskDevId_(talsh_task,C_NULL_PTR)
          endif

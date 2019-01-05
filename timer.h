@@ -1,9 +1,9 @@
 /* Timing services (threadsafe).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-REVISION: 2018/08/07
+REVISION: 2018/12/06
 
-Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2018 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2018 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -20,8 +20,8 @@ GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License
 along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.*/
 
-#ifndef _TIMER_H
-#define _TIMER_H
+#ifndef TIMER_H_
+#define TIMER_H_
 
 #ifdef __cplusplus
 extern "C"{
@@ -32,4 +32,4 @@ extern "C"{
 }
 #endif
 
-#endif //_TIMER_H
+#endif //TIMER_H_

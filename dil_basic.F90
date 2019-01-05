@@ -1,8 +1,8 @@
 !BASIC FORTRAN PARAMETERS (Fortran-2003)
-!REVISION: 2017/10/15
+!REVISION: 2018/12/07
 
-!Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2014-2018 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2018 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -29,21 +29,22 @@
         integer(C_INT), parameter, public:: INTS=2   !short integer size
         integer(C_INT), parameter, public:: INTD=4   !default integer size
         integer(C_INT), parameter, public:: INTL=8   !long integer size
+        integer(C_INT), parameter, public:: REALH=2  !half real size
         integer(C_INT), parameter, public:: REALS=4  !short real size
         integer(C_INT), parameter, public:: REALD=8  !default real size
         integer(C_INT), parameter, public:: REALL=16 !long real size
 #ifndef NO_PHI
-!DIR$ ATTRIBUTES OFFLOAD:mic:: INTB,INTS,INTD,INTL,REALS,REALD,REALL
-!DIR$ ATTRIBUTES ALIGN:128:: INTB,INTS,INTD,INTL,REALS,REALD,REALL
+!DIR$ ATTRIBUTES OFFLOAD:mic:: INTB,INTS,INTD,INTL,REALH,REALS,REALD,REALL
+!DIR$ ATTRIBUTES ALIGN:128:: INTB,INTS,INTD,INTL,REALH,REALS,REALD,REALL
 #endif
 
 !BASIC ALIASES (keep consistent with tensor_algebra.h):
-        integer(C_INT), parameter, public:: NOPE=0                  !"NO" answer
-        integer(C_INT), parameter, public:: YEP=1                   !"YES" answer
-        integer(C_INT), parameter, public:: SUCCESS=0               !success status
-        integer(C_INT), parameter, public:: GENERIC_ERROR=-666      !generic error
-        integer(C_INT), parameter, public:: TRY_LATER=-918273645    !resources are currently busy: KEEP THIS UNIQUE!
-        integer(C_INT), parameter, public:: NOT_CLEAN=-192837465    !resource release did not go cleanly but you may continue: KEEP THIS UNIQUE!
+        integer(C_INT), parameter, public:: NOPE=0                !"NO" answer
+        integer(C_INT), parameter, public:: YEP=1                 !"YES" answer
+        integer(C_INT), parameter, public:: SUCCESS=0             !success status
+        integer(C_INT), parameter, public:: GENERIC_ERROR=-666    !generic error status
+        integer(C_INT), parameter, public:: TRY_LATER=-918273645  !resources are currently busy: KEEP THIS UNIQUE!
+        integer(C_INT), parameter, public:: NOT_CLEAN=-192837465  !resource release did not go cleanly but you may continue: KEEP THIS UNIQUE!
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: NOPE,YEP,SUCCESS,GENERIC_ERROR,TRY_LATER,NOT_CLEAN
 !DIR$ ATTRIBUTES ALIGN:128:: NOPE,YEP,SUCCESS,GENERIC_ERROR,TRY_LATER,NOT_CLEAN
@@ -52,13 +53,13 @@
 !BASIC NUMERIC DATA KINDS (keep consistent with tensor_algebra.h):
         integer(C_INT), parameter, public:: NO_TYPE=0 !no type/kind
         integer(C_INT), parameter, public:: R2=2      !half-precision float tensor data kind
-        integer(C_INT), parameter, public:: R4=4      !float tensor data kind
-        integer(C_INT), parameter, public:: R8=8      !double tensor data kind
-!       integer(C_INT), parameter, public:: R16=10    !long double tensor data kind
-        integer(C_INT), parameter, public:: C2=12     !half-precision complex tensor data kind
-        integer(C_INT), parameter, public:: C4=14     !float complex tensor data kind
-        integer(C_INT), parameter, public:: C8=18     !double complex tensor data kind
-!       integer(C_INT), parameter, public:: C16=20    !long double complex tensor data kind
+        integer(C_INT), parameter, public:: R4=4      !single-precision float tensor data kind
+        integer(C_INT), parameter, public:: R8=8      !double-precision float tensor data kind
+!       integer(C_INT), parameter, public:: R16=10    !quadruple-precision float tensor data kind
+        integer(C_INT), parameter, public:: C2=12     !half-precision complex float tensor data kind
+        integer(C_INT), parameter, public:: C4=14     !single-precision complex float tensor data kind
+        integer(C_INT), parameter, public:: C8=18     !double-precision complex float tensor data kind
+!       integer(C_INT), parameter, public:: C16=20    !quadruple-precision complex float tensor data kind
         real(4), parameter, public:: R4_=0.0
         real(8), parameter, public:: R8_=0d0
         complex(4), parameter, public:: C4_=(0.0,0.0)
@@ -121,4 +122,8 @@
 !DIR$ ATTRIBUTES OFFLOAD:mic:: EPS4,EPS8,ZERO_THRESH
 !DIR$ ATTRIBUTES ALIGN:128:: EPS4,EPS8,ZERO_THRESH
 #endif
+
+!BASIC CONSTANTS:
+        character(C_CHAR), parameter, public:: CHAR_NULL=achar(0) !null character
+
        end module dil_basic

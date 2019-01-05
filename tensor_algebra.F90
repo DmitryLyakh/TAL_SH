@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h" when appropriate!
-!REVISION: 2018/09/21
+!REVISION: 2018/12/06
 
 !Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
@@ -487,6 +487,18 @@
           real(C_FLOAT), intent(out):: mmul
          end function cuda_task_time_
 #endif
+ !Profiling/tracing:
+  !In:
+         subroutine prof_push(annotation,color) bind(c,name='prof_push')
+          import
+          implicit none
+          character(C_CHAR), intent(in):: annotation(*)
+          integer(C_INT), value:: color
+         end subroutine prof_push
+  !Out:
+         subroutine prof_pop() bind(c,name='prof_pop')
+         end subroutine prof_pop
+
         end interface
 
         end module tensor_algebra

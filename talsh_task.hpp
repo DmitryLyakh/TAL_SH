@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: C++ TAL-SH task
-REVISION: 2018/04/06
+REVISION: 2018/12/06
 
-Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2018 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2018 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -21,8 +21,8 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------
 **/
 
-#ifndef _TALSH_TASK_HPP
-#define _TALSH_TASK_HPP
+#ifndef TALSH_TASK_HPP_
+#define TALSH_TASK_HPP_
 
 #include <tuple>
 
@@ -67,4 +67,4 @@ private:
 
 } //namespace talsh
 
-#endif //_TALSH_TASK_HPP
+#endif //TALSH_TASK_HPP_

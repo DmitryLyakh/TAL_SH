@@ -63,11 +63,6 @@
 !----------------------------------------------------------------------------------------------------------------
 	use, intrinsic:: ISO_C_BINDING
 	use timers
-#ifdef USE_MKL
-        use mkl95_blas
-        use mkl95_lapack
-        use mkl95_precision
-#endif
         implicit none
 !MODULE PARAMETERS:
         integer, parameter:: max_tensor_rank=32 !max allowed tensor rank

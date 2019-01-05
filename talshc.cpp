@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2018/09/21
+REVISION: 2019/01/05
 
-Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -1690,6 +1690,7 @@ int talshTaskDevId(talsh_task_t * talsh_task, int * dev_kind)
  if(talsh_task == NULL) return DEV_NULL;
  errc=talshTaskStatus(talsh_task);
  if(errc == TALSH_FAILURE || errc == TALSH_TASK_EMPTY) return DEV_NULL;
+ if(dev_kind != NULL) *dev_kind=talsh_task->dev_kind;
  switch(talsh_task->dev_kind){
   case DEV_HOST:
    devid=0; //Host is always single
@@ -1720,9 +1721,7 @@ int talshTaskDevId(talsh_task_t * talsh_task, int * dev_kind)
    return DEV_NULL;
  }
  if(devid < 0) return DEV_NULL;
- if(dev_kind != NULL){
-  *dev_kind=talsh_task->dev_kind;
- }else{
+ if(dev_kind == NULL){
   devid=talshFlatDevId(talsh_task->dev_kind,devid); //convert to flat device id
   if(devid < 0 || devid >= DEV_MAX) devid=DEV_NULL;
  }
@@ -1964,6 +1963,8 @@ int talshTaskTime_(talsh_task_t * talsh_task, double * total, double * comput, d
 void talshTaskPrint(const talsh_task_t * talsh_task)
 /** Prints TAL-SH task info. **/
 {
+ printf("\n#MESSAGE: Printing TAL-SH task info:\n");
+ printf(" Device kind %d: Error %d\n",talsh_task->dev_kind,talsh_task->task_error);
  if(talsh_task != NULL){
   switch(talsh_task->dev_kind){
    case DEV_HOST:
@@ -1984,6 +1985,7 @@ void talshTaskPrint(const talsh_task_t * talsh_task)
     break;
   }
  }
+ printf("#END MESSAGE\n");
  return;
 }
 
@@ -2071,7 +2073,10 @@ int talshTensorPlace(talsh_tens_t * tens, int dev_id, int dev_kind, void * dev_m
   case DEV_NVIDIA_GPU:
 #ifndef NO_GPU
    errc=talsh_tensor_c_assoc(tens,image_id,&ctens);
-   if(errc || ctens == NULL){tsk->task_error=113; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;}
+   if(errc || ctens == NULL){
+    tsk->task_error=113; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+    if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
+   }
    cuda_task=(cudaTask_t*)(tsk->task_p);
    if(dvk == DEV_HOST && dvn == 0){ //destination is Host
     j=-1; //Host
@@ -2341,7 +2346,8 @@ int talshTensorInit(talsh_tens_t * dtens, double val_real, double val_imag, int 
    //Associate TAL-SH tensor images with <tensBlck_t> objects:
    errc=talsh_tensor_c_assoc(dtens,dimg,&dctr);
    if(errc || dctr == NULL){
-    tsk->task_error=123; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
+    tsk->task_error=123; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+    if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
    }
    //Get the CUDA task alias:
    cuda_task=(cudaTask_t*)(tsk->task_p);
@@ -2564,21 +2570,19 @@ int talshTensorAdd(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * lten
    //Associate TAL-SH tensor images with <tensBlck_t> objects:
    errc=talsh_tensor_c_assoc(dtens,dimg,&dctr);
    if(errc || dctr == NULL){
-    tsk->task_error=123; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
+    tsk->task_error=123; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+    if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
    }
    errc=talsh_tensor_c_assoc(ltens,limg,&lctr);
    if(errc || lctr == NULL){
-    errc=talsh_tensor_c_dissoc(dctr);
-    tsk->task_error=124; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
+    j=talsh_tensor_c_dissoc(dctr);
+    tsk->task_error=124; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+    if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
    }
    //Get the CUDA task alias:
    cuda_task=(cudaTask_t*)(tsk->task_p);
    //Schedule the operation via the device-kind specific runtime:
-   if(conj_bits != 0){ //`Add complex conjugation feature to NV-TAL
-    printf("#FATAL(talshc:talshTensorAdd): Complex conjugation feature is not implemented for GPU target!");
-    tsk->task_error=200; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
-   }
-   errc=gpu_tensor_block_add(contr_ptrn,lctr,dctr,coh_ctrl,cuda_task,dvn,scale_real,scale_imag); //non-blocking call
+   errc=gpu_tensor_block_add(contr_ptrn,lctr,dctr,coh_ctrl,cuda_task,dvn,scale_real,scale_imag,conj_bits); //non-blocking call
    dvn=cuda_task_gpu_id(cuda_task);
    if(errc || dvn < 0){ //in case of error, CUDA task has already been finalized (with error) without coherence control
     if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=TALSH_FAILURE;
@@ -2832,26 +2836,26 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
    //Associate TAL-SH tensor images with <tensBlck_t> objects:
    errc=talsh_tensor_c_assoc(dtens,dimg,&dctr);
    if(errc || dctr == NULL){
-    tsk->task_error=123; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
+    tsk->task_error=123; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+    if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
    }
    errc=talsh_tensor_c_assoc(ltens,limg,&lctr);
    if(errc || lctr == NULL){
-    errc=talsh_tensor_c_dissoc(dctr);
-    tsk->task_error=124; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
+    j=talsh_tensor_c_dissoc(dctr);
+    tsk->task_error=124; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+    if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
    }
    errc=talsh_tensor_c_assoc(rtens,rimg,&rctr);
    if(errc || rctr == NULL){
-    errc=talsh_tensor_c_dissoc(lctr); errc=talsh_tensor_c_dissoc(dctr);
-    tsk->task_error=125; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
+    j=talsh_tensor_c_dissoc(lctr); j=talsh_tensor_c_dissoc(dctr);
+    tsk->task_error=125; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+    if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
    }
    //Get the CUDA task alias:
    cuda_task=(cudaTask_t*)(tsk->task_p);
    //Schedule the operation via the device-kind specific runtime:
-   if(conj_bits != 0){ //`Add complex conjugation feature to NV-TAL
-    printf("#FATAL(talshc:talshTensorContract): Complex conjugation feature is not implemented for GPU target!");
-    tsk->task_error=200; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
-   }
-   errc=gpu_tensor_block_contract_dlf(contr_ptrn,lctr,rctr,dctr,coh_ctrl,cuda_task,dvn,scale_real,scale_imag); //non-blocking call
+   errc=gpu_tensor_block_contract_dlf(contr_ptrn,lctr,rctr,dctr,coh_ctrl,cuda_task,dvn,scale_real,scale_imag,conj_bits); //non-blocking call
+   //printf("#DEBUG(talshc:talshTensorContract): gpu_tensor_block_contract_dlf error %d\n",errc); //debug
    //printf("#DEBUG(talshc:talshTensorContract): Printing cuda_task after scheduling:\n"); cuda_task_print(cuda_task); //debug
    dvn=cuda_task_gpu_id(cuda_task);
    if(errc || dvn < 0){ //in case of error, CUDA task has already been finalized (with error) without coherence control

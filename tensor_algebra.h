@@ -2,10 +2,10 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2018/09/21
+REVISION: 2019/01/05
 
-Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -60,9 +60,9 @@ FOR DEVELOPERS ONLY:
  # If for some reason a device resource is not released properly but the object destruction still
    has happened, a non-critical error NOT_CLEAN may be returned.
 **/
-//BEGINNING OF TENSOR_ALGEBRA_H
-#ifndef _TENSOR_ALGEBRA_H
-#define _TENSOR_ALGEBRA_H
+
+#ifndef TENSOR_ALGEBRA_H_
+#define TENSOR_ALGEBRA_H_
 
 #include <time.h>
 
@@ -155,12 +155,14 @@ FOR DEVELOPERS ONLY:
 
 //DATA KINDS (keep consistent with tensor_algebra.F90):
 #define NO_TYPE 0 //null type
-//#define R2 2      //half-precision float data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
-#define R4 4      //float data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
-#define R8 8      //double data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
-//#define C2 12     //half-precision float complex data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
-#define C4 14     //float complex data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
-#define C8 18     //double complex data kind (keep consistent with c_process.f90::tens_blck_pack/unpack)
+//#define R2 2      //half-precision float data kind
+#define R4 4      //single-precision float data kind
+#define R8 8      //double-precision float data kind
+//#define R16 10    //quadruple-precision float data kind
+//#define C2 12     //half-precision float complex data kind
+#define C4 14     //single-precision float complex data kind
+#define C8 18     //double-precision float complex data kind
+//#define C16 20    //quadruple-precision float complex data kind
 
 //CUDA TASK STATUS (keep consistent with tensor_algebra.F90):
 #define CUDA_TASK_ERROR -1
@@ -468,20 +470,22 @@ int cuda_get_device_count(int * dev_count);
  int cuda_task_dev_rsc_move(cudaTask_t *cuda_task, unsigned int arg_num, char which, talsh_dev_rsc_t *dev_rsc);
  int cuda_task_arg_has_resource(cudaTask_t *cuda_task, unsigned int arg_num, char which, int *ierr);
  int cuda_task_arg_destroy(cudaTask_t *cuda_task, int arg_num = -1);
- float cuda_task_time(const cudaTask_t *cuda_task, float *in_copy = NULL, float *out_copy = NULL, float *comp = NULL, float *mmul = NULL);
+ float cuda_task_time(const cudaTask_t *cuda_task, float *in_copy = NULL, float *out_copy = NULL, float *comp = NULL,
+                      float *mmul = NULL);
  float cuda_task_time_(const cudaTask_t *cuda_task, float *in_copy, float *out_copy, float *comp, float *mmul);
  void cuda_task_print(const cudaTask_t *cuda_task);
 //  NV-TAL tensor operations:
  int gpu_tensor_block_place(tensBlck_t *ctens, int gpu_id, unsigned int coh_ctrl, cudaTask_t *cuda_task, void *dev_mem = NULL);
  int gpu_tensor_block_init(tensBlck_t *dtens, double val, unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1);
- int gpu_tensor_block_add(const int *cptrn, tensBlck_t *ltens, tensBlck_t *dtens, unsigned int coh_ctrl,
-                          cudaTask_t *cuda_task, int gpu_id = -1, double scale_real = 1.0, double scale_imag = 0.0);
- int gpu_tensor_block_contract_dlf(const int *cptrn, tensBlck_t *ltens, tensBlck_t *rtens, tensBlck_t *dtens, unsigned int coh_ctrl,
-                                   cudaTask_t *cuda_task, int gpu_id = -1, double scale_real = 1.0, double scale_imag = 0.0);
+ int gpu_tensor_block_add(const int *cptrn, tensBlck_t *ltens, tensBlck_t *dtens, unsigned int coh_ctrl, cudaTask_t *cuda_task,
+                          int gpu_id = -1, double scale_real = 1.0, double scale_imag = 0.0, int conj_bits = 0);
+ int gpu_tensor_block_contract_dlf(const int *cptrn, tensBlck_t *ltens, tensBlck_t *rtens, tensBlck_t *dtens,
+                                   unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1,
+                                   double scale_real = 1.0, double scale_imag = 0.0, int conj_bits = 0);
 #endif /*NO_GPU */
 #ifdef __cplusplus
 }
 template <typename T> int gpu_matrix_multiply_tn(size_t ll, size_t lr, size_t lc, const T * lmat, const T * rmat, T * dmat);
 #endif
 
-#endif /*END _TENSOR_ALGEBRA_H*/
+#endif /*TENSOR_ALGEBRA_H_*/

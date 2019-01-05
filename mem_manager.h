@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Memory management API header.
-REVISION: 2017/06/13
+REVISION: 2018/12/06
 
-Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2018 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2018 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -21,8 +21,8 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------
 **/
 
-#ifndef _MEM_MANAGER_H
-#define _MEM_MANAGER_H
+#ifndef MEM_MANAGER_H_
+#define MEM_MANAGER_H_
 
 //Types:
 // Generic slab:
@@ -92,4 +92,4 @@ extern "C"{
 }
 #endif
 
-#endif /*_MEM_MANAGER_H*/
+#endif /*MEM_MANAGER_H_*/

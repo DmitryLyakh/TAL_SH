@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2018/03/14
+REVISION: 2018/12/06
 
-Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2018 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2018 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -21,8 +21,8 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------
 **/
 
-#ifndef _TALSH_H
-#define _TALSH_H
+#ifndef TALSH_H_
+#define TALSH_H_
 
 #include <math.h>
 #include "tensor_algebra.h"
@@ -297,5 +297,4 @@ extern "C"{
 }
 #endif
 
-//HEADER GUARD
-#endif
+#endif //TALSH_H_
