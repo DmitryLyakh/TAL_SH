@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2019/01/05
+REVISION: 2019/01/15
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -4291,17 +4291,21 @@ NOTES:
  switch(dtens->data_kind){
   case R4:
    gpu_array_add__<<<bx,THRDS_ARRAY_ADD,0,*cuda_stream>>>(vol_d,(float*)darg,(float*)larg,(float)scale_real);
+   gpu_stats[gpu_num].flops+=2.0*((double)(dsize)); //1 mul, 1 add SP
    break;
   case R8:
    gpu_array_add__<<<bx,THRDS_ARRAY_ADD,0,*cuda_stream>>>(vol_d,(double*)darg,(double*)larg,scale_real);
+   gpu_stats[gpu_num].flops+=2.0*((double)(dsize)); //1 mul, 1 add DP
    break;
   case C4:
    scale_cmplx4 = talshComplex4Set((float)scale_real,(float)scale_imag);
    gpu_array_add__<<<bx,THRDS_ARRAY_ADD,0,*cuda_stream>>>(vol_d,(talshComplex4*)darg,(talshComplex4*)larg,scale_cmplx4,conj_l);
+   gpu_stats[gpu_num].flops+=8.0*((double)(dsize)); //4 mul, 4 add SP
    break;
   case C8:
    scale_cmplx8 = talshComplex8Set(scale_real,scale_imag);
    gpu_array_add__<<<bx,THRDS_ARRAY_ADD,0,*cuda_stream>>>(vol_d,(talshComplex8*)darg,(talshComplex8*)larg,scale_cmplx8,conj_l);
+   gpu_stats[gpu_num].flops+=8.0*((double)(dsize)); //4 mul, 4 add DP
    break;
   default:
    errc=cuda_task_record(cuda_task,coh_ctrl,48); errc=gpu_activate(cur_gpu); return 48;
@@ -4315,7 +4319,6 @@ NOTES:
   errc=cuda_task_record(cuda_task,coh_ctrl,67); errc=gpu_activate(cur_gpu); return 67;
  }
 #endif
- gpu_stats[gpu_num].flops+=2.0*((double)(dsize));
 //Schedule the inverse tensor transpose for the destination tensor (should not happen actually):
  if(perm_d == YEP){
   if(TRANS_SHMEM == EFF_TRN_ON){
@@ -5390,7 +5393,20 @@ NOTES:
   errc=cuda_task_record(cuda_task,coh_ctrl,73); errc=gpu_activate(cur_gpu); return 73;
  }
 #endif
- gpu_stats[gpu_num].flops+=2.0*((double)(lc))*((double)(ll))*((double)(lr));
+ switch(dtens->data_kind){
+  case R4:
+   gpu_stats[gpu_num].flops+=2.0*((double)(lc))*((double)(ll))*((double)(lr));
+   break;
+  case R8:
+   gpu_stats[gpu_num].flops+=2.0*((double)(lc))*((double)(ll))*((double)(lr));
+   break;
+  case C4:
+   gpu_stats[gpu_num].flops+=8.0*((double)(lc))*((double)(ll))*((double)(lr));
+   break;
+  case C8:
+   gpu_stats[gpu_num].flops+=8.0*((double)(lc))*((double)(ll))*((double)(lr));
+   break;
+ }
 //Schedule the inverse tensor transpose for the destination tensor:
  if(perm_d == YEP){
   if(TRANS_SHMEM == EFF_TRN_ON){

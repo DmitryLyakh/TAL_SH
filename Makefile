@@ -46,22 +46,22 @@ export PATH_OPENMPI ?= /usr/local/mpi/openmpi/3.1.0
  export PATH_OPENMPI_BIN ?= $(PATH_OPENMPI)/bin
 
 #BLAS library (whichever you have chosen above):
-# Set this if you do not have a vendor provided BLAS (default Linux BLAS):
+# Set this path if you have chosen ATLAS (default Linux BLAS):
 export PATH_BLAS_ATLAS ?= /usr/lib
-# Set this if you have a vendor provided BLAS that you have specified above:
-#  MKL BLAS:
+# Set these if you have a vendor provided BLAS that you have specified above:
+#  MKL BLAS (if you have chosen MKL):
 export PATH_BLAS_MKL ?= /opt/intel/mkl/lib/intel64
 export PATH_BLAS_MKL_DEP ?= /opt/intel/compilers_and_libraries/linux/lib/intel64_lin
 export PATH_BLAS_MKL_INC ?= /opt/intel/mkl/include/intel64/lp64
-#  ACML BLAS:
+#  ACML BLAS (if you have chosen ACML):
 export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
-#  ESSL BLAS (also set PATH_IBM_XL_CPP, PATH_IBM_XL_FOR, PATH_IBM_XL_SMP below):
+#  ESSL BLAS (if you have chosen ESSL, also set PATH_IBM_XL_CPP, PATH_IBM_XL_FOR, PATH_IBM_XL_SMP below):
 export PATH_BLAS_ESSL ?= /sw/summit/essl/6.1.0-1/essl/6.1/lib64
 
 #IBM XL (only set these if you use IBM XL and/or ESSL):
-export PATH_IBM_XL_CPP ?= /sw/summit/xl/16.1.1-beta6/xlC/16.1.1/lib
-export PATH_IBM_XL_FOR ?= /sw/summit/xl/16.1.1-beta6/xlf/16.1.1/lib
-export PATH_IBM_XL_SMP ?= /sw/summit/xl/16.1.1-beta6/xlsmp/5.1.1/lib
+export PATH_IBM_XL_CPP ?= /sw/summit/xl/16.1.1-1/xlC/16.1.1/lib
+export PATH_IBM_XL_FOR ?= /sw/summit/xl/16.1.1-1/xlf/16.1.1/lib
+export PATH_IBM_XL_SMP ?= /sw/summit/xl/16.1.1-1/xlsmp/5.1.1/lib
 
 #CUDA (only set this if you build with CUDA):
 export PATH_CUDA ?= /usr/local/cuda
@@ -239,6 +239,7 @@ PIC_FLAG_CUDA = $(PIC_FLAG_GNU)
 ifeq ($(GPU_CUDA),CUDA)
 GPU_SM = sm_$(GPU_SM_ARCH)
 GPU_ARCH = $(GPU_SM_ARCH)0
+CUDA_HOST_COMPILER ?= /usr/bin/g++
 CUDA_HOST_NOWRAP = -I.
 CUDA_HOST_WRAP = -I.
 CUDA_HOST = $(CUDA_HOST_$(WRAP))
@@ -316,7 +317,7 @@ FFLAGS_INTEL_PRF = -c -std08 -g -O3 -fpp -vec-threshold4 -traceback -qopenmp -mk
 FFLAGS_CRAY_DEV = -c -g $(LA_INC)
 FFLAGS_CRAY_OPT = -c -O3 $(LA_INC)
 FFLAGS_CRAY_PRF = -c -g -O3 $(LA_INC)
-FFLAGS_GNU_DEV = -c -fopenmp -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -g -Og $(LA_INC)
+FFLAGS_GNU_DEV = -c -fopenmp -g -Og -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -ffpe-trap=invalid,zero,overflow $(LA_INC)
 FFLAGS_GNU_OPT = -c -fopenmp -O3 $(LA_INC)
 FFLAGS_GNU_PRF = -c -fopenmp -g -O3 $(LA_INC)
 FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -Mallocatable=03 -g -O0 $(LA_INC)
@@ -399,8 +400,8 @@ endif
 
 ./OBJ/tensor_algebra_gpu_nvidia.o: tensor_algebra_gpu_nvidia.cu talsh_complex.h tensor_algebra.h
 ifeq ($(GPU_CUDA),CUDA)
-	$(CUDA_COMP) -ccbin /usr/bin/g++ $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) --ptx --source-in-ptx tensor_algebra_gpu_nvidia.cu -o ./OBJ/tensor_algebra_gpu_nvidia.ptx
-	$(CUDA_COMP) -ccbin /usr/bin/g++ $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) tensor_algebra_gpu_nvidia.cu -o ./OBJ/tensor_algebra_gpu_nvidia.o
+	$(CUDA_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) --ptx --source-in-ptx tensor_algebra_gpu_nvidia.cu -o ./OBJ/tensor_algebra_gpu_nvidia.ptx
+	$(CUDA_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) tensor_algebra_gpu_nvidia.cu -o ./OBJ/tensor_algebra_gpu_nvidia.o
 else
 	cp tensor_algebra_gpu_nvidia.cu tensor_algebra_gpu_nvidia.cpp
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CFLAGS) tensor_algebra_gpu_nvidia.cpp -o ./OBJ/tensor_algebra_gpu_nvidia.o

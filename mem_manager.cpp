@@ -2,10 +2,10 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2018/11/02
+REVISION: 2019/01/08
 
-Copyright (C) 2014-2018 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2018 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -36,21 +36,22 @@ FOR DEVELOPERS ONLY:
 #include <stdlib.h>
 #include <time.h>
 
-#include "tensor_algebra.h"
+#include "tensor_algebra.h" //includes mem_manager.h
 
 #define GPU_MEM_PART_USED 90         //percentage of free GPU global memory to be actually allocated for GPU argument buffers
 #define MEM_ALIGN GPU_CACHE_LINE_LEN //memory alignment (in bytes) for argument buffers
 //Host argument buffer structure:
-#define BLCK_BUF_DEPTH_HOST 12       //number of distinct tensor block buffer levels on Host
+#define BLCK_BUF_DEPTH_HOST 14       //number of distinct tensor block buffer levels on Host
 #define BLCK_BUF_TOP_HOST 1          //number of argument buffer entries of the largest size (level 0) on Host: multiple of 3
 #define BLCK_BUF_BRANCH_HOST 2       //branching factor for each subsequent buffer level on Host
-//GPU argument buffer structure (the total number of entries must be less of equal to MAX_GPU_ARGS):
-#define BLCK_BUF_DEPTH_GPU 8         //number of distinct tensor block buffer levels on GPU
+//GPU argument buffer structure (the total number of entries must be less or equal to MAX_GPU_ARGS):
+#define BLCK_BUF_DEPTH_GPU 6         //number of distinct tensor block buffer levels on GPU
 #define BLCK_BUF_TOP_GPU 1           //number of argument buffer entries of the largest size (level 0) on GPU: multiple of 3
 #define BLCK_BUF_BRANCH_GPU 2        //branching factor for each subsequent buffer level on GPU
 
 static int VERBOSE=1; //verbosity (for errors)
 static int DEBUG=0;   //debugging
+static int LOGGING=0; //logging
 
 //DERIVED TYPES:
 // Argument buffer configuration:
@@ -400,6 +401,22 @@ Negative return status means that an error occurred. **/
 }
 #endif /*NO_GPU*/
 
+void print_blck_buf_sizes_host()
+{
+ int dpth,i;
+ size_t bsz[BLCK_BUF_DEPTH_HOST];
+
+ printf("\n#INFO(TALSH:mem_manager): Host Buffer structure:\n");
+ printf(" Host Buffer base address: %p\n",arg_buf_host);
+ printf(" Host Buffer size (bytes): %llu\n",arg_buf_host_size);
+ printf(" Block sizes (bytes) at levels:\n");
+ fflush(stdout);
+ dpth=get_blck_buf_sizes_host(bsz);
+ for(i=0;i<dpth;++i) printf("  Level %d: %llu\n",i,bsz[i]);
+ fflush(stdout);
+ return;
+}
+
 static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, size_t *ab_occ, size_t ab_occ_size,
                          const size_t *blck_sizes, char **entry_ptr, int *entry_num)
 /** This function finds an appropriate argument buffer entry in any given argument buffer **/
@@ -676,19 +693,27 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
  dev_num=decode_device_id(dev_id,&dev_kind); if(dev_num < 0) return -2; //invalid device id
  switch(dev_kind){
   case DEV_HOST:
-   ab_conf=&ab_conf_host;
-   buf_size=arg_buf_host_size;
-   buf_offset=((size_t)(((const char*)(addr))-((const char*)(arg_buf_host))));
-   blck_sz=&(blck_sizes_host[0]);
-   occ=abh_occ;
+   if((size_t)((const char*)(addr)) >= (size_t)((const char*)(arg_buf_host))){
+    ab_conf=&ab_conf_host;
+    buf_size=arg_buf_host_size;
+    buf_offset=((size_t)(((const char*)(addr))-((const char*)(arg_buf_host))));
+    blck_sz=&(blck_sizes_host[0]);
+    occ=abh_occ;
+   }else{
+    return ben;
+   }
    break;
 #ifndef NO_GPU
   case DEV_NVIDIA_GPU:
-   ab_conf=&(ab_conf_gpu[dev_num]);
-   buf_size=arg_buf_gpu_size[dev_num];
-   buf_offset=((size_t)(((const char*)(addr))-((const char*)(arg_buf_gpu[dev_num]))));
-   blck_sz=&(blck_sizes_gpu[dev_num][0]);
-   occ=abg_occ[dev_num];
+   if((size_t)((const char*)(addr)) >= (size_t)((const char*)(arg_buf_gpu[dev_num]))){
+    ab_conf=&(ab_conf_gpu[dev_num]);
+    buf_size=arg_buf_gpu_size[dev_num];
+    buf_offset=((size_t)(((const char*)(addr))-((const char*)(arg_buf_gpu[dev_num]))));
+    blck_sz=&(blck_sizes_gpu[dev_num][0]);
+    occ=abg_occ[dev_num];
+   }else{
+    return ben;
+   }
    break;
 #endif
 #ifndef NO_PHI
@@ -721,6 +746,11 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
    //if(DEBUG) printf("\n#DEBUG(mem_manager:get_buf_entry_from_address): Address %p -> Buffer entry %d\n",addr,ben); //debug
    if(buf_offset != ab_get_offset(*ab_conf,lev,buf_offset/blck_sz[lev],blck_sz)) return -4; //check
   }else{
+   if(VERBOSE){
+    printf("\n#ERROR(TALSH:mem_manager:get_buf_entry_from_address): Wrong buffer address alignment: %p\n",addr);
+    print_blck_buf_sizes_host();
+    fflush(stdout);
+   }
    return -5; //address is not aligned to any buffer entry base
   }
  }
@@ -1072,44 +1102,54 @@ int host_mem_unregister(void *host_ptr){
 int mem_allocate(int dev_id, size_t bytes, int in_buffer, void ** mem_ptr)
 /** Allocates a memory segment on any device, either from the TAL-SH buffer
 or via a system call. If the memory allocation is unsuccessful, returns
-an error code != 0, among which is also TRY_LATER and DEVICE_UNABLE. **/
+an error code != 0, among which are also TRY_LATER and DEVICE_UNABLE. **/
 {
  int dev_num,dev_kind,buf_entry,errc;
  char * char_ptr;
 
- errc=0; *mem_ptr=NULL; if(bytes == 0) return 0;
- dev_num=decode_device_id(dev_id,&dev_kind); if(dev_num < 0) return -1; //invalid device id
- switch(dev_kind){
-  case DEV_HOST:
-   if(in_buffer == NOPE){
-    errc=host_mem_alloc(mem_ptr,bytes);
-   }else{
-    errc=get_buf_entry_host(bytes,&char_ptr,&buf_entry);
-    if(errc == 0) *mem_ptr=(void*)(char_ptr);
-   }
-   break;
+ errc=0; *mem_ptr=NULL;
+ if(bytes > 0){
+  dev_num=decode_device_id(dev_id,&dev_kind);
+  if(dev_num >= 0){
+   switch(dev_kind){
+    case DEV_HOST:
+     if(in_buffer == NOPE){
+      errc=host_mem_alloc(mem_ptr,bytes);
+     }else{
+      errc=get_buf_entry_host(bytes,&char_ptr,&buf_entry);
+      if(errc == 0) *mem_ptr=(void*)(char_ptr);
+     }
+     break;
 #ifndef NO_GPU
-  case DEV_NVIDIA_GPU:
-   if(in_buffer == NOPE){
-    errc=gpu_mem_alloc(mem_ptr,bytes,dev_num);
-   }else{
-    errc=get_buf_entry_gpu(dev_num,bytes,&char_ptr,&buf_entry);
-    if(errc == 0) *mem_ptr=(void*)(char_ptr);
-   }
-   break;
+    case DEV_NVIDIA_GPU:
+     if(in_buffer == NOPE){
+      errc=gpu_mem_alloc(mem_ptr,bytes,dev_num);
+     }else{
+      errc=get_buf_entry_gpu(dev_num,bytes,&char_ptr,&buf_entry);
+      if(errc == 0) *mem_ptr=(void*)(char_ptr);
+     }
+     break;
 #endif
 #ifndef NO_PHI
-  case DEV_INTEL_MIC:
-   errc=-2; //`Not implemented
-   break;
+    case DEV_INTEL_MIC:
+     errc=-4; //`Not implemented
+     break;
 #endif
 #ifndef NO_AMD
-  case DEV_AMD_GPU:
-   errc=-3; //`Not implemented
-   break;
+    case DEV_AMD_GPU:
+     errc=-3; //`Not implemented
+     break;
 #endif
-  default:
-   errc=-4; //invalid device kind
+    default:
+     errc=-2; //invalid device kind
+   }
+  }else{
+   errc=-1; //invalid device id
+  }
+ }
+ if(LOGGING){
+  printf("#DEBUG(TALSH:mem_manager:mem_allocate): Allocation of %llu bytes error %d: Address %p\n",bytes,errc,*mem_ptr);
+  fflush(stdout);
  }
  return errc;
 }
@@ -1119,39 +1159,65 @@ int mem_free(int dev_id, void ** mem_ptr)
 {
  int dev_num,dev_kind,buf_entry,errc;
 
- if(mem_ptr == NULL) return -1;
- buf_entry=get_buf_entry_from_address(dev_id,*mem_ptr); if(buf_entry < -1) return -2;
- dev_num=decode_device_id(dev_id,&dev_kind); if(dev_num < 0) return -3; //invalid device id
- switch(dev_kind){
-  case DEV_HOST:
-   if(buf_entry >= 0){ //in buffer
-    errc=free_buf_entry_host(buf_entry); if(errc != 0) return -4;
-   }else if(buf_entry == -1){ //in system
-    errc=host_mem_free(*mem_ptr); if(errc != 0) return -5;
-   }
-   break;
+ errc=0;
+ if(mem_ptr != NULL){
+  if(*mem_ptr != NULL){
+   dev_num=decode_device_id(dev_id,&dev_kind);
+   if(dev_num >= 0){
+    buf_entry=get_buf_entry_from_address(dev_id,*mem_ptr);
+    if(buf_entry >= -1){ //either buffer (>=0) or system (-1)
+     switch(dev_kind){
+      case DEV_HOST:
+       if(buf_entry >= 0){ //in buffer
+        errc=free_buf_entry_host(buf_entry); if(errc != 0) errc=-11;
+       }else if(buf_entry == -1){ //in system
+        errc=host_mem_free(*mem_ptr); if(errc != 0) errc=-10;
+       }
+       break;
 #ifndef NO_GPU
-  case DEV_NVIDIA_GPU:
-   if(buf_entry >= 0){ //in buffer
-    errc=free_buf_entry_gpu(dev_num,buf_entry); if(errc != 0) return -6;
-   }else if(buf_entry == -1){ //in system
-    errc=gpu_mem_free(*mem_ptr,dev_num); if(errc != 0) return -7;
-   }
-   break;
+      case DEV_NVIDIA_GPU:
+       if(buf_entry >= 0){ //in buffer
+        errc=free_buf_entry_gpu(dev_num,buf_entry); if(errc != 0) errc=-9;
+       }else if(buf_entry == -1){ //in system
+        errc=gpu_mem_free(*mem_ptr,dev_num); if(errc != 0) errc=-8;
+       }
+       break;
 #endif
 #ifndef NO_PHI
-  case DEV_INTEL_MIC:
-   return -8; //`Not implemented
+      case DEV_INTEL_MIC:
+       errc=-7; //`Not implemented
+       break;
 #endif
 #ifndef NO_AMD
-  case DEV_AMD_GPU:
-   return -9; //`Not implemented
+      case DEV_AMD_GPU:
+       errc=-6; //`Not implemented
+       break;
 #endif
-  default:
-   return -10; //invalid device kind
+      default:
+       errc=-5; //invalid device kind
+     }
+    }else{
+     if(VERBOSE){
+      printf("#ERROR(TALSH:mem_manager:mem_free): Unidentified address %p for device %d: Error %d\n",*mem_ptr,dev_id,buf_entry);
+      fflush(stdout);
+     }
+     errc=-4; //unidentified address
+    }
+   }else{
+    errc=-3; //invalid device id
+   }
+  }else{
+   errc=-2; //invalid pointer to free
+  }
+ }else{
+  errc=-1;
  }
- *mem_ptr=NULL;
- return 0;
+ if(LOGGING){
+  printf("#DEBUG(TALSH:mem_manager:mem_free): Deallocation of pointer %p error %d",*mem_ptr,errc);
+  fflush(stdout);
+ }
+ if(errc == 0) *mem_ptr=NULL;
+ return errc;
 }
 
 static int mi_entry_init()

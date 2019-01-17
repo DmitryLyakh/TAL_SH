@@ -1,9 +1,9 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h" when appropriate!
-!REVISION: 2018/12/06
+!REVISION: 2019/01/08
 
-!Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -289,6 +289,10 @@
           integer(C_SIZE_T), intent(out):: blck_sizes(*)
          end function get_blck_buf_sizes_gpu
 #endif
+  !Print the buffer block sizes for each level of the GPU argument buffer:
+         subroutine print_blck_buf_sizes_host() bind(c,name='print_blck_buf_sizes_host')
+          implicit none
+         end subroutine print_blck_buf_sizes_host
   !Get a free argument entry in the Host argument buffer:
          integer(C_INT) function get_buf_entry_host(bsize,entry_ptr,entry_num) bind(c,name='get_buf_entry_host')
           import
