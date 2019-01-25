@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2018/12/06
+REVISION: 2019/01/20
 
-Copyright (C) 2014-2018 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2018 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -32,7 +32,7 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #define TALSH_MEM_ALLOC_POLICY_HOST MEM_ALLOC_TMP_BUF //default Host memory allocation policy for CP-TAL (see tensor_algebra.h)
 #define TALSH_MEM_ALLOC_FALLBACK_HOST 1 //default memory allocation fallback to regular allocate() for CP-TAL: {0|1}
 #define TALSH_CPTAL_MIN_BUF_SIZE 1073741824 //minimun Host argument buffer size that can be used effectively by CP-TAL
-#define TALSH_NO_HOST_BUFFER 1048576 //nominal Host argument buffer size when it is not needed by the application
+#define TALSH_NO_HOST_BUFFER 16777216 //nominal Host argument buffer size when it is not needed by the application
 
 //TAL-SH ERROR CODES (keep consistent with "talshf.F90"):
 #define TALSH_SUCCESS 0

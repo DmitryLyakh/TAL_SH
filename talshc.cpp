@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/01/05
+REVISION: 2019/01/20
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -58,15 +58,18 @@ FOR DEVELOPER(s):
 #include <stdlib.h>
 #include <time.h>
 
+#include <omp.h>
+
 #include "talsh.h"
 
 //GLOBALS:
 // General:
-static int talsh_on=0;           //TAL-SH initialization flag (1:initalized; 0:not)
-static clock_t talsh_begin_time; //TAL-SH begin time (zero time reference)
+static int talsh_on=0;             //TAL-SH initialization flag (1:initalized; 0:not)
+static omp_nest_lock_t talsh_lock; //TAL-SH global lock for thread safety
+static clock_t talsh_begin_time;   //TAL-SH begin time (zero time reference)
 // Accelerator configuration (`Needs modification for non-contiguous subranges):
-static int talsh_gpu_beg;        //first Nvidia GPU in the range `Obsolete
-static int talsh_gpu_end;        //last Nvidia GPU in the range `Obsolete
+static int talsh_gpu_beg;          //first Nvidia GPU in the range `Obsolete
+static int talsh_gpu_end;          //last Nvidia GPU in the range `Obsolete
 // Device status:
 static int talsh_cpu=DEV_OFF;
 static int talsh_gpu[MAX_GPUS_PER_NODE]={DEV_OFF}; //current GPU status: {DEV_OFF,DEV_ON,DEV_ON_BLAS}
@@ -523,6 +526,7 @@ int talshInit(size_t * host_buf_size,    //inout: Host Argument Buffer size in b
 {
  int i,j,gpu_beg,gpu_end,errc;
 
+#pragma omp flush
  if(talsh_on) return TALSH_ALREADY_INITIALIZED;
 //CPU Host:
 #ifndef NO_BLAS
@@ -563,7 +567,11 @@ int talshInit(size_t * host_buf_size,    //inout: Host Argument Buffer size in b
   return TALSH_NOT_IMPLEMENTED; //`Future
  }
 #endif
- errc=arg_buf_allocate(host_buf_size,host_arg_max,gpu_beg,gpu_end); if(errc) return TALSH_FAILURE;
+ errc=arg_buf_allocate(host_buf_size,host_arg_max,gpu_beg,gpu_end);
+ if(errc){
+  printf("#ERROR(talshInit): arg_buf_allocate error %d\n",errc);
+  return TALSH_FAILURE;
+ }
  if(*host_buf_size >= TALSH_CPTAL_MIN_BUF_SIZE){ //Host argument buffer is big enough to be used in CP-TAL
   talshSetMemAllocPolicyHost(TALSH_MEM_ALLOC_POLICY_HOST,TALSH_MEM_ALLOC_FALLBACK_HOST,&errc);
   if(errc != 0){
@@ -578,7 +586,9 @@ int talshInit(size_t * host_buf_size,    //inout: Host Argument Buffer size in b
  }
 #endif
  talsh_gpu_beg=gpu_beg; talsh_gpu_end=gpu_end;
+ omp_init_nest_lock(&talsh_lock);
  talsh_on=1; talsh_begin_time=clock();
+#pragma omp flush
  return TALSH_SUCCESS;
 }
 
@@ -587,14 +597,17 @@ int talshShutdown()
 {
  int i,errc;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  errc=arg_buf_deallocate(talsh_gpu_beg,talsh_gpu_end);
  talshSetMemAllocPolicyHost(TALSH_MEM_ALLOC_POLICY_HOST,TALSH_MEM_ALLOC_FALLBACK_HOST,&i);
+ omp_destroy_nest_lock(&talsh_lock);
  talsh_gpu_beg=0; talsh_gpu_end=-1; talsh_on=0;
  talsh_cpu=DEV_OFF;
  for(i=0;i<MAX_GPUS_PER_NODE;i++) talsh_gpu[i]=DEV_OFF;
  for(i=0;i<MAX_MICS_PER_NODE;i++) talsh_mic[i]=DEV_OFF;
  for(i=0;i<MAX_AMDS_PER_NODE;i++) talsh_amd[i]=DEV_OFF;
+#pragma omp flush
  if(errc) return TALSH_FAILURE;
  return TALSH_SUCCESS;
 }
@@ -727,7 +740,7 @@ int talshStats(int dev_id,   //in: device id (either flat or kind specific devic
 /** Prints the run-time statistics for devices of interest. **/
 {
  int rc=TALSH_SUCCESS,devk,devn;
-
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  switch(dev_kind){
   case DEV_NULL:
@@ -789,6 +802,7 @@ int talshTensorCreate(talsh_tens_t ** tens_block) //out: pointer to a newly crea
 int talshTensorClean(talsh_tens_t * tens_block)
 /** Cleans an undefined tensor block (default ctor) making it defined-empty. **/
 {
+#pragma omp flush
  if(tens_block == NULL) return TALSH_INVALID_ARGS;
  tens_block->shape_p=NULL;
  tens_block->dev_rsc=NULL;   //`.tens_image.dev_rsc
@@ -796,12 +810,14 @@ int talshTensorClean(talsh_tens_t * tens_block)
  tens_block->avail=NULL;     //`.tens_image.avail
  tens_block->dev_rsc_len=0;  //`.tens_image.capacity
  tens_block->ndev=0;         //`.tens_image.ndev
+#pragma omp flush
  return TALSH_SUCCESS;
 }
 
 int talshTensorIsEmpty(const talsh_tens_t * tens_block)
 /** Returns YEP if the tensor block is empty, NOPE otherwise, unless an error occurs. **/
 {
+#pragma omp flush
  if(tens_block == NULL) return TALSH_INVALID_ARGS;
  if(tens_block->shape_p == NULL) return YEP;
  return NOPE;
@@ -835,6 +851,7 @@ int talshTensorConstruct(talsh_tens_t * tens_block,     //inout: empty tensor bl
  talshComplex8 *cdp,cdv;
  talsh_tens_data_t tdd;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  errc=TALSH_SUCCESS;
  //Check arguments:
@@ -938,6 +955,7 @@ int talshTensorConstruct(talsh_tens_t * tens_block,     //inout: empty tensor bl
    }
   }
  }
+#pragma omp flush
  return errc;
 }
 
@@ -953,6 +971,7 @@ int talshTensorDestruct(talsh_tens_t * tens_block) //in: non-NULL pointer to a t
 {
  int i,j,errc;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  errc=TALSH_SUCCESS;
  if(tens_block == NULL) return TALSH_INVALID_ARGS;
@@ -971,6 +990,7 @@ int talshTensorDestruct(talsh_tens_t * tens_block) //in: non-NULL pointer to a t
  if(tens_block->data_kind != NULL){free(tens_block->data_kind); tens_block->data_kind=NULL;}
  if(tens_block->avail != NULL){free(tens_block->avail); tens_block->avail=NULL;}
  i=talshTensorClean(tens_block); //set to an empty status
+#pragma omp flush
  return errc;
 }
 
@@ -987,6 +1007,7 @@ int talshTensorDestroy(talsh_tens_t * tens_block) //in: non-NULL pointer to a te
 int talshTensorRank(const talsh_tens_t * tens_block)
 /** Returns the tensor block rank (number of dimensions). **/
 {
+#pragma omp flush
  return tensShape_rank(tens_block->shape_p);
 }
 
@@ -994,6 +1015,7 @@ size_t talshTensorVolume(const talsh_tens_t * tens_block) //in: tensor block
 /** Returns the total number of elements in the tensor block.
     0 on return means the tensor block is empty. **/
 {
+#pragma omp flush
  if(tens_block == NULL) return TALSH_INVALID_ARGS;
  if(talshTensorIsEmpty(tens_block) != NOPE) return 0;
  return tensShape_volume(tens_block->shape_p);
@@ -1006,6 +1028,7 @@ int talshTensorShape(const talsh_tens_t * tens_block, talsh_tens_shape_t * tens_
 {
  int errc;
 
+#pragma omp flush
  if(tens_block == NULL || tens_shape == NULL) return TALSH_INVALID_ARGS;
  if(talshTensorIsEmpty(tens_block) != NOPE) return TALSH_OBJECT_IS_EMPTY;
  errc=tensShape_construct(tens_shape,NOPE,tens_block->shape_p->num_dim,tens_block->shape_p->dims, //NOPE: not pinned
@@ -1019,6 +1042,7 @@ int talshTensorDataKind(const talsh_tens_t * tens_block, int * num_images, int *
 {
  int i;
 
+#pragma omp flush
  if(tens_block == NULL || num_images == NULL || data_kinds == NULL) return TALSH_INVALID_ARGS;
  if(talshTensorIsEmpty(tens_block) != NOPE) return TALSH_OBJECT_IS_EMPTY;
  *num_images=tens_block->ndev;
@@ -1032,6 +1056,7 @@ int talshTensorInUse(const talsh_tens_t * tens_block)
 {
  int i;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(tens_block == NULL) return TALSH_INVALID_ARGS;
  if(talshTensorIsEmpty(tens_block) != NOPE) return TALSH_OBJECT_IS_EMPTY;
@@ -1047,6 +1072,7 @@ int talshTensorPresence(const talsh_tens_t * tens_block, int * ncopies, int copi
 {
  int i,j,m,devnum,devk,specific_kind,specific_device;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  *ncopies=0; devk=DEV_NULL; devnum=-1;
  if(tens_block == NULL) return TALSH_INVALID_ARGS;
@@ -1099,6 +1125,7 @@ int talshTensorGetBodyAccess(talsh_tens_t * tens_block,
 {
  int i,errc;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(tens_block == NULL || body_p == NULL) return TALSH_INVALID_ARGS;
  *body_p=NULL;
@@ -1136,6 +1163,7 @@ int talshTensorGetBodyAccessConst(const talsh_tens_t * tens_block,
 {
  int i,errc;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(tens_block == NULL || body_p == NULL) return TALSH_INVALID_ARGS;
  errc=TALSH_SUCCESS; *body_p=NULL;
@@ -1173,6 +1201,7 @@ int talshTensorGetScalar_(talsh_tens_t * tens_block, double * scalar_real, doubl
  talshComplex4 cx4;
  talshComplex8 cx8;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(tens_block == NULL || scalar_real == NULL || scalar_imag == NULL) return TALSH_INVALID_ARGS;
  if(talshTensorIsEmpty(tens_block) != NOPE) return TALSH_OBJECT_IS_EMPTY;
@@ -1208,6 +1237,7 @@ int talshTensorGetScalar_(talsh_tens_t * tens_block, double * scalar_real, doubl
  }else{
   errc=TALSH_FAILURE;
  }
+#pragma omp flush
  return errc;
 }
 
@@ -1219,6 +1249,7 @@ static int talshTensorIsHealthy(const talsh_tens_t * talsh_tens)
 {
  int errc;
 
+#pragma omp flush
  if(talsh_tens == NULL) return TALSH_INVALID_ARGS;
  errc=talshTensorIsEmpty(talsh_tens);
  if(errc == NOPE){
@@ -1237,6 +1268,7 @@ void talshTensorPrintInfo(const talsh_tens_t * tens_block)
 {
  int i,dvn,dvk;
 
+#pragma omp flush
  if(tens_block != NULL){
   printf("#MESSAGE: Printing TAL-SH tensor info:\n");
   printf(" Tensor block address: %p\n",tens_block);
@@ -1277,6 +1309,7 @@ void talshTensorPrintBody(const talsh_tens_t * tens_block, double thresh)
  const talshComplex4 * bpc4;
  const talshComplex8 * bpc8;
 
+#pragma omp flush
  printf("\n#MSG: Printing tensor body:");
  if(tens_block != NULL){
   if(talshTensorIsEmpty(tens_block) == NOPE){
@@ -1377,6 +1410,7 @@ int talshTaskClean(talsh_task_t * talsh_task)
 /** Cleans an undefined (statically allocated) <talsh_task_t> object making it defined-empty.
     Never call this function on value-defined <talsh_task_t> objects. **/
 {
+#pragma omp flush
  talsh_task->task_p=NULL;
  talsh_task->task_error=-1;
  talsh_task->dev_kind=DEV_NULL;
@@ -1390,12 +1424,14 @@ int talshTaskClean(talsh_task_t * talsh_task)
  talsh_task->data_vol=0.0;
  talsh_task->flops=0.0;
  talsh_task->exec_time=0.0;
+#pragma omp flush
  return TALSH_SUCCESS;
 }
 
 int talshTaskIsEmpty(const talsh_task_t * talsh_task)
 /** Returns YEP if the task is empty, NOPE otherwise (for internal use). **/
 {
+#pragma omp flush
  if(talsh_task != NULL){
   if(talsh_task->dev_kind >= 0){
    //talsh_task->task_p == NULL) return TALSH_FAILURE;
@@ -1417,6 +1453,7 @@ static int talshTaskConstruct(talsh_task_t * talsh_task, int dev_kind, int coh_c
 {
  int i,errc;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  errc=TALSH_SUCCESS;
  if(talsh_task == NULL) return TALSH_INVALID_ARGS;
@@ -1465,6 +1502,7 @@ static int talshTaskConstruct(talsh_task_t * talsh_task, int dev_kind, int coh_c
  talsh_task->data_kind=data_kind;
  talsh_task->coherence=coh_ctrl;
  talsh_task->num_args=0;
+#pragma omp flush
  return errc;
 }
 
@@ -1474,6 +1512,7 @@ static int talshTaskSetArg(talsh_task_t * talsh_task, talsh_tens_t * talsh_tens_
     is passed here to be associated with the task, it will be appended as the next argument on the right.
     The TAL-SH task passed here must have already been constructed by talshTaskConstruct()! **/
 {
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(talsh_task == NULL) return TALSH_INVALID_ARGS;
  if(talshTaskIsEmpty(talsh_task) != NOPE) return TALSH_OBJECT_IS_EMPTY;
@@ -1483,6 +1522,7 @@ static int talshTaskSetArg(talsh_task_t * talsh_task, talsh_tens_t * talsh_tens_
  talsh_task->tens_args[talsh_task->num_args].tens_p=talsh_tens_p;
  talsh_task->tens_args[talsh_task->num_args].source_image=image_id;
  ++(talsh_task->num_args);
+#pragma omp flush
  return TALSH_SUCCESS;
 }
 
@@ -1501,6 +1541,7 @@ static int talshTaskFinalize(talsh_task_t * talsh_task, int task_status)
  cudaTask_t * cuda_task;
 #endif
 
+#pragma omp flush
  if(talsh_task == NULL) return TALSH_INVALID_ARGS;
  if(talshTaskIsEmpty(talsh_task) != NOPE) return TALSH_OBJECT_IS_EMPTY;
  if(valid_device_kind(talsh_task->dev_kind) != YEP) return TALSH_FAILURE;
@@ -1614,6 +1655,7 @@ static int talshTaskFinalize(talsh_task_t * talsh_task, int task_status)
    talsh_task->task_error=13;
   }
  }
+#pragma omp flush
  return errc;
 }
 
@@ -1622,6 +1664,7 @@ int talshTaskDestruct(talsh_task_t * talsh_task)
 {
  int i,errc;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  errc=TALSH_SUCCESS;
  if(talsh_task == NULL) return TALSH_INVALID_ARGS;
@@ -1686,6 +1729,7 @@ int talshTaskDevId(talsh_task_t * talsh_task, int * dev_kind)
 {
  int devid,errc;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(talsh_task == NULL) return DEV_NULL;
  errc=talshTaskStatus(talsh_task);
@@ -1742,6 +1786,7 @@ int talshTaskStatus(talsh_task_t * talsh_task)
  cudaTask_t *cuda_task_p;
 #endif
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(talsh_task == NULL) return TALSH_INVALID_ARGS;
  if(talsh_task->dev_kind == DEV_NULL) return TALSH_TASK_EMPTY;
@@ -1808,6 +1853,7 @@ int talshTaskComplete(talsh_task_t * talsh_task, int * stats, int * ierr)
  cudaTask_t *cuda_task_p;
 #endif
 
+#pragma omp flush
  errc=NOPE;
  if(ierr == NULL) return TALSH_INVALID_ARGS;
  if(talsh_on == 0){*ierr=TALSH_NOT_INITIALIZED; return errc;}
@@ -1872,6 +1918,7 @@ int talshTaskWait(talsh_task_t * talsh_task, int * stats)
 {
  int errc;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(talsh_task == NULL || stats == NULL) return TALSH_INVALID_ARGS;
  errc=TALSH_SUCCESS;
@@ -1884,6 +1931,7 @@ int talshTasksWait(int ntasks, talsh_task_t talsh_tasks[], int stats[])
 {
  int i,tc,sts,errc;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(ntasks <= 0 || talsh_tasks == NULL || stats == NULL) return TALSH_INVALID_ARGS;
  for(i=0;i<ntasks;++i) stats[i]=TALSH_TASK_EMPTY;
@@ -1909,6 +1957,7 @@ int talshTaskTime(talsh_task_t * talsh_task, double * total, double * comput, do
  cudaTask_t *cuda_task_p;
 #endif
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(talsh_task == NULL || total == NULL) return TALSH_INVALID_ARGS;
  if(talsh_task->task_p == NULL) return TALSH_OBJECT_IS_EMPTY;
@@ -1963,6 +2012,7 @@ int talshTaskTime_(talsh_task_t * talsh_task, double * total, double * comput, d
 void talshTaskPrint(const talsh_task_t * talsh_task)
 /** Prints TAL-SH task info. **/
 {
+#pragma omp flush
  printf("\n#MESSAGE: Printing TAL-SH task info:\n");
  printf(" Device kind %d: Error %d\n",talsh_task->dev_kind,talsh_task->task_error);
  if(talsh_task != NULL){
@@ -2001,6 +2051,7 @@ int talshTensorPlace(talsh_tens_t * tens, int dev_id, int dev_kind, void * dev_m
  tensBlck_t * ctens;
 #endif
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  //Create a TAL-SH task:
  if(talsh_task == NULL){
@@ -2130,6 +2181,7 @@ int talshTensorPlace(talsh_tens_t * tens, int dev_id, int dev_kind, void * dev_m
    tsk->task_error=121; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
    return TALSH_INVALID_ARGS;
  }
+#pragma omp flush
  return errc;
 }
 
@@ -2143,6 +2195,7 @@ int talshTensorDiscard(talsh_tens_t * tens, int dev_id, int dev_kind)
 {
  int i,j,k,errc,devid;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(tens == NULL) return TALSH_INVALID_ARGS;
  if(talshTensorIsEmpty(tens) != NOPE) return TALSH_OBJECT_IS_EMPTY;
@@ -2167,6 +2220,7 @@ int talshTensorDiscard(talsh_tens_t * tens, int dev_id, int dev_kind)
   }
  }
  tens->ndev=k;
+#pragma omp flush
  return errc;
 }
 
@@ -2180,6 +2234,7 @@ int talshTensorDiscardOther(talsh_tens_t * tens, int dev_id, int dev_kind)
 {
  int i,j,k,errc,devid;
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  if(tens == NULL) return TALSH_INVALID_ARGS;
  if(talshTensorIsEmpty(tens) != NOPE) return TALSH_OBJECT_IS_EMPTY;
@@ -2204,6 +2259,7 @@ int talshTensorDiscardOther(talsh_tens_t * tens, int dev_id, int dev_kind)
   }
  }
  tens->ndev=k;
+#pragma omp flush
  return errc;
 }
 
@@ -2227,6 +2283,7 @@ int talshTensorInit(talsh_tens_t * dtens, double val_real, double val_imag, int 
  tensBlck_t *dctr;
 #endif
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  //Create a TAL-SH task:
  if(talsh_task == NULL){
@@ -2397,6 +2454,7 @@ int talshTensorInit(talsh_tens_t * dtens, double val_real, double val_imag, int 
   default:
   tsk->task_error=132; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
  }
+#pragma omp flush
  return errc;
 }
 
@@ -2422,6 +2480,7 @@ int talshTensorAdd(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * lten
  tensBlck_t *dctr,*lctr;
 #endif
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  //Create a TAL-SH task:
  if(talsh_task == NULL){
@@ -2631,6 +2690,7 @@ int talshTensorAdd(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * lten
   default:
   tsk->task_error=132; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
  }
+#pragma omp flush
  return errc;
 }
 
@@ -2664,6 +2724,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
  tensBlck_t *dctr,*lctr,*rctr;
 #endif
 
+#pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  //Create a TAL-SH task:
  if(talsh_task == NULL){
@@ -2909,6 +2970,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
   default:
   tsk->task_error=132; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
  }
+#pragma omp flush
  return errc;
 }
 
@@ -2930,6 +2992,7 @@ double talshTensorImageNorm1_cpu(const talsh_tens_t * talsh_tens)
  talshComplex4 *c4p;
  talshComplex8 *c8p;
 
+#pragma omp flush
  norm1=-1.0;
  if(talsh_tens != NULL){
   i=talshTensorDataKind(talsh_tens,&nimg,dtk);

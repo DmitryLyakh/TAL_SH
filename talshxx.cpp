@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2018/08/20
+REVISION: 2019/01/20
 
-Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -276,6 +276,7 @@ void initialize(std::size_t * host_buffer_size)
  }else{
   errc = talshInit(host_buffer_size,&host_arg_max,num_gpu,gpu_list,0,NULL,0,NULL);
  }
+ if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talshInit): TAL-SH initialization error " << errc << std::endl;
  assert(errc == TALSH_SUCCESS);
  return;
 }

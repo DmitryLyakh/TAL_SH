@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2019/01/08
+REVISION: 2019/01/23
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -36,6 +36,8 @@ FOR DEVELOPERS ONLY:
 #include <stdlib.h>
 #include <time.h>
 
+#include <omp.h>
+
 #include "tensor_algebra.h" //includes mem_manager.h
 
 #define GPU_MEM_PART_USED 90         //percentage of free GPU global memory to be actually allocated for GPU argument buffers
@@ -63,6 +65,7 @@ typedef struct{
 
 //MODULE DATA:
 // Buffer memory management:
+static omp_nest_lock_t mem_lock; //global lock for serializing memory allocation/deallocation in buffers
 static int bufs_ready=0; //status of the Host and GPU argument buffers
 static ab_conf_t ab_conf_host; //Host argument buffer configuration
 static ab_conf_t ab_conf_gpu[MAX_GPUS_PER_NODE]; //GPU argument buffer configuration (for each GPU)
@@ -191,7 +194,9 @@ OUTPUT:
  cudaError_t err=cudaSuccess;
 #endif
 
+#pragma omp flush
  if(bufs_ready != 0) return 1; //buffers are already allocated
+ omp_init_nest_lock(&mem_lock);
  *arg_max=0; abh_occ=NULL; abh_occ_size=0; max_args_host=0; arg_buf_host_size=0;
  for(i=0;i<MAX_GPUS_PER_NODE;i++){abg_occ[i]=NULL; abg_occ_size[i]=0; max_args_gpu[i]=0; arg_buf_gpu_size[i]=0;}
 //Allocate the Host argument buffer:
@@ -286,9 +291,11 @@ OUTPUT:
   }
 #endif /*NO_GPU*/
  }else{
+  if(VERBOSE) printf("#ERROR(arg_buf_allocate): Host buffer memory allocation failed: Size = %llu\n",hsize);
   return 15;
  }
  bufs_ready=1; //mark the Host and GPU argument buffers as ready
+#pragma omp flush
  return 0;
 }
 
@@ -300,7 +307,9 @@ int arg_buf_deallocate(int gpu_beg, int gpu_end)
  cudaError_t err=cudaSuccess;
 #endif
 
+#pragma omp flush
  if(bufs_ready == 0) return -1; //buffers are not allocated
+ omp_destroy_nest_lock(&mem_lock);
  err_code=0;
  if(abh_occ != NULL) free(abh_occ); abh_occ=NULL; abh_occ_size=0; max_args_host=0;
  for(i=0;i<MAX_GPUS_PER_NODE;i++){
@@ -340,6 +349,7 @@ int arg_buf_deallocate(int gpu_beg, int gpu_end)
  free(arg_buf_host); arg_buf_host=NULL;
 #endif /*NO_GPU*/
  bufs_ready=0;
+#pragma omp flush
  return err_code;
 }
 
@@ -348,8 +358,13 @@ int arg_buf_clean_host()
 The first buffer entry, which is not free, will cause positive return status.
 Negative return status means that an error occurred. **/
 {
- if(bufs_ready == 0) return -1; //memory buffers are not initialized
- for(size_t i=0;i<abh_occ_size;i++){if(abh_occ[i] != 0) return (int)(i+1);}
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
+ if(bufs_ready == 0){omp_unset_nest_lock(&mem_lock); return -1;} //memory buffers are not initialized
+ for(size_t i=0;i<abh_occ_size;i++){
+  if(abh_occ[i] != 0){omp_unset_nest_lock(&mem_lock); return (int)(i+1);}
+ }
+ omp_unset_nest_lock(&mem_lock);
  return 0;
 }
 
@@ -359,16 +374,23 @@ int arg_buf_clean_gpu(int gpu_num)
 The first buffer entry, which is not free, will cause positive return status.
 Negative return status means that an error occurred. **/
 {
- if(bufs_ready == 0) return -1; //memory buffers are not initialized
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
+ if(bufs_ready == 0){omp_unset_nest_lock(&mem_lock); return -1;} //memory buffers are not initialized
  if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
   if(gpu_is_mine(gpu_num) != 0){
-   for(size_t i=0;i<abg_occ_size[gpu_num];i++){if(abg_occ[gpu_num][i] != 0) return (int)(i+1);}
+   for(size_t i=0;i<abg_occ_size[gpu_num];i++){
+    if(abg_occ[gpu_num][i] != 0){omp_unset_nest_lock(&mem_lock); return (int)(i+1);}
+   }
   }else{
+   omp_unset_nest_lock(&mem_lock);
    return -2;
   }
  }else{
+  omp_unset_nest_lock(&mem_lock);
   return -3; //invalid GPU number
  }
+ omp_unset_nest_lock(&mem_lock);
  return 0;
 }
 #endif /*NO_GPU*/
@@ -377,6 +399,7 @@ int get_blck_buf_sizes_host(size_t *blck_sizes)
 /** This function returns the registered block (buffered) sizes for each level of the Host argument buffer.
 Negative return status means that an error occurred. **/
 {
+#pragma omp flush
  if(bufs_ready == 0) return -1;
  for(int i=0;i<BLCK_BUF_DEPTH_HOST;i++){blck_sizes[i]=blck_sizes_host[i];}
  return BLCK_BUF_DEPTH_HOST; //depth of the argument buffer
@@ -387,6 +410,7 @@ int get_blck_buf_sizes_gpu(int gpu_num, size_t *blck_sizes)
 /** This function returns the registered block (buffered) sizes for each level of the GPU#gpu_num argument buffer.
 Negative return status means that an error occurred. **/
 {
+#pragma omp flush
  if(bufs_ready == 0) return -1;
  if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
   if(gpu_is_mine(gpu_num) != 0){
@@ -405,7 +429,7 @@ void print_blck_buf_sizes_host()
 {
  int dpth,i;
  size_t bsz[BLCK_BUF_DEPTH_HOST];
-
+#pragma omp flush
  printf("\n#INFO(TALSH:mem_manager): Host Buffer structure:\n");
  printf(" Host Buffer base address: %p\n",arg_buf_host);
  printf(" Host Buffer size (bytes): %llu\n",arg_buf_host_size);
@@ -422,6 +446,9 @@ static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, siz
 /** This function finds an appropriate argument buffer entry in any given argument buffer **/
 {
  int i,j,k,l,m,n;
+
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
 // if(DEBUG) printf("\n#DEBUG(mem_manager:get_buf_entry): %lu %lu\n",bsize,blck_sizes[0]); //debug
  *entry_ptr=NULL; *entry_num=-1;
  n=0; j=0; i=0; l=0; //l is a base offset within level i
@@ -429,7 +456,8 @@ static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, siz
   if(i > 0){k=ab_conf.buf_branch;}else{k=ab_conf.buf_top;};
   j=l%k; l-=j; j+=n;
   while(j<k){ //(l+j) is an offset within level i
-   m=ab_get_1d_pos(ab_conf,i,l+j); if(m < 0 || m >= ab_occ_size) return 1; //m is an absolute offset in an occupancy table
+   m=ab_get_1d_pos(ab_conf,i,l+j);
+   if(m < 0 || m >= ab_occ_size){omp_unset_nest_lock(&mem_lock); return 1;} //m is an absolute offset in an occupancy table
 //   if(DEBUG) printf("\n#DEBUG(mem_manager:get_buf_entry): Current level/offset/sizes: %d %d %d \n",i,l+j,blck_sizes[i]); //debug
    if(bsize <= blck_sizes[i]-ab_occ[m]){ //there is a good chance to find a free entry along this path
     if(i == ab_conf.buf_depth-1 && ab_occ[m] == 0){
@@ -448,10 +476,14 @@ static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, siz
   } //enddo j
   if(*entry_num >= 0) break; //entry found
   if(j < k){ //proceed to the next level
-   l=ab_get_1st_child(ab_conf,i,l+j); if(l < 0 || l >= ab_occ_size) return 2; i++; n=0; //go to the next level
+   l=ab_get_1st_child(ab_conf,i,l+j);
+   if(l < 0 || l >= ab_occ_size){omp_unset_nest_lock(&mem_lock); return 2;}
+   i++; n=0; //go to the next level
   }else{ //back to the upper level
    if(i > 0){
-    l=ab_get_parent(ab_conf,i,l); if(l < 0 || l >= ab_occ_size) return 3; i--; n=1; //return to the previous level
+    l=ab_get_parent(ab_conf,i,l);
+    if(l < 0 || l >= ab_occ_size){omp_unset_nest_lock(&mem_lock); return 3;}
+    i--; n=1; //go back to the previous level
    }else{
     break;
    }
@@ -460,16 +492,19 @@ static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, siz
  if(*entry_num >= 0 && *entry_num < ab_occ_size){
   k=blck_sizes[i]; ab_occ[m]=k;
   while(i>0){ //modify occupancy of the upper-level parental entries
-   l=ab_get_parent(ab_conf,i,l); i--; m=ab_get_1d_pos(ab_conf,i,l); if(m < 0 || m >= ab_occ_size) return 4;
+   l=ab_get_parent(ab_conf,i,l); i--; m=ab_get_1d_pos(ab_conf,i,l);
+   if(m < 0 || m >= ab_occ_size){omp_unset_nest_lock(&mem_lock); return 4;}
    ab_occ[m]+=k;
   }
  }else{ //no appropriate entry found: not an error
   if(bsize > blck_sizes[0]){
-   return DEVICE_UNABLE; //device memory buffer can never provide such a big chunk
+   omp_unset_nest_lock(&mem_lock); return DEVICE_UNABLE; //device memory buffer can never provide such a big chunk
   }else{
-   return TRY_LATER; //device memory buffer currently cannot provide the requested memory chunk due to occupation
+   omp_unset_nest_lock(&mem_lock); return TRY_LATER; //device memory buffer currently cannot provide the requested memory chunk due to occupation
   }
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return 0;
 }
 
@@ -477,16 +512,22 @@ static int free_buf_entry(ab_conf_t ab_conf, size_t *ab_occ, size_t ab_occ_size,
 /** This function releases an argument buffer entry in any given argument buffer **/
 {
  int i,j,k,m;
- k=ab_get_2d_pos(ab_conf,entry_num,&i,&j); if(k != 0) return 1;
+
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
+ k=ab_get_2d_pos(ab_conf,entry_num,&i,&j); if(k != 0){omp_unset_nest_lock(&mem_lock); return 1;}
  if(ab_occ[entry_num] == blck_sizes[i]){ //buffer entries are always occupied as a whole
   k=blck_sizes[i]; ab_occ[entry_num]=0;
   while(i>0){ //modify occupancy of the upper-level parental entries
-   j=ab_get_parent(ab_conf,i,j); i--; m=ab_get_1d_pos(ab_conf,i,j); if(m < 0 || m >= ab_occ_size) return 2;
+   j=ab_get_parent(ab_conf,i,j); i--; m=ab_get_1d_pos(ab_conf,i,j);
+   if(m < 0 || m >= ab_occ_size){omp_unset_nest_lock(&mem_lock); return 2;}
    ab_occ[m]-=k;
   }
  }else{
-  return 3;
+  omp_unset_nest_lock(&mem_lock); return 3;
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return 0;
 }
 
@@ -507,7 +548,9 @@ RETURN STATUS:
  int i,j,err_code;
  ab_conf_t ab_conf;
 
- if(bufs_ready == 0) return -1;
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
+ if(bufs_ready == 0){omp_unset_nest_lock(&mem_lock); return -1;}
  err_code=0;
  ab_conf.buf_top=BLCK_BUF_TOP_HOST; ab_conf.buf_depth=BLCK_BUF_DEPTH_HOST; ab_conf.buf_branch=BLCK_BUF_BRANCH_HOST;
  //if(DEBUG) printf("\n#DEBUG(mem_manager:get_buf_entry_host): Allocating buffer entry for size %lu: ",bsize); //debug
@@ -517,6 +560,8 @@ RETURN STATUS:
   err_code=ab_get_2d_pos(ab_conf,*entry_num,&i,&j);
   if(err_code == 0){num_args_host++; occ_size_host+=blck_sizes_host[i]; args_size_host+=bsize;}
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return err_code;
 }
 
@@ -529,7 +574,9 @@ INPUT:
  int i,j,err_code;
  ab_conf_t ab_conf;
 
- if(bufs_ready == 0) return -1;
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
+ if(bufs_ready == 0){omp_unset_nest_lock(&mem_lock); return -1;}
  err_code=0;
  ab_conf.buf_top=BLCK_BUF_TOP_HOST; ab_conf.buf_depth=BLCK_BUF_DEPTH_HOST; ab_conf.buf_branch=BLCK_BUF_BRANCH_HOST;
  //if(DEBUG) printf("\n#DEBUG(mem_manager:free_buf_entry_host): Deallocating buffer entry %d: ",entry_num); //debug
@@ -539,6 +586,8 @@ INPUT:
   err_code=ab_get_2d_pos(ab_conf,entry_num,&i,&j);
   if(err_code == 0){num_args_host--; occ_size_host-=blck_sizes_host[i]; args_size_host=0;} //`args_size_host is not used (ignore it)
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return err_code;
 }
 
@@ -561,7 +610,9 @@ RETURN STATUS:
  int i,j,err_code;
  ab_conf_t ab_conf;
 
- if(bufs_ready == 0) return -1;
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
+ if(bufs_ready == 0){omp_unset_nest_lock(&mem_lock); return -1;}
  err_code=0;
  if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
   if(gpu_is_mine(gpu_num) != 0){
@@ -578,6 +629,8 @@ RETURN STATUS:
  }else{
   err_code=-3;
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return err_code;
 }
 
@@ -591,7 +644,9 @@ INPUT:
  int i,j,err_code;
  ab_conf_t ab_conf;
 
- if(bufs_ready == 0) return -1;
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
+ if(bufs_ready == 0){omp_unset_nest_lock(&mem_lock); return -1;}
  err_code=0;
  if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
   if(gpu_is_mine(gpu_num) != 0){
@@ -608,6 +663,8 @@ INPUT:
  }else{
   err_code=-3;
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return err_code;
 }
 
@@ -615,6 +672,7 @@ static int const_args_link_init(int gpu_beg, int gpu_end)
 /** This function initializes the linked list const_args_link[]
 for GPU constant memory buffers (for each GPU in the range [gpu_beg..gpu_end]) **/
 {
+#pragma omp flush
  if(gpu_beg >= 0 && gpu_end >= gpu_beg){
   for(int gpu_num=gpu_beg;gpu_num<=gpu_end;gpu_num++){
    if(gpu_num < MAX_GPUS_PER_NODE){
@@ -625,6 +683,7 @@ for GPU constant memory buffers (for each GPU in the range [gpu_beg..gpu_end]) *
    }
   }
  }
+#pragma omp flush
  return 0;
 }
 
@@ -632,28 +691,34 @@ int const_args_entry_get(int gpu_num, int *entry_num)
 /** This function returns the number of a free const_args[] entry for GPU#gpu_num.
 TRY_LATER return status means that currently all entries are busy. **/
 {
- *entry_num=-1; if(bufs_ready == 0) return -1;
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
+ *entry_num=-1; if(bufs_ready == 0){omp_unset_nest_lock(&mem_lock); return -1;}
  if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
   if(gpu_is_mine(gpu_num) != 0){
    if(const_args_ffe[gpu_num] >= 0 && const_args_ffe[gpu_num] < MAX_GPU_ARGS){ //free entry exists
     *entry_num=const_args_ffe[gpu_num];
     const_args_ffe[gpu_num]=const_args_link[gpu_num][const_args_ffe[gpu_num]];
    }else{ //no free entry is currently available
-    return TRY_LATER;
+    omp_unset_nest_lock(&mem_lock); return TRY_LATER;
    }
   }else{
-   return -2;
+   omp_unset_nest_lock(&mem_lock); return -2;
   }
  }else{
-  return -3;
+  omp_unset_nest_lock(&mem_lock); return -3;
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return 0;
 }
 
 int const_args_entry_free(int gpu_num, int entry_num)
 /** This function frees an entry of const_args[] for GPU#gpu_num **/
 {
- if(bufs_ready == 0) return -1;
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
+ if(bufs_ready == 0){omp_unset_nest_lock(&mem_lock); return -1;}
  if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
   if(gpu_is_mine(gpu_num) != 0){
    if(entry_num >= 0 && entry_num < MAX_GPU_ARGS){ //valid entry number
@@ -662,14 +727,16 @@ int const_args_entry_free(int gpu_num, int entry_num)
     }
     const_args_ffe[gpu_num]=entry_num;
    }else{ //invalid entry number
-    return 1;
+    omp_unset_nest_lock(&mem_lock); return 1;
    }
   }else{
-   return -2;
+   omp_unset_nest_lock(&mem_lock); return -2;
   }
  }else{
-  return -3;
+  omp_unset_nest_lock(&mem_lock); return -3;
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return 0;
 }
 #endif /*NO_GPU*/
@@ -677,6 +744,8 @@ int const_args_entry_free(int gpu_num, int entry_num)
 static void ab_conf_print(ab_conf_t ab_conf)
 {
  printf("\n#INFO: Argument buffer configuration: Top = %d, Depth = %d, Branch factor = %d\n",ab_conf.buf_top,ab_conf.buf_depth,ab_conf.buf_branch);
+ fflush(stdout);
+ return;
 }
 
 int get_buf_entry_from_address(int dev_id, const void * addr)
@@ -689,8 +758,10 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
  size_t *blck_sz,*occ;
  ab_conf_t *ab_conf;
 
- ben=-1; if(bufs_ready == 0) return ben; //no buffers => not in buffer
- dev_num=decode_device_id(dev_id,&dev_kind); if(dev_num < 0) return -2; //invalid device id
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
+ ben=-1; if(bufs_ready == 0){omp_unset_nest_lock(&mem_lock); return ben;} //no buffers => not in buffer
+ dev_num=decode_device_id(dev_id,&dev_kind); if(dev_num < 0){omp_unset_nest_lock(&mem_lock); return -2;} //invalid device id
  switch(dev_kind){
   case DEV_HOST:
    if((size_t)((const char*)(addr)) >= (size_t)((const char*)(arg_buf_host))){
@@ -700,7 +771,7 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
     blck_sz=&(blck_sizes_host[0]);
     occ=abh_occ;
    }else{
-    return ben;
+    omp_unset_nest_lock(&mem_lock); return ben;
    }
    break;
 #ifndef NO_GPU
@@ -712,20 +783,20 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
     blck_sz=&(blck_sizes_gpu[dev_num][0]);
     occ=abg_occ[dev_num];
    }else{
-    return ben;
+    omp_unset_nest_lock(&mem_lock); return ben;
    }
    break;
 #endif
 #ifndef NO_PHI
   case DEV_INTEL_MIC:
-   return ben; //`Future
+   omp_unset_nest_lock(&mem_lock); return ben; //`Future
 #endif
 #ifndef NO_AMD
   case DEV_AMD_GPU:
-   return ben; //`Future
+   omp_unset_nest_lock(&mem_lock); return ben; //`Future
 #endif
   default:
-   return -3; //invalid device kind
+   omp_unset_nest_lock(&mem_lock); return -3; //invalid device kind
  }
  if(buf_offset < buf_size){ //address is in the buffer space
   lev=0;
@@ -744,24 +815,29 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
    --lev;
    //if(DEBUG) ab_conf_print(*ab_conf); //debug
    //if(DEBUG) printf("\n#DEBUG(mem_manager:get_buf_entry_from_address): Address %p -> Buffer entry %d\n",addr,ben); //debug
-   if(buf_offset != ab_get_offset(*ab_conf,lev,buf_offset/blck_sz[lev],blck_sz)) return -4; //check
+   if(buf_offset != ab_get_offset(*ab_conf,lev,buf_offset/blck_sz[lev],blck_sz)){omp_unset_nest_lock(&mem_lock); return -4;} //trap
   }else{
    if(VERBOSE){
     printf("\n#ERROR(TALSH:mem_manager:get_buf_entry_from_address): Wrong buffer address alignment: %p\n",addr);
     print_blck_buf_sizes_host();
     fflush(stdout);
    }
-   return -5; //address is not aligned to any buffer entry base
+   omp_unset_nest_lock(&mem_lock); return -5; //address is not aligned to any buffer entry base
   }
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return ben; //flat buffer entry number [0..MAX], or -1 (not in buffer), or negative error code
 }
 
 int mem_free_left(int dev_id, size_t * free_mem) //returns free buffer space in bytes
 {
  int i,devk;
+
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
  *free_mem=0;
- if(bufs_ready == 0) return -1;
+ if(bufs_ready == 0){omp_unset_nest_lock(&mem_lock); return -1;}
  i=decode_device_id(dev_id,&devk);
  if(i >= 0){
   switch(devk){
@@ -782,18 +858,23 @@ int mem_free_left(int dev_id, size_t * free_mem) //returns free buffer space in 
     break;
 #endif
    default:
-    return -3; //unknown device kind
+    omp_unset_nest_lock(&mem_lock); return -3; //unknown device kind
   }
  }else{
-  return -2; //invalid device id
+  omp_unset_nest_lock(&mem_lock); return -2; //invalid device id
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return 0;
 }
 
 int mem_print_stats(int dev_id) //print memory statistics for Device <dev_id>
 {
  int i,devk;
- if(bufs_ready == 0) return -1;
+
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
+ if(bufs_ready == 0){omp_unset_nest_lock(&mem_lock); return -1;}
  i=decode_device_id(dev_id,&devk);
  if(i >= 0){
   switch(devk){
@@ -828,11 +909,12 @@ int mem_print_stats(int dev_id) //print memory statistics for Device <dev_id>
     break;
 #endif
    default:
-    return -3; //unknown device kind
+    omp_unset_nest_lock(&mem_lock); return -2; //unknown device kind
   }
  }else{
-  return -2; //invalid device id
+  omp_unset_nest_lock(&mem_lock); return -3; //invalid device id
  }
+ omp_unset_nest_lock(&mem_lock);
  return 0;
 }
 
@@ -863,6 +945,7 @@ int slab_construct(slab_t * slab, size_t slab_entry_size, size_t slab_max_entrie
 #ifndef NO_GPU
  cudaError_t err;
 #endif
+
  if(slab == NULL || slab_entry_size == 0 || slab_max_entries == 0) return -1;
  slab->slab_base=NULL; slab->free_entries=NULL; slab->max_entries=0;
  if(align == 0){
@@ -988,6 +1071,7 @@ int slab_destruct(slab_t * slab)
 #ifndef NO_GPU
  cudaError_t err;
 #endif
+
  errc=0;
  if(slab == NULL) return -1;
  if(slab->slab_base != NULL){
@@ -996,8 +1080,7 @@ int slab_destruct(slab_t * slab)
   if(slab->mem_mapped == 0){
    free(slab->slab_base); slab->slab_base=NULL;
   }else{
-   err=cudaFreeHost(slab->slab_base);
-   if(err != cudaSuccess) errc=NOT_CLEAN;
+   err=cudaFreeHost(slab->slab_base); if(err != cudaSuccess) errc=NOT_CLEAN;
   }
 #else
   free(slab->slab_base); slab->slab_base=NULL;
@@ -1020,6 +1103,7 @@ int slab_destroy(slab_t * slab)
 /** Destroys a slab object. **/
 {
  int errc;
+
  if(slab == NULL) return -1;
  errc=slab_destruct(slab);
  free(slab);
@@ -1052,21 +1136,18 @@ int host_mem_free(void *host_ptr)
 
 int host_mem_alloc_pin(void **host_ptr, size_t tsize){
 #ifndef NO_GPU
- cudaError_t err=cudaHostAlloc(host_ptr,tsize,cudaHostAllocPortable);
- if(err != cudaSuccess) return 1;
+ cudaError_t err=cudaHostAlloc(host_ptr,tsize,cudaHostAllocPortable); if(err != cudaSuccess) return 1;
 #else
- *host_ptr=(void*)malloc(tsize);
- if(*host_ptr == NULL) return 1;
+ *host_ptr=(void*)malloc(tsize); if(*host_ptr == NULL) return 1;
 #endif
  return 0;
 }
 
 int host_mem_free_pin(void *host_ptr){
 #ifndef NO_GPU
- cudaError_t err=cudaFreeHost(host_ptr);
- if(err != cudaSuccess) return 1;
+ cudaError_t err=cudaFreeHost(host_ptr); if(err != cudaSuccess) return 1;
 #else
- free(host_ptr); host_ptr = NULL;
+ free(host_ptr); host_ptr=NULL;
 #endif
  return 0;
 }
@@ -1095,7 +1176,7 @@ int host_mem_unregister(void *host_ptr){
  }
  return 0;
 #else
- return 0; //`Cannot register the Host memory without CUDA
+ return 0; //`Cannot unregister the Host memory without CUDA
 #endif
 }
 
@@ -1224,6 +1305,9 @@ static int mi_entry_init()
 /** Initializes the multi-index entry bank in pinned Host memory. **/
 {
  int j,m,errc;
+
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
  miFFE=MAX_GPU_ARGS*MAX_MLNDS_PER_TENS;
  for(j=0;j<miFFE;j++) miFreeHandle[j]=j;
  m=(size_t)(miFFE*MAX_TENSOR_RANK*sizeof(int));
@@ -1231,20 +1315,27 @@ static int mi_entry_init()
  if(errc != 0){
   miFFE=0;
   if(VERBOSE) printf("#ERROR(mem_manager:mi_entry_init): Unable to register the multi-index bank: Error %d\n",errc);
-  return -1;
+  omp_unset_nest_lock(&mem_lock); return -1;
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return 0;
 }
 
 static int mi_entry_stop()
 {
  int errc;
+
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
  miFFE=0;
  errc=host_mem_unregister(&miBank[0][0]);
  if(errc != 0){
   if(VERBOSE) printf("#ERROR(mem_manager:mi_entry_stop): Unable to unregister the multi-index bank: Error %d\n",errc);
-  return -1;
+  omp_unset_nest_lock(&mem_lock); return -1;
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return 0;
 }
 
@@ -1254,13 +1345,18 @@ int mi_entry_get(int ** mi_entry_p)
     Returns TRY_LATER if no free handles are currently available. **/
 {
  int m;
+
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
  *mi_entry_p=NULL;
  if(miFFE > 0){ //number of free handles left
   m=miFreeHandle[--miFFE];
   *mi_entry_p=&miBank[m][0];
  }else{
-  return TRY_LATER; //currently no free handles left
+  omp_unset_nest_lock(&mem_lock); return TRY_LATER; //currently no free handles left
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return 0;
 }
 
@@ -1268,6 +1364,9 @@ int mi_entry_release(int * mi_entry_p)
 /** Releases an entry back to the multi-index storage slab. **/
 {
  int m;
+
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
  if(mi_entry_p != NULL){
   if(miFFE >= 0){
    m=(int)(mi_entry_p-&miBank[0][0]);
@@ -1275,14 +1374,16 @@ int mi_entry_release(int * mi_entry_p)
     m/=MAX_TENSOR_RANK;
     miFreeHandle[miFFE++]=m;
    }else{
-    return 1;
+    omp_unset_nest_lock(&mem_lock); return 1;
    }
   }else{
-   return 2;
+   omp_unset_nest_lock(&mem_lock); return 2;
   }
  }else{
-  return 3;
+  omp_unset_nest_lock(&mem_lock); return 3;
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return 0;
 }
 
@@ -1291,6 +1392,7 @@ int mi_entry_pinned(int * mi_entry_p)
     NOPE othewise. **/
 {
  int l,n;
+#pragma omp flush
  n=NOPE;
  if(mi_entry_p != NULL){
   l=(int)(mi_entry_p-&miBank[0][0]);

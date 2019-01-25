@@ -1,8 +1,8 @@
 !BASIC FORTRAN PARAMETERS (Fortran-2003)
-!REVISION: 2018/12/07
+!REVISION: 2019/01/20
 
-!Copyright (C) 2014-2018 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2018 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -21,6 +21,9 @@
 
        module dil_basic
         use, intrinsic:: ISO_C_BINDING
+#ifndef NO_OMP
+        use omp_lib
+#endif
         implicit none
         public
 
@@ -125,5 +128,124 @@
 
 !BASIC CONSTANTS:
         character(C_CHAR), parameter, public:: CHAR_NULL=achar(0) !null character
+
+!OBJECT LOCK:
+        type, public:: object_lock_t
+#ifndef NO_OMP
+         integer(omp_nest_lock_kind), private:: lock_omp
+         integer, private:: initialized=-1
+#endif
+         contains
+          procedure, private:: ObjectLockCtorCopy
+          generic, public:: assignment(=)=>ObjectLockCtorCopy
+          procedure, public:: lock=>ObjectLockLock
+          procedure, public:: unlock=>ObjectLockUnlock
+          procedure, public:: clear=>ObjectLockClear
+          final:: object_lock_dtor
+        end type object_lock_t
+        private ObjectLockCtorCopy
+        private ObjectLockLock
+        private ObjectLockUnlock
+        private ObjectLockClear
+        public object_lock_dtor
+
+       contains
+
+![object_lock_t]==================================
+        subroutine ObjectLockCtorCopy(this,source)
+         implicit none
+         class(object_lock_t), intent(out):: this
+         class(object_lock_t), intent(in):: source
+#ifndef NO_OMP
+!$OMP ATOMIC WRITE
+         this%initialized=-1
+!$OMP FLUSH(this)
+#endif
+         return
+        end subroutine ObjectLockCtorCopy
+!--------------------------------------
+        subroutine ObjectLockLock(this)
+         implicit none
+         class(object_lock_t), intent(inout):: this
+         integer:: init_state
+#ifndef NO_OMP
+!$OMP ATOMIC CAPTURE
+         init_state=this%initialized
+         this%initialized=max(this%initialized,0)
+!$OMP END ATOMIC
+!$OMP FLUSH(this)
+         if(init_state.lt.0) then
+          !write(*,'("Initializing object lock ",i18," by thread ",i4)') this%lock_omp,omp_get_thread_num() !debug
+          call omp_init_nest_lock(this%lock_omp)
+!$OMP ATOMIC WRITE
+          this%initialized=1
+!$OMP FLUSH(this)
+          !write(*,'("Locking/init object lock ",i18," by thread ",i4)') this%lock_omp,omp_get_thread_num() !debug
+         elseif(init_state.eq.0) then
+          !write(*,'("Locking/wait object lock ",i18," by thread ",i4)') this%lock_omp,omp_get_thread_num() !debug
+          do while(init_state.eq.0)
+!$OMP ATOMIC READ
+           init_state=this%initialized
+          enddo
+         !else
+          !write(*,'("Locking/ready object lock ",i18," by thread ",i4)') this%lock_omp,omp_get_thread_num() !debug
+         endif
+         call omp_set_nest_lock(this%lock_omp)
+         !write(*,'("Lock ",i18," locked by thread ",i4)') this%lock_omp,omp_get_thread_num() !debug
+#endif
+         return
+        end subroutine ObjectLockLock
+!----------------------------------------
+        subroutine ObjectLockUnlock(this)
+         implicit none
+         class(object_lock_t), intent(inout):: this
+         integer:: init_state,ax,bx
+#ifndef NO_OMP
+!$OMP FLUSH(this)
+!$OMP ATOMIC READ
+         init_state=this%initialized
+         if(init_state.gt.0) then
+          !write(*,'("Unlocking object lock ",i18," by thread ",i4)') this%lock_omp,omp_get_thread_num() !debug
+          call omp_unset_nest_lock(this%lock_omp)
+          !write(*,'("Lock ",i18," unlocked by thread ",i4)') this%lock_omp,omp_get_thread_num() !debug
+         else
+          ax=0; bx=1; bx=bx/ax !crash
+         endif
+#endif
+         return
+        end subroutine ObjectLockUnlock
+!---------------------------------------
+        subroutine ObjectLockClear(this)
+         implicit none
+         class(object_lock_t), intent(inout):: this
+#ifndef NO_OMP
+!$OMP ATOMIC WRITE
+         this%initialized=-1
+!$OMP FLUSH(this)
+#endif
+         return
+        end subroutine ObjectLockClear
+!----------------------------------------
+        subroutine object_lock_dtor(this)
+         implicit none
+         type(object_lock_t):: this
+         integer:: init_state
+#ifndef NO_OMP
+         init_state=0
+!$OMP FLUSH(this)
+         do while(init_state.eq.0)
+!$OMP ATOMIC READ
+          init_state=this%initialized
+         enddo
+         if(init_state.gt.0) then
+!$OMP ATOMIC WRITE
+          this%initialized=-1
+!$OMP FLUSH(this)
+          !write(*,'("Lock ",i18," destroyed by thread ",i4)') this%lock_omp,omp_get_thread_num() !debug
+          call omp_destroy_nest_lock(this%lock_omp)
+         endif
+#endif
+         return
+        end subroutine object_lock_dtor
 
        end module dil_basic

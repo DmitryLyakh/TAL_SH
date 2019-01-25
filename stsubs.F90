@@ -1,8 +1,8 @@
 !Standard procedures often used by me.
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISON: 2018/10/03
+!REVISON: 2019/01/22
 
-!Copyright (C) 2005-2017 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2005-2019 Dmitry I. Lyakh (Liakh)
 
 !This file is part of ExaTensor.
 
@@ -298,8 +298,8 @@
 !-------------------------
         subroutine crash()
          integer:: ax,dx
-         write(*,'("Initiating a crash ...")')
-         ax=1; dx=ax/0; write(*,*) dx
+         write(*,'("Initiating a crash by dividing by zero ...")')
+         ax=1; dx=0; ax=ax/dx; write(*,*) ax
          return
         end subroutine crash
 !------------------------------------------------------------------

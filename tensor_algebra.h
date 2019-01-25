@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2019/01/05
+REVISION: 2019/01/23
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -316,6 +316,15 @@ typedef struct{
  size_t volume;
  int data_kind;
 } talsh_tens_data_t;
+
+// Dense tensor block (interoperable):
+typedef struct{
+ int num_dims;
+ int data_kind;
+ void * body_ptr;
+ long long bases[MAX_TENSOR_RANK];
+ long long dims[MAX_TENSOR_RANK];
+} talsh_tens_dense_t;
 
 // Device resource (occupied by a tensor block):
 typedef struct{
