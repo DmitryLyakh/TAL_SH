@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2019/01/23
+REVISION: 2019/01/26
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -818,7 +818,7 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
    if(buf_offset != ab_get_offset(*ab_conf,lev,buf_offset/blck_sz[lev],blck_sz)){omp_unset_nest_lock(&mem_lock); return -4;} //trap
   }else{
    if(VERBOSE){
-    printf("\n#ERROR(TALSH:mem_manager:get_buf_entry_from_address): Wrong buffer address alignment: %p\n",addr);
+    printf("\n#ERROR(TALSH:mem_manager:get_buf_entry_from_address): Wrong buffer address alignment or corruption: %p %d\n",addr,lev);
     print_blck_buf_sizes_host();
     fflush(stdout);
    }
@@ -1188,6 +1188,8 @@ an error code != 0, among which are also TRY_LATER and DEVICE_UNABLE. **/
  int dev_num,dev_kind,buf_entry,errc;
  char * char_ptr;
 
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
  errc=0; *mem_ptr=NULL;
  if(bytes > 0){
   dev_num=decode_device_id(dev_id,&dev_kind);
@@ -1232,6 +1234,8 @@ an error code != 0, among which are also TRY_LATER and DEVICE_UNABLE. **/
   printf("#DEBUG(TALSH:mem_manager:mem_allocate): Allocation of %llu bytes error %d: Address %p\n",bytes,errc,*mem_ptr);
   fflush(stdout);
  }
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return errc;
 }
 
@@ -1240,6 +1244,8 @@ int mem_free(int dev_id, void ** mem_ptr)
 {
  int dev_num,dev_kind,buf_entry,errc;
 
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
  errc=0;
  if(mem_ptr != NULL){
   if(*mem_ptr != NULL){
@@ -1288,7 +1294,7 @@ int mem_free(int dev_id, void ** mem_ptr)
     errc=-3; //invalid device id
    }
   }else{
-   errc=-2; //invalid pointer to free
+   errc=-2; //invalid pointer to be freed
   }
  }else{
   errc=-1;
@@ -1298,6 +1304,8 @@ int mem_free(int dev_id, void ** mem_ptr)
   fflush(stdout);
  }
  if(errc == 0) *mem_ptr=NULL;
+#pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
  return errc;
 }
 
