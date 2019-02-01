@@ -29,6 +29,7 @@
 #ifdef __cplusplus
 #include <iostream>
 #include <string>
+#include <complex>
 #include "talshxx.hpp"
 #endif
 
@@ -37,6 +38,7 @@ extern "C"{
 #endif
 void test_talsh_c(int * ierr);
 void test_talsh_cxx(int * ierr);
+void test_talsh_qc(int * ierr);
 void test_nwchem_c(int * ierr);
 #ifndef NO_GPU
 void test_nvtal_c(int * ierr);
@@ -221,7 +223,66 @@ void test_talsh_cxx(int * ierr)
  talsh::shutdown();
  return;
 }
-#endif
+
+void test_talsh_qc(int * ierr)
+{
+ *ierr=0;
+
+ //Tensor contraction specification:
+ class TensContraction{
+  public:
+  TensContraction(const std::string & pattern,
+                  talsh::Tensor * tens0,
+                  talsh::Tensor * tens1,
+                  talsh::Tensor * tens2,
+                  std::complex<float> alpha = std::complex<float>{1.0f,0.0f}):
+   index_pattern_(pattern),tensor0_(tens0),tensor1_(tens1),tensor2_(tens2),alpha_(alpha)
+  {
+  }
+  ~TensContraction() = default;
+  private:
+  std::string index_pattern_;
+  talsh::Tensor * tensor0_;
+  talsh::Tensor * tensor1_;
+  talsh::Tensor * tensor2_;
+  std::complex<float> alpha_;
+ };
+
+ //QC application initializes TAL-SH:
+ talsh::initialize();
+ std::cout << " QC application initialized TAL-SH" << std::endl;
+
+ //QC application allocates tensor storage (inside QCTensor ctor):
+ // Tensor 0:
+ std::vector<std::size_t> tsigna(4,0);
+ std::vector<int> tdims = {32,32,32,32};
+ std::size_t tvol = 1; for(const auto & dim: tdims) tvol*=static_cast<std::size_t>(dim);
+ std::complex<float> * tdata = new std::complex<float>[tvol];
+ std::cout << " QC application allocated tensor of volume " << tvol << std::endl;
+
+ //QC application enters an inner scope to perform tensor operations via TAL-SH:
+ std::cout << " QC application entered TAL-SH execution" << std::endl;
+ {
+  //QC application registers tensors with TAL-SH:
+  const std::complex<float> alpha {1.0f,0.0f};
+  talsh::Tensor tensor(tsigna,tdims,tdata,&alpha);
+
+  //QC application executes tensor contractions via TAL-SH:
+
+ }
+ std::cout << " QC application exited TAL-SH execution" << std::endl;
+
+ //QC application frees tensor storage (inside QCTensor dtor):
+ delete [] tdata;
+ std::cout << " QC application deallocated tensor" << std::endl;
+
+ //QC application shuts down TAL-SH:
+ talsh::shutdown();
+ std::cout << " QC application shut down TAL-SH" << std::endl;
+
+ return;
+}
+#endif //__cplusplus
 
 
 void test_nwchem_c(int * ierr)

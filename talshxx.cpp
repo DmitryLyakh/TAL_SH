@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/01/20
+REVISION: 2019/01/31
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -21,82 +21,35 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------
 **/
 
-#include <iostream>
-#include <complex>
-#include <initializer_list>
-#include <vector>
-#include <string>
-#include <memory>
-#include <assert.h>
-
-#include "talsh.h"
-#include "talsh_task.hpp"
+#include "talshxx.hpp"
 
 namespace talsh{
 
+//Static constant storage:
+
 constexpr float TensorData<float>::unity;
+constexpr float TensorData<float>::zero;
 constexpr double TensorData<double>::unity;
+constexpr double TensorData<double>::zero;
 constexpr std::complex<float> TensorData<std::complex<float>>::unity;
+constexpr std::complex<float> TensorData<std::complex<float>>::zero;
 constexpr std::complex<double> TensorData<std::complex<double>>::unity;
+constexpr std::complex<double> TensorData<std::complex<double>>::zero;
 
 
-template <typename T>
-Tensor::Impl::Impl(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
-                   const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
-                   const T init_val):                                  //scalar initialization value (its type will define tensor element data kind)
- signature_(signature), host_mem_(nullptr), used_(0)
-{
- static_assert(TensorData<T>::supported,"Tensor data type is not supported!");
- int errc = talshTensorClean(&tensor_);
- assert(errc == TALSH_SUCCESS);
- const int rank = static_cast<int>(dims.size());
- errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),NULL,-1,NULL,
-                             realPart(init_val),imagPart(init_val));
- assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
- write_task_ = nullptr;
-}
-
-template <typename T>
-Tensor::Tensor(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
-               const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
-               const T init_val):                                  //scalar initialization value (its type will define tensor element data kind)
- pimpl_(new Impl(signature,dims,init_val))
-{
-}
+//Helper functions:
+// Generic real/imaginary part extraction:
+double realPart(float number){return static_cast<double>(number);}
+double realPart(double number){return number;}
+double realPart(std::complex<float> number){return static_cast<double>(number.real());}
+double realPart(std::complex<double> number){return number.real();}
+double imagPart(float number){return 0.0f;}
+double imagPart(double number){return 0.0;}
+double imagPart(std::complex<float> number){return static_cast<double>(number.imag());}
+double imagPart(std::complex<double> number){return number.imag();}
 
 
-template <typename T>
-Tensor::Impl::Impl(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
-                   const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
-                   T * ext_mem,                                        //pointer to an external memory storage where the tensor body will reside
-                   const T * init_val):                                //optional scalar initialization value (provide nullptr if not needed)
- signature_(signature), host_mem_(((void*)ext_mem)), used_(0)
-{
- static_assert(TensorData<T>::supported,"Tensor data type is not supported!");
- int errc = talshTensorClean(&tensor_);
- assert(errc == TALSH_SUCCESS);
- assert(ext_mem != nullptr);
- const int rank = static_cast<int>(dims.size());
- if(init_val == nullptr){
-  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem);
- }else{
-  std::cout << "FATAL: Initialization of tensors with external memory storage is not implemented in TAL-SH yet!" << std::endl; assert(false);
-  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem,-1,NULL,
-                              realPart(*init_val),imagPart(*init_val));
- }
- assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
- write_task_ = nullptr;
-}
-
-template <typename T>
-Tensor::Tensor(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
-               const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
-               T * ext_mem,                                        //pointer to an external memory storage where the tensor body will reside
-               const T * init_val):                                //optional scalar initialization value (provide nullptr if not needed)
- pimpl_(new Impl(signature,dims,ext_mem,init_val))
-{
-}
-
+//Functions:
 
 Tensor::Impl::~Impl()
 {
@@ -111,6 +64,7 @@ int Tensor::getRank() const
 {
  return talshTensorRank(&(pimpl_->tensor_));
 }
+
 /** Returns the tensor order (rank in phys terms). **/
 int Tensor::getOrder() const
 {
@@ -124,7 +78,6 @@ Tensor & Tensor::operator++()
  ++(pimpl_->used_);
  return *this;
 }
-
 
 /** Use counter decrement. **/
 Tensor & Tensor::operator--()
@@ -155,78 +108,6 @@ bool Tensor::sync(const int device_kind, const int device_id, void * dev_mem)
   assert(errc == TALSH_SUCCESS);
  }
  return res;
-}
-
-
-/** Performs a tensor contraction of two tensors and accumulates the result into the current tensor:
-    this += left * right * factor **/
-template <typename T>
-int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle associated with this operation or nullptr (synchronous)
-                               const std::string & pattern, //in: contraction pattern string
-                               Tensor & left,               //in: left tensor
-                               Tensor & right,              //in: right tensor
-                               const int device_kind,       //in: execution device kind
-                               const int device_id,         //in: execution device id
-                               const T factor)              //in: alpha factor
-{
- int errc = TALSH_SUCCESS;
- this->complete_write_task();
- const char * contr_ptrn = pattern.c_str();
- talsh_tens_t * dtens = this->get_talsh_tensor_ptr();
- talsh_tens_t * ltens = left.get_talsh_tensor_ptr();
- talsh_tens_t * rtens = right.get_talsh_tensor_ptr();
- if(task_handle != nullptr){ //asynchronous
-  assert(task_handle->is_empty());
-  talsh_task_t * task_hl = task_handle->get_talsh_task_ptr();
-  //++left; ++right; ++(*this);
-  errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MTT,task_hl);
-  //if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
-  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
-  if(errc == TALSH_SUCCESS) pimpl_->write_task_ = task_handle;
- }else{ //synchronous
-  errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MTT);
-  //if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
-  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
- }
- return errc;
-}
-
-
-/** Performs a matrix multiplication on two tensors and accumulates the result into the current tensor. **/
-template <typename T>
-int Tensor::multiplyAccumulate(TensorTask * task_handle, //out: task handle associated with this operation or nullptr (synchronous)
-                               Tensor & left,            //in: left tensor
-                               Tensor & right,           //in: right tensor
-                               const int device_kind,    //in: execution device kind
-                               const int device_id,      //in: execution device id
-                               const T factor)           //in: alpha factor
-{
- int errc = TALSH_SUCCESS;
- char cptrn[MAX_CONTRACTION_PATTERN_LEN];
- int dptrn[MAX_TENSOR_RANK*2];
- int drank = this->getRank();
- int lrank = left.getRank();
- int rrank = right.getRank();
- assert(lrank + rrank >= drank && (lrank + rrank - drank)%2 == 0);
- int nc = (lrank + rrank - drank)/2; //number of contracted indices
- int nl = lrank - nc; //number of left open indices
- int nr = rrank - nc; //number of right open indices
- //Create the digital contraction pattern:
- int l = 0;
- for(int i = 0; i < nl; ++i){dptrn[l++] = (i+1);}
- for(int i = 0; i < nc; ++i){dptrn[l++] = -(i+1);}
- for(int i = 0; i < nc; ++i){dptrn[l++] = -(nl+1+i);}
- for(int i = 0; i < nr; ++i){dptrn[l++] = (nl+1+i);}
- //Convert the digital contraction pattern into a symbolc one:
- int cpl;
- int conj_bits = 0;
- get_contr_pattern_sym(&lrank,&rrank,&conj_bits,dptrn,cptrn,&cpl,&errc); cptrn[cpl]='\0';
- assert(errc == 0);
- std::string contr_ptrn(cptrn);
- std::cout << contr_ptrn << std::endl; //debug
- //Execute tensor contraction:
- errc = this->contractAccumulate(task_handle,contr_ptrn,left,right,device_kind,device_id,factor);
- return errc;
 }
 
 

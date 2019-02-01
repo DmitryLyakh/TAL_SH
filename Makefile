@@ -47,7 +47,7 @@ export PATH_OPENMPI ?= /usr/local/mpi/openmpi/3.1.0
 
 #BLAS library (whichever you have chosen above):
 # Set this path if you have chosen ATLAS (default Linux BLAS):
-export PATH_BLAS_ATLAS ?= /usr/lib
+export PATH_BLAS_ATLAS ?= /usr/lib/x86_64-linux-gnu
 # Set these if you have a vendor provided BLAS that you have specified above:
 #  MKL BLAS (if you have chosen MKL):
 export PATH_BLAS_MKL ?= /opt/intel/mkl/lib/intel64
@@ -56,7 +56,7 @@ export PATH_BLAS_MKL_INC ?= /opt/intel/mkl/include/intel64/lp64
 #  ACML BLAS (if you have chosen ACML):
 export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
 #  ESSL BLAS (if you have chosen ESSL, also set PATH_IBM_XL_CPP, PATH_IBM_XL_FOR, PATH_IBM_XL_SMP below):
-export PATH_BLAS_ESSL ?= /sw/summit/essl/6.1.0-1/essl/6.1/lib64
+export PATH_BLAS_ESSL ?= /sw/summit/essl/6.1.0-2/essl/6.1/lib64
 
 #IBM XL (only set these if you use IBM XL and/or ESSL):
 export PATH_IBM_XL_CPP ?= /sw/summit/xl/16.1.1-1/xlC/16.1.1/lib
@@ -341,7 +341,7 @@ LFLAGS = $(MPI_LINK) $(LA_LINK) $(LTHREAD) $(CUDA_LINK) $(LIB)
 
 OBJS =  ./OBJ/dil_basic.o ./OBJ/stsubs.o ./OBJ/combinatoric.o ./OBJ/symm_index.o ./OBJ/timer.o ./OBJ/timers.o ./OBJ/nvtx_profile.o \
 	./OBJ/tensor_algebra.o ./OBJ/tensor_algebra_cpu.o ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_dil_omp.o \
-	./OBJ/mem_manager.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/talshf.o ./OBJ/talshc.o ./OBJ/talsh_task.o
+	./OBJ/mem_manager.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/talshf.o ./OBJ/talshc.o ./OBJ/talsh_task.o ./OBJ/talshxx.o
 
 $(NAME): lib$(NAME).a ./OBJ/test.o ./OBJ/main.o
 	$(FCOMP) ./OBJ/main.o ./OBJ/test.o lib$(NAME).a $(LFLAGS) -o test_$(NAME).x
@@ -357,7 +357,7 @@ ifeq ($(WITH_CUTT),YES)
 else
 	ar cr lib$(NAME).a $(OBJS)
 ifeq ($(EXA_OS),LINUX)
-	ld -shared -o lib$(NAME).so $(OBJS)
+	g++ -shared -o lib$(NAME).so $(OBJS)
 endif
 endif
 
@@ -417,7 +417,10 @@ endif
 ./OBJ/talsh_task.o: talsh_task.cpp talsh.h ./OBJ/talshc.o
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) talsh_task.cpp -o ./OBJ/talsh_task.o
 
-./OBJ/test.o: test.cpp talshxx.cpp talshxx.hpp talsh_task.hpp talsh.h tensor_algebra.h lib$(NAME).a
+./OBJ/talshxx.o: talshxx.cpp talshxx.hpp ./OBJ/talshc.o
+	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) talshxx.cpp -o ./OBJ/talshxx.o
+
+./OBJ/test.o: test.cpp talshxx.hpp talsh_task.hpp talsh.h tensor_algebra.h lib$(NAME).a
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) test.cpp -o ./OBJ/test.o
 
 ./OBJ/main.o: main.F90 ./OBJ/test.o ./OBJ/talshf.o lib$(NAME).a

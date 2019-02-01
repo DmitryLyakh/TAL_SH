@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2018/04/04
+REVISION: 2019/02/01
 
-Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -27,7 +27,6 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 
 namespace talsh{
 
-
 TensorTask::TensorTask():
  num_tensors_(0)
 {
@@ -44,15 +43,17 @@ TensorTask::~TensorTask()
 }
 
 
-bool TensorTask::is_empty()
+bool TensorTask::isEmpty()
 {
  return (talshTaskIsEmpty(&talsh_task_) == YEP);
 }
 
+
 void TensorTask::clean()
 {
  assert(this->wait());
- int errc = talshTaskClean(&talsh_task_);
+ int errc = talshTaskDestruct(&talsh_task_);
+ num_tensors_=0;
  assert(errc == TALSH_SUCCESS);
  return;
 }
@@ -89,6 +90,5 @@ talsh_task_t * TensorTask::get_talsh_task_ptr()
 {
  return &talsh_task_;
 }
-
 
 } //namespace talsh
