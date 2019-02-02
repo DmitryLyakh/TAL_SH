@@ -53,6 +53,8 @@ double imagPart(std::complex<double> number){return number.imag();}
 
 Tensor::Impl::~Impl()
 {
+ if(used_ != 0) std::cout << "#ERROR(Tensor::Impl::~Impl): Non-zero use count = " << used_ << std::endl;
+ if(write_task_ != nullptr) std::cout << "#ERROR(Tensor::Impl::~Impl): Non-null task pointer = " << (void*)write_task_ << std::endl;
  assert(used_ == 0 && write_task_ == nullptr);
  int errc = talshTensorDestruct(&tensor_);
  assert(errc == TALSH_SUCCESS);

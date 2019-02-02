@@ -110,29 +110,40 @@ class Tensor{
 
 public:
 
- /** Ctor (TAL-SH provides tensor data storage) **/
+ /** Full Ctor (TAL-SH provides tensor data storage) **/
  template <typename T>
  Tensor(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
         const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
         const T init_val);                                  //scalar initialization value (its type will define tensor element data kind)
- /** Ctor (TAL-SH provides tensor data storage) **/
+ /** Full Ctor (TAL-SH provides tensor data storage) **/
  template <typename T>
  Tensor(const std::vector<std::size_t> & signature,         //tensor signature (identifier): signature[0:rank-1]
         const std::vector<int> & dims,                      //tensor dimension extents: dims[0:rank-1]
         const T init_val);                                  //scalar initialization value (its type will define tensor element data kind)
 
- /** Ctor (Application provides tensor data storage) **/
+ /** Full Ctor (Application provides tensor data storage) **/
  template <typename T>
  Tensor(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
         const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
         T * ext_mem,                                        //pointer to an external memory storage where the tensor body will reside
-        const T * init_val);                                //optional scalar initialization value (provide nullptr if not needed)
- /** Ctor (Application provides tensor data storage) **/
+        const T * init_val = nullptr);                      //optional scalar initialization value (provide nullptr if not needed)
+ /** Full Ctor (Application provides tensor data storage) **/
  template <typename T>
  Tensor(const std::vector<std::size_t> & signature,         //tensor signature (identifier): signature[0:rank-1]
         const std::vector<int> & dims,                      //tensor dimension extents: dims[0:rank-1]
         T * ext_mem,                                        //pointer to an external memory storage where the tensor body will reside
-        const T * init_val);                                //optional scalar initialization value (provide nullptr if not needed)
+        const T * init_val = nullptr);                      //optional scalar initialization value (provide nullptr if not needed)
+
+ /** Short Ctor (TAL-SH provides tensor data storage) **/
+ template <typename T>
+ Tensor(const std::vector<int> & dims,                      //tensor dimension extents: dims[0:rank-1]
+        const T init_val);                                  //scalar initialization value (its type will define tensor element data kind)
+
+ /** Short Ctor (Application provides tensor data storage) **/
+ template <typename T>
+ Tensor(const std::vector<int> & dims,                      //tensor dimension extents: dims[0:rank-1]
+        T * ext_mem,                                        //pointer to an external memory storage where the tensor body will reside
+        const T * init_val = nullptr);                      //optional scalar initialization value (provide nullptr if not needed)
 
  /** Copy ctor **/
  Tensor(const Tensor & tensor) = default;
@@ -219,13 +230,13 @@ private:
   Impl(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
        const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
        T * ext_mem,                                        //pointer to an external memory storage where the tensor body will reside
-       const T * init_val);                                //optional scalar initialization value (provide nullptr if not needed)
+       const T * init_val = nullptr);                      //optional scalar initialization value (provide nullptr if not needed)
 
   template <typename T>
   Impl(const std::vector<std::size_t> & signature,         //tensor signature (identifier): signature[0:rank-1]
        const std::vector<int> & dims,                      //tensor dimension extents: dims[0:rank-1]
        T * ext_mem,                                        //pointer to an external memory storage where the tensor body will reside
-       const T * init_val);                                //optional scalar initialization value (provide nullptr if not needed)
+       const T * init_val = nullptr);                      //optional scalar initialization value (provide nullptr if not needed)
 
   Impl(const Impl &) = delete;
   Impl & operator=(const Impl &) = delete;
@@ -275,7 +286,6 @@ Tensor::Impl::Impl(const std::vector<std::size_t> & signature, //tensor signatur
  assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
  write_task_ = nullptr;
 }
-
 
 template <typename T>
 Tensor::Impl::Impl(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
@@ -338,7 +348,6 @@ Tensor::Tensor(const std::vector<std::size_t> & signature, //tensor signature (i
 {
 }
 
-
 template <typename T>
 Tensor::Tensor(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
                const std::initializer_list<int> dims,              //tensor dimension extents: dims[0:rank-1]
@@ -354,6 +363,21 @@ Tensor::Tensor(const std::vector<std::size_t> & signature, //tensor signature (i
                T * ext_mem,                                //pointer to an external memory storage where the tensor body will reside
                const T * init_val):                        //optional scalar initialization value (provide nullptr if not needed)
  pimpl_(new Impl(signature,dims,ext_mem,init_val))
+{
+}
+
+template <typename T>
+Tensor::Tensor(const std::vector<int> & dims,              //tensor dimension extents: dims[0:rank-1]
+               const T init_val):                          //scalar initialization value (its type will define tensor element data kind)
+ Tensor(std::vector<std::size_t>(dims.size(),0),dims,init_val)
+{
+}
+
+template <typename T>
+Tensor::Tensor(const std::vector<int> & dims,              //tensor dimension extents: dims[0:rank-1]
+               T * ext_mem,                                //pointer to an external memory storage where the tensor body will reside
+               const T * init_val):                        //optional scalar initialization value (provide nullptr if not needed)
+ Tensor(std::vector<std::size_t>(dims.size(),0),dims,ext_mem,init_val)
 {
 }
 
@@ -379,12 +403,12 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
   assert(task_handle->isEmpty());
   talsh_task_t * task_hl = task_handle->get_talsh_task_ptr();
   //++left; ++right; ++(*this);
-  errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MTT,task_hl);
-  //if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
+  errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_TTT,task_hl);
+  if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
   if(errc == TALSH_SUCCESS) pimpl_->write_task_ = task_handle;
  }else{ //synchronous
-  errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MTT);
+  errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_TTT);
   //if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
  }
