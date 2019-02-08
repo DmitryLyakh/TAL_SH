@@ -1,8 +1,8 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2018/12/06
+!REVISION: 2019/02/07
 
-!Copyright (C) 2014-2018 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2018 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -134,12 +134,12 @@
           implicit none
          end function talshShutdown
   !Get on-node device count for a specific device kind:
-         integer(C_INT) function talsh_get_device_count(dev_kind,dev_count) bind(c,name='talshGetDeviceCount')
+         integer(C_INT) function talsh_device_count(dev_kind,dev_count) bind(c,name='talshDeviceCount')
           import
           implicit none
-          integer(C_INT), value, intent(in):: dev_kind
+          integer(C_INT), intent(in), value:: dev_kind
           integer(C_INT), intent(out):: dev_count
-         end function talsh_get_device_count
+         end function talsh_device_count
   !Get the flat device Id:
          integer(C_INT) function talshFlatDevId(dev_kind,dev_num) bind(c,name='talshFlatDevId')
           import
@@ -167,6 +167,13 @@
           implicit none
           integer(C_INT), value, intent(in):: dev_kind
          end function talshDeviceBusyLeast_
+  !Query the device memory size in bytes:
+         integer(C_SIZE_T) function talshDeviceMemorySize_(dev_num,dev_kind) bind(c,name='talshDeviceMemorySize_')
+          import
+          implicit none
+          integer(C_INT), value, intent(in):: dev_num
+          integer(C_INT), value, intent(in):: dev_kind
+         end function talshDeviceMemorySize_
   !Print run-time TAL-SH statistics for chosen devices:
          integer(C_INT) function talshStats_(dev_id,dev_kind) bind(c,name='talshStats_')
           import
@@ -429,11 +436,11 @@
          end function talsh_tensor_image_info
  !CUDA runtime:
   !Get on-node GPU device count:
-         integer(C_INT) function cuda_get_device_count(dev_count) bind(c,name='cuda_get_device_count')
+         integer(C_INT) function gpu_get_device_count(dev_count) bind(c,name='gpu_get_device_count')
           import
           implicit none
           integer(C_INT), intent(out):: dev_count
-         end function cuda_get_device_count
+         end function gpu_get_device_count
         end interface
 !INTERFACES FOR OVERLOADED FOTRAN FUNCTIONS:
         interface talsh_tensor_construct
@@ -447,10 +454,12 @@
  !TAL-SH control API:
         public talsh_init
         public talsh_shutdown
+        public talsh_device_count
         public talsh_flat_dev_id
         public talsh_kind_dev_id
         public talsh_device_state
         public talsh_device_busy_least
+        public talsh_device_memory_size
         public talsh_stats
  !TAL-SH tensor block API:
         public talsh_tensor_is_empty
@@ -490,8 +499,6 @@
 !        public talsh_tensor_copy
         public talsh_tensor_add
         public talsh_tensor_contract
- !CUDA runtime:
-        public cuda_get_device_count
 
        contains
 !INTERNAL FUNCTIONS:
@@ -845,6 +852,18 @@
          dev_id=talshDeviceBusyLeast_(devk)
          return
         end function talsh_device_busy_least
+!---------------------------------------------------------------------------
+        function talsh_device_memory_size(dev_num,dev_kind) result(mem_size)
+         implicit none
+         integer(C_SIZE_T):: mem_size                    !out: device memory size in bytes
+         integer(C_INT), intent(in):: dev_num            !in: either a flat or kind specific (when <dev_kind> is present) device id
+         integer(C_INT), intent(in), optional:: dev_kind !in: device kind (note that it changes the meaning of the <dev_num> argument)
+         integer(C_INT):: devk
+
+         if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_NULL; endif
+         mem_size=talshDeviceMemorySize_(dev_num,devk)
+         return
+        end function talsh_device_memory_size
 !---------------------------------------------------------
         function talsh_stats(dev_id,dev_kind) result(ierr)
          implicit none

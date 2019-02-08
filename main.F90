@@ -163,7 +163,7 @@
 !Check GPU availability:
 #ifndef NO_GPU
         write(*,'(1x,"Checking Nvidia GPU availability ... ")',ADVANCE='NO')
-        ierr=cuda_get_device_count(num_gpus)
+        ierr=talsh_device_count(DEV_NVIDIA_GPU,num_gpus)
         write(*,'("Status ",i11,": Number of GPUs = ",i3)') ierr,num_gpus
         if(ierr.ne.TALSH_SUCCESS) then; ierr=1; return; endif
 #else
@@ -304,7 +304,7 @@
 !Check GPU availability:
 #ifndef NO_GPU
         write(*,'(1x,"Checking Nvidia GPU availability ... ")',ADVANCE='NO')
-        ierr=cuda_get_device_count(num_gpus)
+        ierr=talsh_device_count(DEV_NVIDIA_GPU,num_gpus)
         write(*,'("Status ",i11,": Number of GPUs = ",i3)') ierr,num_gpus
         if(ierr.ne.TALSH_SUCCESS) then; ierr=1; return; endif
 #else
@@ -525,7 +525,7 @@
 !Check Nvidia GPU availability:
 #ifndef NO_GPU
          write(*,'(1x,"Checking Nvidia GPU availability ... ")',ADVANCE='NO')
-         ierr=cuda_get_device_count(num_gpus)
+         ierr=talsh_device_count(DEV_NVIDIA_GPU,num_gpus)
          write(*,'("Status ",i11,": Number of GPUs = ",i3)') ierr,num_gpus
          if(ierr.ne.TALSH_SUCCESS) then; ierr=1; return; endif
 #else
@@ -785,7 +785,7 @@
          ierr=0
 #ifndef NO_GPU
          write(*,'(1x,"Checking Nvidia GPU availability ... ")',ADVANCE='NO')
-         ierr=cuda_get_device_count(num_gpus)
+         ierr=talsh_device_count(DEV_NVIDIA_GPU,num_gpus)
          write(*,'("Status ",i11,": Number of GPUs = ",i3)') ierr,num_gpus
          if(ierr.ne.TALSH_SUCCESS) then; write(*,'("Error ",i11)') ierr; ierr=1; return; endif
 #else

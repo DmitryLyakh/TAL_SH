@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2019/01/23
+REVISION: 2019/02/07
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -419,9 +419,6 @@ extern "C"{
  int tensDevRsc_release_all(talsh_dev_rsc_t * drsc);
  int tensDevRsc_destroy(talsh_dev_rsc_t * drsc);
 #ifndef NO_GPU
-// CUDA runtime:
-//  Get on-node NVIDIA GPU count:
-int cuda_get_device_count(int * dev_count);
 // NVidia GPU operations (NV-TAL):
 //  NV-TAL debugging:
  int gpu_get_error_count();
@@ -430,10 +427,12 @@ int cuda_get_device_count(int * dev_count);
  int init_gpus(int gpu_beg, int gpu_end);
  int free_gpus(int gpu_beg, int gpu_end);
 //  NV-TAL query/action API:
+ int gpu_get_device_count(int * dev_count);
  int gpu_is_mine(int gpu_num);
  int gpu_busy_least();
  int gpu_in_focus(int gpu_num = -1);
  int gpu_activate(int gpu_num);
+ size_t gpu_device_memory_size(int gpu_num);
 //  NV-TAL internal control:
  int gpu_set_shmem_width(int width);
  void gpu_set_transpose_algorithm(int alg); //{EFF_TRN_OFF,EFF_TRN_ON,EFF_TRN_ON_CUTT}

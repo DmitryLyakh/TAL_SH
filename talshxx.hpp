@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/02/01
+REVISION: 2019/02/08
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -169,12 +169,18 @@ public:
  Tensor & operator++(); //increments tensor use count
  Tensor & operator--(); //decrements tensor use count
 
- /** Synchronizes the tensor presence on a given device.
+ /** Synchronizes the tensor presence on the given device.
      Returns TRUE on success, FALSE if an active write task
      on this tensor has failed to complete successfully. **/
  bool sync(const int device_kind = DEV_HOST, //in: device kind
            const int device_id = 0,          //in: specific device of the given kind which the synchronization is done for
            void * dev_mem = nullptr);        //in: optional pointer to that device's client memory where the tensor data should go
+
+ /** Returns TRUE if the tensor is ready (has been computed).
+     If ready, synchronizes its presence on the given device. **/
+ bool ready(const int device_kind = DEV_HOST, //in: device kind
+            const int device_id = 0,          //in: specific device of the given kind which the synchronization is done for
+            void * dev_mem = nullptr);        //in: optional pointer to that device's client memory where the tensor data should go
 
  /** Performs a tensor contraction of two tensors and accumulates the result into the current tensor:
      this += left * right * factor
@@ -204,8 +210,9 @@ public:
 private:
 
  //Private methods:
- talsh_tens_t * get_talsh_tensor_ptr();
- bool complete_write_task();
+ talsh_tens_t * getTalshTensorPtr();
+ bool completeWriteTask();
+ bool testWriteTask(int * status);
 
  //Implementation:
  struct Impl{
@@ -251,8 +258,22 @@ private:
 
 //Namespace API:
 
+// TAL-SH initialization/shutdown:
 void initialize(std::size_t * host_buffer_size = nullptr); //in: desired host buffer size; out: actual host buffer size
 void shutdown();
+
+// Host memory pinning/unpinning for accelerated computing:
+template<typename T>
+int pinHostMemory(T * host_ptr, std::size_t mem_size)
+{
+ return host_mem_register((void*)host_ptr,mem_size);
+}
+
+template<typename T>
+int unpinHostMemory(T * host_ptr)
+{
+ return host_mem_unregister((void*)host_ptr);
+}
 
 
 //Template definitions:
@@ -394,11 +415,11 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
                                const T factor)              //in: alpha factor
 {
  int errc = TALSH_SUCCESS;
- this->complete_write_task();
+ this->completeWriteTask();
  const char * contr_ptrn = pattern.c_str();
- talsh_tens_t * dtens = this->get_talsh_tensor_ptr();
- talsh_tens_t * ltens = left.get_talsh_tensor_ptr();
- talsh_tens_t * rtens = right.get_talsh_tensor_ptr();
+ talsh_tens_t * dtens = this->getTalshTensorPtr();
+ talsh_tens_t * ltens = left.getTalshTensorPtr();
+ talsh_tens_t * rtens = right.getTalshTensorPtr();
  if(task_handle != nullptr){ //asynchronous
   assert(task_handle->isEmpty());
   talsh_task_t * task_hl = task_handle->get_talsh_task_ptr();

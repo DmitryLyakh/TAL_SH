@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: C++ TAL-SH task
-REVISION: 2019/02/01
+REVISION: 2019/02/08
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -40,9 +40,9 @@ public:
  TensorTask();
 
  TensorTask(const TensorTask & task_handle) = delete;
-
  TensorTask & operator=(const TensorTask & task_handle) = delete;
-
+ TensorTask(TensorTask && task_handle) = delete;
+ TensorTask & operator=(TensorTask && task_handle) = delete;
  ~TensorTask();
 
  /** Returns TRUE if the TAL-SH task handle is empty. **/

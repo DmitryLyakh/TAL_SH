@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/01/20
+REVISION: 2019/02/07
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -612,30 +612,26 @@ int talshShutdown()
  return TALSH_SUCCESS;
 }
 
-int talshGetDeviceCount(int dev_kind, int * dev_count)
+int talshDeviceCount(int dev_kind, int * dev_count)
 /** Returns the total number of devices of specific kind found on node. **/
 {
  int errc;
 
- errc=TALSH_SUCCESS;
+ errc=TALSH_SUCCESS; *dev_count=0;
  switch(dev_kind){
   case DEV_HOST:
    *dev_count=1; //CPU Host is always assumed a single device (multicore)
    break;
   case DEV_NVIDIA_GPU:
 #ifndef NO_GPU
-   errc=cuda_get_device_count(dev_count);
+   errc=gpu_get_device_count(dev_count);
    if(errc != 0) errc=TALSH_FAILURE;
-#else
-   *dev_count=0;
 #endif
    break;
   case DEV_INTEL_MIC:
-   *dev_count=0;
    errc=TALSH_NOT_IMPLEMENTED;
    break;
   case DEV_AMD_GPU:
-   *dev_count=0;
    errc=TALSH_NOT_IMPLEMENTED;
    break;
  }
@@ -670,6 +666,7 @@ int talshDeviceState(int dev_num,  //in: either a flat or kind specific (when <d
   if(i < 0) return TALSH_INVALID_ARGS;
  }else{
   devk=dev_kind;
+  i=dev_num;
  }
  switch(devk){
   case DEV_HOST:
@@ -733,6 +730,49 @@ int talshDeviceBusyLeast(int dev_kind) //in: device kind (defaults to any kind)
 int talshDeviceBusyLeast_(int dev_kind) //Fortran wrapper
 {
  return talshDeviceBusyLeast(dev_kind);
+}
+
+size_t talshDeviceMemorySize(int dev_num,
+                             int dev_kind)
+{
+ int devk,i;
+ size_t bytes;
+
+ bytes=0;
+ if(talsh_on != 0){
+  if(dev_kind == DEV_NULL){
+   i=talshKindDevId(dev_num,&devk); if(i < 0) return 0;
+  }else{
+   devk=dev_kind;
+   i=dev_num;
+  }
+  switch(devk){
+   case DEV_HOST:
+    //`Implement
+    break;
+   case DEV_NVIDIA_GPU:
+#ifndef NO_GPU
+    bytes=gpu_device_memory_size(i);
+#endif
+    break;
+   case DEV_INTEL_MIC:
+#ifndef NO_PHI
+    //`Implement
+#endif
+    break;
+   case DEV_AMD_GPU:
+#ifndef NO_AMD
+    //`Implement
+#endif
+    break;
+  }
+ }
+ return bytes;
+}
+
+size_t talshDeviceMemorySize_(int dev_num, int dev_kind) //Fortran wrapper
+{
+ return talshDeviceMemorySize(dev_num,dev_kind);
 }
 
 int talshStats(int dev_id,   //in: device id (either flat or kind specific device id, see below)

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/01/31
+REVISION: 2019/02/08
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -90,13 +90,37 @@ Tensor & Tensor::operator--()
 }
 
 
-/** Synchronizes the tensor presence on a given device.
+/** Synchronizes the tensor presence on the given device.
     Returns TRUE on success, FALSE if an active write task
     on this tensor has failed to complete successfully. **/
 bool Tensor::sync(const int device_kind, const int device_id, void * dev_mem)
 {
- bool res = this->complete_write_task();
+ bool res = this->completeWriteTask();
  if(res){
+  int errc;
+  if(dev_mem != nullptr){ //client provided an explicit buffer to place the tensor into
+   errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,dev_mem);
+  }else{ //no explicit buffer provided, use saved information (if any)
+   if(device_kind == DEV_HOST){
+    errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,pimpl_->host_mem_);
+   }else{
+    errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind);
+   }
+  }
+  assert(errc == TALSH_SUCCESS);
+ }
+ return res;
+}
+
+
+/** Returns TRUE if the tensor is ready (has been computed).
+    If ready, synchronizes the tensor presence on the given device. **/
+bool Tensor::ready(const int device_kind, const int device_id, void * dev_mem)
+{
+ int status = TALSH_TASK_EMPTY;
+ bool res = this->testWriteTask(&status);
+ if(res){
+  assert(status == TALSH_TASK_COMPLETED);
   int errc;
   if(dev_mem != nullptr){ //client provided an explicit buffer to place the tensor into
    errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,dev_mem);
@@ -126,14 +150,14 @@ void Tensor::print() const
 }
 
 
-talsh_tens_t * Tensor::get_talsh_tensor_ptr()
+talsh_tens_t * Tensor::getTalshTensorPtr()
 {
  return &(pimpl_->tensor_);
 }
 
 
 /** Completes the current write task on the tensor, if any. **/
-bool Tensor::complete_write_task()
+bool Tensor::completeWriteTask()
 {
  bool res = true;
  if(pimpl_->write_task_ != nullptr){
@@ -144,11 +168,24 @@ bool Tensor::complete_write_task()
 }
 
 
+/** Tests the completion of the current write task on the tensor, if any. **/
+bool Tensor::testWriteTask(int * status)
+{
+ bool res = true;
+ *status = TALSH_TASK_EMPTY;
+ if(pimpl_->write_task_ != nullptr){
+  res = pimpl_->write_task_->test(status);
+  if(res && *status == TALSH_TASK_COMPLETED) pimpl_->write_task_ = nullptr;
+ }
+ return res;
+}
+
+
 /** Initializes TAL-SH runtime. **/
 void initialize(std::size_t * host_buffer_size)
 {
  int num_gpu, gpu_list[MAX_GPUS_PER_NODE];
- int errc = talshGetDeviceCount(DEV_NVIDIA_GPU,&num_gpu);
+ int errc = talshDeviceCount(DEV_NVIDIA_GPU,&num_gpu);
  assert(errc == TALSH_SUCCESS && num_gpu >= 0);
  if(num_gpu > 0){for(int i = 0; i < num_gpu; ++i) gpu_list[i]=i;};
 
