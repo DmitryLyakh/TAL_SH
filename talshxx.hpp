@@ -174,13 +174,14 @@ public:
      on this tensor has failed to complete successfully. **/
  bool sync(const int device_kind = DEV_HOST, //in: device kind
            const int device_id = 0,          //in: specific device of the given kind which the synchronization is done for
-           void * dev_mem = nullptr);        //in: optional pointer to that device's client memory where the tensor data should go
+           void * device_mem = nullptr);     //in: optional pointer to that device's client memory where the tensor data should go
 
  /** Returns TRUE if the tensor is ready (has been computed).
      If ready, synchronizes its presence on the given device. **/
- bool ready(const int device_kind = DEV_HOST, //in: device kind
+ bool ready(int * status,                     //out: status of the current write operation
+            const int device_kind = DEV_HOST, //in: device kind
             const int device_id = 0,          //in: specific device of the given kind which the synchronization is done for
-            void * dev_mem = nullptr);        //in: optional pointer to that device's client memory where the tensor data should go
+            void * device_mem = nullptr);     //in: optional pointer to that device's client memory where the tensor data should go
 
  /** Performs a tensor contraction of two tensors and accumulates the result into the current tensor:
      this += left * right * factor

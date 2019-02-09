@@ -93,13 +93,13 @@ Tensor & Tensor::operator--()
 /** Synchronizes the tensor presence on the given device.
     Returns TRUE on success, FALSE if an active write task
     on this tensor has failed to complete successfully. **/
-bool Tensor::sync(const int device_kind, const int device_id, void * dev_mem)
+bool Tensor::sync(const int device_kind, const int device_id, void * device_mem)
 {
  bool res = this->completeWriteTask();
  if(res){
   int errc;
-  if(dev_mem != nullptr){ //client provided an explicit buffer to place the tensor into
-   errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,dev_mem);
+  if(device_mem != nullptr){ //client provided an explicit buffer to place the tensor into
+   errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,device_mem);
   }else{ //no explicit buffer provided, use saved information (if any)
    if(device_kind == DEV_HOST){
     errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,pimpl_->host_mem_);
@@ -115,23 +115,26 @@ bool Tensor::sync(const int device_kind, const int device_id, void * dev_mem)
 
 /** Returns TRUE if the tensor is ready (has been computed).
     If ready, synchronizes the tensor presence on the given device. **/
-bool Tensor::ready(const int device_kind, const int device_id, void * dev_mem)
+bool Tensor::ready(int * status, const int device_kind, const int device_id, void * device_mem)
 {
- int status = TALSH_TASK_EMPTY;
- bool res = this->testWriteTask(&status);
+ *status = TALSH_TASK_EMPTY;
+ bool res = this->testWriteTask(status);
  if(res){
-  assert(status == TALSH_TASK_COMPLETED);
-  int errc;
-  if(dev_mem != nullptr){ //client provided an explicit buffer to place the tensor into
-   errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,dev_mem);
-  }else{ //no explicit buffer provided, use saved information (if any)
-   if(device_kind == DEV_HOST){
-    errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,pimpl_->host_mem_);
-   }else{
-    errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind);
+  if(*status == TALSH_TASK_COMPLETED){
+   int errc;
+   if(device_mem != nullptr){ //client provided an explicit buffer to place the tensor into
+    errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,device_mem);
+   }else{ //no explicit buffer provided, use saved information (if any)
+    if(device_kind == DEV_HOST){
+     errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,pimpl_->host_mem_);
+    }else{
+     errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind);
+    }
    }
+   assert(errc == TALSH_SUCCESS);
+  }else{
+   assert(*status == TALSH_TASK_EMPTY);
   }
-  assert(errc == TALSH_SUCCESS);
  }
  return res;
 }
