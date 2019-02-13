@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2019/01/05
+!REVISION: 2019/02/13
 
 !Copyright (C) 2013-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -111,10 +111,10 @@
          integer(LONGINT):: tensor_block_size=0_LONGINT           !total number of elements in the tensor block (informal, set after creation)
          integer:: ptr_alloc=0                                    !pointer allocation status (bits set when pointers are getting allocated, not just associated)
          type(tensor_shape_t):: tensor_shape                      !shape of the tensor block (see above)
-         complex(8):: scalar_value=cmplx(0d0,0d0,8)               !scalar value if the rank is zero, otherwise can be used for storing the norm of the tensor block
+         complex(8):: scalar_value=(0d0,0d0)                      !scalar value if the rank is zero, otherwise can be used for storing the norm of the tensor block
          real(4), pointer, contiguous:: data_real4(:)=>NULL()     !tensor block data (float)
          real(8), pointer, contiguous:: data_real8(:)=>NULL()     !tensor block data (double)
-!        complex(4), pointer, contiguous:: data_cmplx4(:)=>NULL() !tensor block data (float complex) `Implement throughout
+         complex(4), pointer, contiguous:: data_cmplx4(:)=>NULL() !tensor block data (float complex)
          complex(8), pointer, contiguous:: data_cmplx8(:)=>NULL() !tensor block data (double complex)
         end type tensor_block_t
 
@@ -141,48 +141,56 @@
         interface tensor_block_slice_dlf
          module procedure tensor_block_slice_dlf_r4
          module procedure tensor_block_slice_dlf_r8
+         module procedure tensor_block_slice_dlf_c4
          module procedure tensor_block_slice_dlf_c8
         end interface tensor_block_slice_dlf
 
         interface tensor_block_insert_dlf
          module procedure tensor_block_insert_dlf_r4
          module procedure tensor_block_insert_dlf_r8
+         module procedure tensor_block_insert_dlf_c4
          module procedure tensor_block_insert_dlf_c8
         end interface tensor_block_insert_dlf
 
         interface tensor_block_copy_dlf
          module procedure tensor_block_copy_dlf_r4
          module procedure tensor_block_copy_dlf_r8
+         module procedure tensor_block_copy_dlf_c4
          module procedure tensor_block_copy_dlf_c8
         end interface tensor_block_copy_dlf
 
         interface tensor_block_copy_scatter_dlf
          module procedure tensor_block_copy_scatter_dlf_r4
          module procedure tensor_block_copy_scatter_dlf_r8
+         module procedure tensor_block_copy_scatter_dlf_c4
          module procedure tensor_block_copy_scatter_dlf_c8
         end interface tensor_block_copy_scatter_dlf
 
         interface tensor_block_fcontract_dlf
          module procedure tensor_block_fcontract_dlf_r4
          module procedure tensor_block_fcontract_dlf_r8
+         module procedure tensor_block_fcontract_dlf_c4
          module procedure tensor_block_fcontract_dlf_c8
         end interface tensor_block_fcontract_dlf
 
         interface tensor_block_pcontract_dlf
          module procedure tensor_block_pcontract_dlf_r4
          module procedure tensor_block_pcontract_dlf_r8
+         module procedure tensor_block_pcontract_dlf_c4
          module procedure tensor_block_pcontract_dlf_c8
         end interface tensor_block_pcontract_dlf
 
         interface tensor_block_ftrace_dlf
          module procedure tensor_block_ftrace_dlf_r4
          module procedure tensor_block_ftrace_dlf_r8
+         module procedure tensor_block_ftrace_dlf_c4
          module procedure tensor_block_ftrace_dlf_c8
         end interface tensor_block_ftrace_dlf
 
         interface tensor_block_ptrace_dlf
          module procedure tensor_block_ptrace_dlf_r4
          module procedure tensor_block_ptrace_dlf_r8
+         module procedure tensor_block_ptrace_dlf_c4
          module procedure tensor_block_ptrace_dlf_c8
         end interface tensor_block_ptrace_dlf
 
@@ -192,6 +200,7 @@
         public set_data_kind_sync          !turns on/off data kind synchronization (0/1)
         public set_transpose_algorithm     !switches between scatter (0) and shared-memory (1) tensor transpose algorithms
         public set_matmult_algorithm       !switches between BLAS GEMM (0) and my OpenMP matmult kernels (1)
+        public cmplx4_to_real4             !returns the real approximate of a complex number (algorithm by D.I.L.)
         public cmplx8_to_real8             !returns the real approximate of a complex number (algorithm by D.I.L.)
         public tensor_shape_assoc          !constructs a tensor shape object by pointer associating with external data
         public tensor_block_layout         !returns the type of the storage layout for a given tensor block
@@ -358,7 +367,27 @@
 #endif
 	return
 	end subroutine set_matmult_algorithm
-!--------------------------------------------------
+!---------------------------------------------
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: cmplx4_to_real4
+#endif
+        real(4) function cmplx4_to_real4(cmplx_num) !SERIAL
+!This function returns a real approximant for a complex number with the following properties:
+! 1) The Euclidean (Frobenius) norm (modulus) is preserved;
+! 2) The sign inversion symmetry is preserved.
+         implicit none
+         complex(4), intent(in):: cmplx_num
+         real(4):: real_part
+
+         real_part=real(cmplx_num)
+         if(real_part.ne.0.0) then
+          cmplx4_to_real4=abs(cmplx_num)*sign(1.0,real_part)
+         else
+          cmplx4_to_real4=aimag(cmplx_num)
+         endif
+         return
+        end function cmplx4_to_real4
+!---------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: cmplx8_to_real8
 #endif
@@ -369,11 +398,12 @@
          implicit none
          complex(8), intent(in):: cmplx_num
          real(8):: real_part
-         real_part=dble(cmplx_num)
+
+         real_part=real(cmplx_num,8)
          if(real_part.ne.0d0) then
           cmplx8_to_real8=abs(cmplx_num)*sign(1d0,real_part)
          else
-          cmplx8_to_real8=dimag(cmplx_num)
+          cmplx8_to_real8=aimag(cmplx_num)
          endif
          return
         end function cmplx8_to_real8
@@ -531,7 +561,7 @@
 !INPUT:
 ! - tens - tensor block;
 !OUTPUT:
-! - tensor_master_data_kind - one of {'r4','r8','c8','--'}, where the latter means "not allocated";
+! - tensor_master_data_kind - one of {'r4','r8','c4','c8','--'}, where the latter means "not allocated";
 ! - ierr - error code (0:success).
 	implicit none
 	type(tensor_block_t), intent(in):: tens
@@ -543,6 +573,7 @@
 	elseif(tens%tensor_shape%num_dim.gt.0) then
 	 if(associated(tens%data_real4)) tensor_master_data_kind='r4'
 	 if(associated(tens%data_real8)) tensor_master_data_kind='r8'
+	 if(associated(tens%data_cmplx4)) tensor_master_data_kind='c4'
 	 if(associated(tens%data_cmplx8)) tensor_master_data_kind='c8'
 	endif
 	return
@@ -553,7 +584,7 @@
 !INPUT:
 ! - tens1, tens2 - compatible tensor blocks;
 !OUTPUT:
-! - tensor_common_data_kind - one of {'r4','r8','c8','--'}, where the latter means "not applicable";
+! - tensor_common_data_kind - one of {'r4','r8','c4','c8','--'}, where the latter means "not applicable";
 ! - ierr - error code (0:success).
 	implicit none
 	type(tensor_block_t), intent(in):: tens1,tens2
@@ -565,6 +596,7 @@
 	elseif(tens1%tensor_shape%num_dim.gt.0.and.tens2%tensor_shape%num_dim.gt.0) then
 	 if(associated(tens1%data_real4).and.associated(tens2%data_real4)) tensor_common_data_kind='r4'
 	 if(associated(tens1%data_real8).and.associated(tens2%data_real8)) tensor_common_data_kind='r8'
+	 if(associated(tens1%data_cmplx4).and.associated(tens2%data_cmplx4)) tensor_common_data_kind='c4'
 	 if(associated(tens1%data_cmplx8).and.associated(tens2%data_cmplx8)) tensor_common_data_kind='c8'
 	endif
 	return
@@ -640,6 +672,17 @@
 	        endif
 	       endif
 	      endif
+	      if((associated(tens_in%data_cmplx4).and.(.not.associated(tens_out%data_cmplx4))).or.&
+	        &((.not.associated(tens_in%data_cmplx4)).and.associated(tens_out%data_cmplx4))) then
+	       tensor_block_compatible=.FALSE.; return
+	      else
+	       if(associated(tens_in%data_cmplx4)) then
+	        ls=size(tens_in%data_cmplx4)
+	        if(size(tens_out%data_cmplx4).ne.ls.or.tens_out%tensor_block_size.ne.ls) then
+	         tensor_block_compatible=.FALSE.; ierr=4; return
+	        endif
+	       endif
+	      endif
 	      if((associated(tens_in%data_cmplx8).and.(.not.associated(tens_out%data_cmplx8))).or.&
 	        &((.not.associated(tens_in%data_cmplx8)).and.associated(tens_out%data_cmplx8))) then
 	       tensor_block_compatible=.FALSE.; return
@@ -647,7 +690,7 @@
 	       if(associated(tens_in%data_cmplx8)) then
 	        ls=size(tens_in%data_cmplx8)
 	        if(size(tens_out%data_cmplx8).ne.ls.or.tens_out%tensor_block_size.ne.ls) then
-	         tensor_block_compatible=.FALSE.; ierr=4; return
+	         tensor_block_compatible=.FALSE.; ierr=5; return
 	        endif
 	       endif
 	      endif
@@ -655,7 +698,7 @@
 	    endif
 	   endif
 	  else
-	   tensor_block_compatible=.FALSE.; ierr=5 !some of the %tensor_shape arrays were not allocated
+	   tensor_block_compatible=.FALSE.; ierr=6 !some of the %tensor_shape arrays were not allocated
 	  endif
 	 endif
 	else
@@ -729,24 +772,37 @@
 	   ierr=11; return
 	  endif
 	 endif
+ !CMPLX4:
+	 if(associated(tens_in%data_cmplx4)) then
+	  if(size(tens_in%data_cmplx4).eq.tens_in%tensor_block_size) then
+	   if(.not.associated(tens_out%data_cmplx4)) then
+!	    allocate(tens_out%data_cmplx4(0:tens_in%tensor_block_size-1),STAT=ierr)
+	    ierr=array_alloc(tens_out%data_cmplx4,tens_in%tensor_block_size,base=0_LONGINT)
+	    if(ierr.ne.0) then; ierr=12; return; endif
+	    res=tensor_block_alloc(tens_out,'c4',ierr,.TRUE.); if(ierr.ne.0) then; ierr=13; return; endif
+	   endif
+	  else
+	   ierr=14; return
+	  endif
+	 endif
  !CMPLX8:
 	 if(associated(tens_in%data_cmplx8)) then
 	  if(size(tens_in%data_cmplx8).eq.tens_in%tensor_block_size) then
 	   if(.not.associated(tens_out%data_cmplx8)) then
 !	    allocate(tens_out%data_cmplx8(0:tens_in%tensor_block_size-1),STAT=ierr)
 	    ierr=array_alloc(tens_out%data_cmplx8,tens_in%tensor_block_size,base=0_LONGINT)
-	    if(ierr.ne.0) then; ierr=12; return; endif
-	    res=tensor_block_alloc(tens_out,'c8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=13; return; endif
+	    if(ierr.ne.0) then; ierr=15; return; endif
+	    res=tensor_block_alloc(tens_out,'c8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=16; return; endif
 	   endif
 	  else
-	   ierr=14; return
+	   ierr=17; return
 	  endif
 	 endif
 	endif
 	return
 	end subroutine tensor_block_mimic
-!-----------------------------------------------------------------------------------------------
-	subroutine tensor_block_create(shape_str,data_kind,tens_block,ierr,val_r4,val_r8,val_c8) !PARALLEL
+!------------------------------------------------------------------------------------------------------
+	subroutine tensor_block_create(shape_str,data_kind,tens_block,ierr,val_r4,val_r8,val_c4,val_c8) !PARALLEL
 !This subroutine creates a tensor block <tens_block> based on the tensor shape specification string (TSSS) <shape_str>.
 !FORMAT of <shape_str>:
 !"(E1/D1{G1},E2/D2{G2},...)":
@@ -759,9 +815,9 @@
 !If the number of dimensions equals to zero, the %scalar_value field will be initialized.
 !INPUT:
 ! - shape_str - tensor shape specification string (SSS);
-! - data_kind - requested data kind, one of {"r4","r8","c8"};
+! - data_kind - requested data kind, one of {"r4","r8","c4","c8"};
 ! - tens_block - tensor block;
-! - val_r4/val_r8/val_c8 - (optional) initialization value for different data kinds (otherwise a random fill will be invoked);
+! - val_r4/val_r8/val_c4/val_c8 - (optional) initialization value for different data kinds (otherwise a random fill will be invoked);
 !OUTPUT:
 ! - tens_block - filled tensor_block;
 ! - ierr - error code (0: success);
@@ -774,6 +830,7 @@
 	type(tensor_block_t), intent(inout):: tens_block
 	real(4), intent(in), optional:: val_r4
 	real(8), intent(in), optional:: val_r8
+	complex(4), intent(in), optional:: val_c4
 	complex(8), intent(in), optional:: val_c8
 	integer, intent(inout):: ierr
 
@@ -788,53 +845,83 @@
 	  if(present(val_r8)) then
 	   call tensor_block_init(data_kind,tens_block,ierr,val_r8=val_r8); if(ierr.ne.0) then; ierr=4; return; endif
 	  else
-	   if(present(val_c8)) then
-	    call tensor_block_init(data_kind,tens_block,ierr,val_c8=val_c8); if(ierr.ne.0) then; ierr=5; return; endif
+	   if(present(val_c4)) then
+            call tensor_block_init(data_kind,tens_block,ierr,val_c4=val_c4); if(ierr.ne.0) then; ierr=5; return; endif
 	   else
-	    call tensor_block_init(data_kind,tens_block,ierr); if(ierr.ne.0) then; ierr=6; return; endif
+	    if(present(val_c8)) then
+	     call tensor_block_init(data_kind,tens_block,ierr,val_c8=val_c8); if(ierr.ne.0) then; ierr=6; return; endif
+	    else
+	     call tensor_block_init(data_kind,tens_block,ierr); if(ierr.ne.0) then; ierr=7; return; endif
+	    endif
 	   endif
 	  endif
 	 endif
 	case('r8','R8')
 	 if(present(val_r8)) then
-	  call tensor_block_init(data_kind,tens_block,ierr,val_r8=val_r8); if(ierr.ne.0) then; ierr=7; return; endif
+	  call tensor_block_init(data_kind,tens_block,ierr,val_r8=val_r8); if(ierr.ne.0) then; ierr=8; return; endif
 	 else
 	  if(present(val_r4)) then
-	   call tensor_block_init(data_kind,tens_block,ierr,val_r4=val_r4); if(ierr.ne.0) then; ierr=8; return; endif
+	   call tensor_block_init(data_kind,tens_block,ierr,val_r4=val_r4); if(ierr.ne.0) then; ierr=9; return; endif
 	  else
-	   if(present(val_c8)) then
-	    call tensor_block_init(data_kind,tens_block,ierr,val_c8=val_c8); if(ierr.ne.0) then; ierr=9; return; endif
+	   if(present(val_c4)) then
+	    call tensor_block_init(data_kind,tens_block,ierr,val_c4=val_c4); if(ierr.ne.0) then; ierr=10; return; endif
 	   else
-	    call tensor_block_init(data_kind,tens_block,ierr); if(ierr.ne.0) then; ierr=10; return; endif
+	    if(present(val_c8)) then
+	     call tensor_block_init(data_kind,tens_block,ierr,val_c8=val_c8); if(ierr.ne.0) then; ierr=11; return; endif
+	    else
+	     call tensor_block_init(data_kind,tens_block,ierr); if(ierr.ne.0) then; ierr=12; return; endif
+	    endif
+	   endif
+	  endif
+	 endif
+	case('c4','C4')
+	 if(present(val_c4)) then
+	  call tensor_block_init(data_kind,tens_block,ierr,val_c4=val_c4); if(ierr.ne.0) then; ierr=13; return; endif
+	 else
+	  if(present(val_c8)) then
+	   call tensor_block_init(data_kind,tens_block,ierr,val_c8=val_c8); if(ierr.ne.0) then; ierr=14; return; endif
+	  else
+	   if(present(val_r8)) then
+	    call tensor_block_init(data_kind,tens_block,ierr,val_r8=val_r8); if(ierr.ne.0) then; ierr=15; return; endif
+	   else
+	    if(present(val_r4)) then
+	     call tensor_block_init(data_kind,tens_block,ierr,val_r4=val_r4); if(ierr.ne.0) then; ierr=16; return; endif
+	    else
+	     call tensor_block_init(data_kind,tens_block,ierr); if(ierr.ne.0) then; ierr=17; return; endif
+	    endif
 	   endif
 	  endif
 	 endif
 	case('c8','C8')
 	 if(present(val_c8)) then
-	  call tensor_block_init(data_kind,tens_block,ierr,val_c8=val_c8); if(ierr.ne.0) then; ierr=11; return; endif
+	  call tensor_block_init(data_kind,tens_block,ierr,val_c8=val_c8); if(ierr.ne.0) then; ierr=18; return; endif
 	 else
-	  if(present(val_r8)) then
-	   call tensor_block_init(data_kind,tens_block,ierr,val_r8=val_r8); if(ierr.ne.0) then; ierr=12; return; endif
+	  if(present(val_c4)) then
+	   call tensor_block_init(data_kind,tens_block,ierr,val_c4=val_c4); if(ierr.ne.0) then; ierr=19; return; endif
 	  else
-	   if(present(val_r4)) then
-	    call tensor_block_init(data_kind,tens_block,ierr,val_r4=val_r4); if(ierr.ne.0) then; ierr=13; return; endif
+	   if(present(val_r8)) then
+	    call tensor_block_init(data_kind,tens_block,ierr,val_r8=val_r8); if(ierr.ne.0) then; ierr=20; return; endif
 	   else
-	    call tensor_block_init(data_kind,tens_block,ierr); if(ierr.ne.0) then; ierr=14; return; endif
+	    if(present(val_r4)) then
+	     call tensor_block_init(data_kind,tens_block,ierr,val_r4=val_r4); if(ierr.ne.0) then; ierr=21; return; endif
+	    else
+	     call tensor_block_init(data_kind,tens_block,ierr); if(ierr.ne.0) then; ierr=22; return; endif
+	    endif
 	   endif
 	  endif
 	 endif
 	case default
-	 ierr=15
+	 ierr=23
 	end select
 	return
 	end subroutine tensor_block_create
-!-----------------------------------------------------------------------------------
-	subroutine tensor_block_init(data_kind,tens_block,ierr,val_r4,val_r8,val_c8) !PARALLEL
+!------------------------------------------------------------------------------------------
+	subroutine tensor_block_init(data_kind,tens_block,ierr,val_r4,val_r8,val_c4,val_c8) !PARALLEL
 !This subroutine initializes a tensor block <tens_block> with either some value or random numbers.
 !INPUT:
-! - data_kind - requested data kind, one of {"r4","r8","c8"};
+! - data_kind - requested data kind, one of {"r4","r8","c4","c8"};
 ! - tens_block - tensor block;
-! - val_r4/val_r8/val_c8 - (optional) if present, the tensor block is assigned the value <val> (otherwise, a random fill);
+! - val_r4/val_r8/val_c4/val_c8 - (optional) if present, the tensor block is assigned the value <val> (otherwise, a random fill);
 !OUTPUT:
 ! - tens_block - filled tensor block;
 ! - ierr - error code (0: success):
@@ -857,12 +944,14 @@
 	type(tensor_block_t), intent(inout):: tens_block
 	real(4), intent(in), optional:: val_r4
 	real(8), intent(in), optional:: val_r8
+	complex(4), intent(in), optional:: val_c4
 	complex(8), intent(in), optional:: val_c8
 	integer, intent(inout):: ierr
 	integer i,j,k,l,m,n,k0,k1,k2,k3,k4,ks,kf
 	integer(LONGINT) tens_size,l0,l1
 	real(8) vec_r8(0:vec_size-1),valr8,val,rnd_buf(2)
 	real(4) vec_r4(0:vec_size-1),valr4
+	complex(4) vec_c4(0:vec_size-1),valc4
 	complex(8) vec_c8(0:vec_size-1),valc8
 	logical res
 
@@ -894,19 +983,31 @@
 	   nullify(tens_block%data_real8)
 	  endif
 	 endif
-	 if(associated(tens_block%data_cmplx8)) then
-	  if(tensor_block_alloc(tens_block,'c8',ierr)) then
+	 if(associated(tens_block%data_cmplx4)) then
+	  if(tensor_block_alloc(tens_block,'c4',ierr)) then
 	   if(ierr.ne.0) then; ierr=11; return; endif
-!	   deallocate(tens_block%data_cmplx8,STAT=ierr)
-	   call array_free(tens_block%data_cmplx8,ierr)
+!	   deallocate(tens_block%data_cmplx4,STAT=ierr)
+	   call array_free(tens_block%data_cmplx4,ierr)
 	   if(ierr.ne.0) then; ierr=12; return; endif
-	   res=tensor_block_alloc(tens_block,'c8',ierr,.FALSE.); if(ierr.ne.0) then; ierr=13; return; endif
+	   res=tensor_block_alloc(tens_block,'c4',ierr,.FALSE.); if(ierr.ne.0) then; ierr=13; return; endif
 	  else
 	   if(ierr.ne.0) then; ierr=14; return; endif
+	   nullify(tens_block%data_cmplx4)
+	  endif
+	 endif
+	 if(associated(tens_block%data_cmplx8)) then
+	  if(tensor_block_alloc(tens_block,'c8',ierr)) then
+	   if(ierr.ne.0) then; ierr=15; return; endif
+!	   deallocate(tens_block%data_cmplx8,STAT=ierr)
+	   call array_free(tens_block%data_cmplx8,ierr)
+	   if(ierr.ne.0) then; ierr=16; return; endif
+	   res=tensor_block_alloc(tens_block,'c8',ierr,.FALSE.); if(ierr.ne.0) then; ierr=17; return; endif
+	  else
+	   if(ierr.ne.0) then; ierr=18; return; endif
 	   nullify(tens_block%data_cmplx8)
 	  endif
 	 endif
-	 if(tens_block%tensor_block_size.ne.1_LONGINT) then; ierr=15; return; endif
+	 if(tens_block%tensor_block_size.ne.1_LONGINT) then; ierr=19; return; endif
 	endif
 	select case(data_kind)
 	case('r4','R4')
@@ -934,15 +1035,19 @@
 	   if(ierr.ne.0) then; ierr=22; return; endif
 	   res=tensor_block_alloc(tens_block,'r4',ierr,.TRUE.); if(ierr.ne.0) then; ierr=23; return; endif
 	  endif
-	  if(present(val_r4).or.present(val_r8).or.present(val_c8)) then !constant fill
+	  if(present(val_r4).or.present(val_r8).or.present(val_c4).or.present(val_c8)) then !constant fill
 	   if(present(val_r4)) then
 	    valr4=val_r4
 	   else
 	    if(present(val_r8)) then
 	     valr4=real(val_r8,4)
 	    else
-	     if(present(val_c8)) then
-	      valr4=real(cmplx8_to_real8(val_c8),4)
+	     if(present(val_c4)) then
+	      valr4=cmplx4_to_real4(val_c4)
+	     else
+	      if(present(val_c8)) then
+	       valr4=real(cmplx8_to_real8(val_c8),4)
+	      endif
 	     endif
 	    endif
 	   endif
@@ -970,19 +1075,23 @@
 	  endif
 	  if(DATA_KIND_SYNC) then
 	   valr8=tensor_block_norm2(tens_block,ierr,'r4'); if(ierr.ne.0) then; ierr=24; return; endif
-	   tens_block%scalar_value=cmplx(dsqrt(valr8),0d0,8)
+	   tens_block%scalar_value=cmplx(dsqrt(valr8),0d0,kind=8)
 	  endif
 	 else !scalar
 	  if(present(val_r4)) then
-	   tens_block%scalar_value=cmplx(val_r4,0d0,8)
+	   tens_block%scalar_value=cmplx(real(val_r4,8),0d0,kind=8)
 	  else
 	   if(present(val_r8)) then
-	    tens_block%scalar_value=cmplx(val_r8,0d0,8)
+	    tens_block%scalar_value=cmplx(val_r8,0d0,kind=8)
 	   else
-	    if(present(val_c8)) then
-	     tens_block%scalar_value=val_c8
+	    if(present(val_c4)) then
+	     tens_block%scalar_value=cmplx(val_c4,kind=8)
 	    else
-	     call random_number(val); tens_block%scalar_value=cmplx(val,0d0,8)
+	     if(present(val_c8)) then
+	      tens_block%scalar_value=val_c8
+	     else
+	      call random_number(val); tens_block%scalar_value=cmplx(val,0d0,kind=8)
+	     endif
 	    endif
 	   endif
 	  endif
@@ -1012,15 +1121,19 @@
 	   if(ierr.ne.0) then; ierr=31; return; endif
 	   res=tensor_block_alloc(tens_block,'r8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=32; return; endif
 	  endif
-	  if(present(val_r4).or.present(val_r8).or.present(val_c8)) then !constant fill
+	  if(present(val_r4).or.present(val_r8).or.present(val_c4).or.present(val_c8)) then !constant fill
 	   if(present(val_r8)) then
 	    valr8=val_r8
 	   else
 	    if(present(val_r4)) then
 	     valr8=real(val_r4,8)
 	    else
-	     if(present(val_c8)) then
-	      valr8=cmplx8_to_real8(val_c8)
+	     if(present(val_c4)) then
+	      valr8=real(cmplx4_to_real4(val_c4),8)
+	     else
+	      if(present(val_c8)) then
+	       valr8=cmplx8_to_real8(val_c8)
+	      endif
 	     endif
 	    endif
 	   endif
@@ -1048,19 +1161,108 @@
 	  endif
 	  if(DATA_KIND_SYNC) then
 	   valr8=tensor_block_norm2(tens_block,ierr,'r8'); if(ierr.ne.0) then; ierr=33; return; endif
-	   tens_block%scalar_value=cmplx(dsqrt(valr8),0d0,8)
+	   tens_block%scalar_value=cmplx(dsqrt(valr8),0d0,kind=8)
 	  endif
 	 else !scalar
 	  if(present(val_r8)) then
-	   tens_block%scalar_value=cmplx(val_r8,0d0,8)
+	   tens_block%scalar_value=cmplx(val_r8,0d0,kind=8)
 	  else
 	   if(present(val_r4)) then
-	    tens_block%scalar_value=cmplx(val_r4,0d0,8)
+	    tens_block%scalar_value=cmplx(real(val_r4,8),0d0,kind=8)
+	   else
+	    if(present(val_c4)) then
+	     tens_block%scalar_value=cmplx(val_c4,kind=8)
+	    else
+	     if(present(val_c8)) then
+	      tens_block%scalar_value=val_c8
+	     else
+	      call random_number(val); tens_block%scalar_value=cmplx(val,0d0,kind=8)
+	     endif
+	    endif
+	   endif
+	  endif
+	 endif
+	case('c4','C4')
+	 if(tens_block%tensor_shape%num_dim.gt.0) then !true tensor
+	  if(associated(tens_block%data_cmplx4)) then
+	   if(size(tens_block%data_cmplx4).ne.tens_block%tensor_block_size) then
+	    if(tensor_block_alloc(tens_block,'c4',ierr)) then
+	     if(ierr.ne.0) then; ierr=34; return; endif
+!	     deallocate(tens_block%data_cmplx4,STAT=ierr)
+	     call array_free(tens_block%data_cmplx4,ierr)
+	     if(ierr.ne.0) then; ierr=35; return; endif
+	     res=tensor_block_alloc(tens_block,'c4',ierr,.FALSE.); if(ierr.ne.0) then; ierr=36; return; endif
+	    else
+	     if(ierr.ne.0) then; ierr=37; return; endif
+	     nullify(tens_block%data_cmplx4)
+	    endif
+!	    allocate(tens_block%data_cmplx4(0:tens_block%tensor_block_size-1),STAT=ierr)
+	    ierr=array_alloc(tens_block%data_cmplx4,tens_block%tensor_block_size,base=0_LONGINT)
+	    if(ierr.ne.0) then; ierr=38; return; endif
+	    res=tensor_block_alloc(tens_block,'c4',ierr,.TRUE.); if(ierr.ne.0) then; ierr=39; return; endif
+	   endif
+	  else
+!	   allocate(tens_block%data_cmplx4(0:tens_block%tensor_block_size-1),STAT=ierr)
+	   ierr=array_alloc(tens_block%data_cmplx4,tens_block%tensor_block_size,base=0_LONGINT)
+	   if(ierr.ne.0) then; ierr=40; return; endif
+	   res=tensor_block_alloc(tens_block,'c4',ierr,.TRUE.); if(ierr.ne.0) then; ierr=41; return; endif
+	  endif
+	  if(present(val_r4).or.present(val_r8).or.present(val_c4).or.present(val_c8)) then !constant fill
+	   if(present(val_c4)) then
+	    valc4=val_c4
 	   else
 	    if(present(val_c8)) then
-	     tens_block%scalar_value=val_c8
+	     valc4=cmplx(val_c8,kind=4)
 	    else
-	     call random_number(val); tens_block%scalar_value=cmplx(val,0d0,8)
+	     if(present(val_r8)) then
+	      valc4=cmplx(val_r8,0d0,kind=4)
+	     else
+	      if(present(val_r4)) then
+	       valc4=cmplx(val_r4,0.0,kind=4)
+	      endif
+	     endif
+	    endif
+	   endif
+	   vec_c4(0_LONGINT:vec_size-1_LONGINT)=valc4
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l1)
+!$OMP DO SCHEDULE(GUIDED)
+	   do l0=0_LONGINT,tens_block%tensor_block_size-1_LONGINT-mod(tens_block%tensor_block_size,vec_size),vec_size
+	    do l1=0_LONGINT,vec_size-1_LONGINT; tens_block%data_cmplx4(l0+l1)=vec_c4(l1); enddo
+	   enddo
+!$OMP END DO NOWAIT
+!$OMP MASTER
+	   tens_block%data_cmplx4(tens_block%tensor_block_size-mod(tens_block%tensor_block_size,vec_size):&
+	                         &tens_block%tensor_block_size-1_LONGINT)=valc4
+!$OMP END MASTER
+!$OMP END PARALLEL
+	  else !random fill
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,rnd_buf)
+!$OMP DO SCHEDULE(GUIDED)
+	   do l0=0_LONGINT,tens_block%tensor_block_size-1_LONGINT
+	    call random_number(rnd_buf(1:2)); tens_block%data_cmplx4(l0)=cmplx(rnd_buf(1),rnd_buf(2),kind=4)
+	   enddo
+!$OMP END DO
+!$OMP END PARALLEL
+	  endif
+	  if(DATA_KIND_SYNC) then
+	   valr8=tensor_block_norm2(tens_block,ierr,'c4'); if(ierr.ne.0) then; ierr=42; return; endif
+	   tens_block%scalar_value=cmplx(dsqrt(valr8),0d0,kind=8)
+	  endif
+	 else !scalar
+	  if(present(val_c4)) then
+	   tens_block%scalar_value=cmplx(val_c4,kind=8)
+	  else
+	   if(present(val_c8)) then
+	    tens_block%scalar_value=val_c8
+	   else
+	    if(present(val_r8)) then
+	     tens_block%scalar_value=cmplx(val_r8,0d0,kind=8)
+	    else
+	     if(present(val_r4)) then
+	      tens_block%scalar_value=cmplx(real(val_r4,8),0d0,kind=8)
+	     else
+	      call random_number(val); call random_number(valr8); tens_block%scalar_value=cmplx(val,valr8,kind=8)
+	     endif
 	    endif
 	   endif
 	  endif
@@ -1070,35 +1272,39 @@
 	  if(associated(tens_block%data_cmplx8)) then
 	   if(size(tens_block%data_cmplx8).ne.tens_block%tensor_block_size) then
 	    if(tensor_block_alloc(tens_block,'c8',ierr)) then
-	     if(ierr.ne.0) then; ierr=34; return; endif
+	     if(ierr.ne.0) then; ierr=43; return; endif
 !	     deallocate(tens_block%data_cmplx8,STAT=ierr)
 	     call array_free(tens_block%data_cmplx8,ierr)
-	     if(ierr.ne.0) then; ierr=35; return; endif
-	     res=tensor_block_alloc(tens_block,'c8',ierr,.FALSE.); if(ierr.ne.0) then; ierr=36; return; endif
+	     if(ierr.ne.0) then; ierr=44; return; endif
+	     res=tensor_block_alloc(tens_block,'c8',ierr,.FALSE.); if(ierr.ne.0) then; ierr=45; return; endif
 	    else
-	     if(ierr.ne.0) then; ierr=37; return; endif
+	     if(ierr.ne.0) then; ierr=46; return; endif
 	     nullify(tens_block%data_cmplx8)
 	    endif
 !	    allocate(tens_block%data_cmplx8(0:tens_block%tensor_block_size-1),STAT=ierr)
 	    ierr=array_alloc(tens_block%data_cmplx8,tens_block%tensor_block_size,base=0_LONGINT)
-	    if(ierr.ne.0) then; ierr=38; return; endif
-	    res=tensor_block_alloc(tens_block,'c8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=39; return; endif
+	    if(ierr.ne.0) then; ierr=47; return; endif
+	    res=tensor_block_alloc(tens_block,'c8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=48; return; endif
 	   endif
 	  else
 !	   allocate(tens_block%data_cmplx8(0:tens_block%tensor_block_size-1),STAT=ierr)
 	   ierr=array_alloc(tens_block%data_cmplx8,tens_block%tensor_block_size,base=0_LONGINT)
-	   if(ierr.ne.0) then; ierr=40; return; endif
-	   res=tensor_block_alloc(tens_block,'c8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=41; return; endif
+	   if(ierr.ne.0) then; ierr=49; return; endif
+	   res=tensor_block_alloc(tens_block,'c8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=50; return; endif
 	  endif
-	  if(present(val_r4).or.present(val_r8).or.present(val_c8)) then !constant fill
+	  if(present(val_r4).or.present(val_r8).or.present(val_c4).or.present(val_c8)) then !constant fill
 	   if(present(val_c8)) then
 	    valc8=val_c8
 	   else
-	    if(present(val_r8)) then
-	     valc8=cmplx(val_r8,0d0,8)
+	    if(present(val_c4)) then
+	     valc8=cmplx(val_c4,kind=8)
 	    else
-	     if(present(val_r4)) then
-	      valc8=cmplx(val_r4,0d0,8)
+	     if(present(val_r8)) then
+	      valc8=cmplx(val_r8,0d0,kind=8)
+	     else
+	      if(present(val_r4)) then
+	       valc8=cmplx(real(val_r4,8),0d0,kind=8)
+	      endif
 	     endif
 	    endif
 	   endif
@@ -1118,32 +1324,36 @@
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,rnd_buf)
 !$OMP DO SCHEDULE(GUIDED)
 	   do l0=0_LONGINT,tens_block%tensor_block_size-1_LONGINT
-	    call random_number(rnd_buf(1:2)); tens_block%data_cmplx8(l0)=cmplx(rnd_buf(1),rnd_buf(2),8)
+	    call random_number(rnd_buf(1:2)); tens_block%data_cmplx8(l0)=cmplx(rnd_buf(1),rnd_buf(2),kind=8)
 	   enddo
 !$OMP END DO
 !$OMP END PARALLEL
 	  endif
 	  if(DATA_KIND_SYNC) then
-	   valr8=tensor_block_norm2(tens_block,ierr,'c8'); if(ierr.ne.0) then; ierr=42; return; endif
-	   tens_block%scalar_value=cmplx(dsqrt(valr8),0d0,8)
+	   valr8=tensor_block_norm2(tens_block,ierr,'c8'); if(ierr.ne.0) then; ierr=51; return; endif
+	   tens_block%scalar_value=cmplx(dsqrt(valr8),0d0,kind=8)
 	  endif
 	 else !scalar
 	  if(present(val_c8)) then
 	   tens_block%scalar_value=val_c8
 	  else
-	   if(present(val_r8)) then
-	    tens_block%scalar_value=cmplx(val_r8,0d0,8)
+	   if(present(val_c4)) then
+	    tens_block%scalar_value=cmplx(val_c4,kind=8)
 	   else
-	    if(present(val_r4)) then
-	     tens_block%scalar_value=cmplx(val_r4,0d0,8)
+	    if(present(val_r8)) then
+	     tens_block%scalar_value=cmplx(val_r8,0d0,kind=8)
 	    else
-	     call random_number(val); call random_number(valr8); tens_block%scalar_value=cmplx(val,valr8,8)
+	     if(present(val_r4)) then
+	      tens_block%scalar_value=cmplx(real(val_r4,8),0d0,kind=8)
+	     else
+	      call random_number(val); call random_number(valr8); tens_block%scalar_value=cmplx(val,valr8,kind=8)
+	     endif
 	    endif
 	   endif
 	  endif
 	 endif
 	case default
-	 ierr=43
+	 ierr=52
 	end select
 	return
 	end subroutine tensor_block_init
@@ -1199,7 +1409,7 @@
               if(tens%tensor_shape%num_dim.gt.0) then
                tens%data_real4(0:)=>r4p; tens%scalar_value=(0d0,0d0)
               else
-               tens%scalar_value=cmplx(real(r4p(lbound(r4p,1)),8),0d0,8)
+               tens%scalar_value=cmplx(real(r4p(lbound(r4p,1)),8),0d0,kind=8)
               endif
               r4p=>NULL()
              case(R8)
@@ -1207,9 +1417,17 @@
               if(tens%tensor_shape%num_dim.gt.0) then
                tens%data_real8(0:)=>r8p; tens%scalar_value=(0d0,0d0)
               else
-               tens%scalar_value=cmplx(r8p(lbound(r8p,1)),0d0,8)
+               tens%scalar_value=cmplx(r8p(lbound(r8p,1)),0d0,kind=8)
               endif
               r8p=>NULL()
+             case(C4)
+              call c_f_pointer(tens_body,c4p,shape=(/tens%tensor_block_size/))
+              if(tens%tensor_shape%num_dim.gt.0) then
+               tens%data_cmplx4(0:)=>c4p; tens%scalar_value=(0d0,0d0)
+              else
+               tens%scalar_value=c4p(lbound(c4p,1))
+              endif
+              c4p=>NULL()
              case(C8)
               call c_f_pointer(tens_body,c8p,shape=(/tens%tensor_block_size/))
               if(tens%tensor_shape%num_dim.gt.0) then
@@ -1277,34 +1495,50 @@
 !	else
 !	 res=tensor_block_alloc(tens_block,'r8',ierr,.FALSE.); if(ierr.ne.0) then; ierr=10; return; endif
 	endif
+!COMPLEX4:
+	if(associated(tens_block%data_cmplx4)) then
+	 if(tensor_block_alloc(tens_block,'c4',ierr)) then
+	  if(ierr.ne.0) then; ierr=11; return; endif
+!	  deallocate(tens_block%data_cmplx4,STAT=ierr)
+	  call array_free(tens_block%data_cmplx4,ierr)
+	  if(ierr.ne.0) then; ierr=12; return; endif
+	  res=tensor_block_alloc(tens_block,'c4',ierr,.FALSE.); if(ierr.ne.0) then; ierr=13; return; endif
+	 else
+	  if(ierr.ne.0) then; ierr=14; return; endif
+!	  deallocate(tens_block%data_cmplx4,STAT=i) !debug
+	  nullify(tens_block%data_cmplx4)
+	 endif
+!	else
+!	 res=tensor_block_alloc(tens_block,'c4',ierr,.FALSE.); if(ierr.ne.0) then; ierr=15; return; endif
+	endif
 !COMPLEX8:
 	if(associated(tens_block%data_cmplx8)) then
 	 if(tensor_block_alloc(tens_block,'c8',ierr)) then
-	  if(ierr.ne.0) then; ierr=11; return; endif
+	  if(ierr.ne.0) then; ierr=16; return; endif
 !	  deallocate(tens_block%data_cmplx8,STAT=ierr)
 	  call array_free(tens_block%data_cmplx8,ierr)
-	  if(ierr.ne.0) then; ierr=12; return; endif
-	  res=tensor_block_alloc(tens_block,'c8',ierr,.FALSE.); if(ierr.ne.0) then; ierr=13; return; endif
+	  if(ierr.ne.0) then; ierr=17; return; endif
+	  res=tensor_block_alloc(tens_block,'c8',ierr,.FALSE.); if(ierr.ne.0) then; ierr=18; return; endif
 	 else
-	  if(ierr.ne.0) then; ierr=14; return; endif
+	  if(ierr.ne.0) then; ierr=19; return; endif
 !	  deallocate(tens_block%data_cmplx8,STAT=i) !debug
 	  nullify(tens_block%data_cmplx8)
 	 endif
 !	else
-!	 res=tensor_block_alloc(tens_block,'c8',ierr,.FALSE.); if(ierr.ne.0) then; ierr=15; return; endif
+!	 res=tensor_block_alloc(tens_block,'c8',ierr,.FALSE.); if(ierr.ne.0) then; ierr=20; return; endif
 	endif
 !SCALAR:
-	tens_block%scalar_value=cmplx(0d0,0d0,8)
+	tens_block%scalar_value=(0d0,0d0)
 !TENSOR SHAPE:
 	tens_block%tensor_shape%num_dim=-1
 	if(tensor_block_alloc(tens_block,'sp',ierr)) then
-	 if(ierr.ne.0) then; ierr=16; return; endif
-	 deallocate(tens_block%tensor_shape%dim_extent,STAT=ierr); if(ierr.ne.0) then; ierr=17; return; endif
-	 deallocate(tens_block%tensor_shape%dim_divider,STAT=ierr); if(ierr.ne.0) then; ierr=18; return; endif
-	 deallocate(tens_block%tensor_shape%dim_group,STAT=ierr); if(ierr.ne.0) then; ierr=19; return; endif
-	 res=tensor_block_alloc(tens_block,'sp',ierr,.FALSE.); if(ierr.ne.0) then; ierr=20; return; endif
-	else
 	 if(ierr.ne.0) then; ierr=21; return; endif
+	 deallocate(tens_block%tensor_shape%dim_extent,STAT=ierr); if(ierr.ne.0) then; ierr=22; return; endif
+	 deallocate(tens_block%tensor_shape%dim_divider,STAT=ierr); if(ierr.ne.0) then; ierr=23; return; endif
+	 deallocate(tens_block%tensor_shape%dim_group,STAT=ierr); if(ierr.ne.0) then; ierr=24; return; endif
+	 res=tensor_block_alloc(tens_block,'sp',ierr,.FALSE.); if(ierr.ne.0) then; ierr=25; return; endif
+	else
+	 if(ierr.ne.0) then; ierr=26; return; endif
 	 nullify(tens_block%tensor_shape%dim_extent)
 	 nullify(tens_block%tensor_shape%dim_divider)
 	 nullify(tens_block%tensor_shape%dim_group)
@@ -1319,8 +1553,8 @@
 !Note that basic tensor operations do not have to keep different data kinds consistent, so it is fully on the user!
 !INPUT:
 ! - tens - tensor block;
-! - mast_kind - master data kind, one of {'r4','r8','c8'};
-! - slave_kind - (optional) slave data kind, one of {'r4','r8','c8', or '--'} (the latter means to destroy the master data kind);
+! - mast_kind - master data kind, one of {'r4','r8','c4','c8'};
+! - slave_kind - (optional) slave data kind, one of {'r4','r8','c4','c8', or '--'} (the latter means to destroy the master data kind);
 !                If absent, all allocated data kinds will be syncronized with the master data kind.
 !OUTPUT:
 ! - tens - modified tensor block;
@@ -1340,23 +1574,26 @@
 	integer(LONGINT) l0,ls
 	real(4) val_r4
 	real(8) val_r8
+	complex(4) val_c4
 	complex(8) val_c8
 	logical res
 
 	ierr=0
 	if(mast_kind.ne.'r4'.and.mast_kind.ne.'R4'.and.&
 	  &mast_kind.ne.'r8'.and.mast_kind.ne.'R8'.and.&
+	  &mast_kind.ne.'c4'.and.mast_kind.ne.'C4'.and.&
 	  &mast_kind.ne.'c8'.and.mast_kind.ne.'C8') then; ierr=1; return; endif
 	if(present(slave_kind)) then; slk=slave_kind; else; slk='  '; endif
 	if(tens%tensor_shape%num_dim.gt.0) then !true tensor
 	 if(((mast_kind.eq.'r4'.or.mast_kind.eq.'R4').and.associated(tens%data_real4)).or.&
 	   &((mast_kind.eq.'r8'.or.mast_kind.eq.'R8').and.associated(tens%data_real8)).or.&
+	   &((mast_kind.eq.'c4'.or.mast_kind.eq.'C4').and.associated(tens%data_cmplx4)).or.&
 	   &((mast_kind.eq.'c8'.or.mast_kind.eq.'C8').and.associated(tens%data_cmplx8))) then
 	  ls=tens%tensor_block_size
 	  if(slk.eq.'--') then !destroy master data kind
 	   select case(mast_kind)
 	   case('r4','R4')
-	    if(associated(tens%data_real8).or.associated(tens%data_cmplx8)) then
+	    if(associated(tens%data_real8).or.associated(tens%data_cmplx4).or.associated(tens%data_cmplx8)) then
 	     if(tensor_block_alloc(tens,'r4',ierr)) then
 	      if(ierr.ne.0) then; ierr=2; return; endif
 !	      deallocate(tens%data_real4,STAT=ierr)
@@ -1371,7 +1608,7 @@
 	     ierr=6; return
 	    endif
 	   case('r8','R8')
-	    if(associated(tens%data_real4).or.associated(tens%data_cmplx8)) then
+	    if(associated(tens%data_real4).or.associated(tens%data_cmplx4).or.associated(tens%data_cmplx8)) then
 	     if(tensor_block_alloc(tens,'r8',ierr)) then
 	      if(ierr.ne.0) then; ierr=7; return; endif
 !	      deallocate(tens%data_real8,STAT=ierr)
@@ -1385,26 +1622,41 @@
 	    else
 	     ierr=11; return
 	    endif
-	   case('c8','C8')
-	    if(associated(tens%data_real4).or.associated(tens%data_real8)) then
-	     if(tensor_block_alloc(tens,'c8',ierr)) then
+	   case('c4','C4')
+	    if(associated(tens%data_real4).or.associated(tens%data_real8).or.associated(tens%data_cmplx8)) then
+	     if(tensor_block_alloc(tens,'c4',ierr)) then
 	      if(ierr.ne.0) then; ierr=12; return; endif
-!	      deallocate(tens%data_cmplx8,STAT=ierr)
-	      call array_free(tens%data_cmplx8,ierr)
+!	      deallocate(tens%data_cmplx4,STAT=ierr)
+	      call array_free(tens%data_cmplx4,ierr)
 	      if(ierr.ne.0) then; ierr=13; return; endif
-	      res=tensor_block_alloc(tens,'c8',ierr,.FALSE.); if(ierr.ne.0) then; ierr=14; return; endif
+	      res=tensor_block_alloc(tens,'c4',ierr,.FALSE.); if(ierr.ne.0) then; ierr=14; return; endif
 	     else
 	      if(ierr.ne.0) then; ierr=15; return; endif
-	      nullify(tens%data_cmplx8)
+	      nullify(tens%data_cmplx4)
 	     endif
 	    else
 	     ierr=16; return
 	    endif
+	   case('c8','C8')
+	    if(associated(tens%data_real4).or.associated(tens%data_real8).or.associated(tens%data_cmplx4)) then
+	     if(tensor_block_alloc(tens,'c8',ierr)) then
+	      if(ierr.ne.0) then; ierr=17; return; endif
+!	      deallocate(tens%data_cmplx8,STAT=ierr)
+	      call array_free(tens%data_cmplx8,ierr)
+	      if(ierr.ne.0) then; ierr=18; return; endif
+	      res=tensor_block_alloc(tens,'c8',ierr,.FALSE.); if(ierr.ne.0) then; ierr=19; return; endif
+	     else
+	      if(ierr.ne.0) then; ierr=20; return; endif
+	      nullify(tens%data_cmplx8)
+	     endif
+	    else
+	     ierr=21; return
+	    endif
 	   end select
 	  else
 !Set the tensor block norm based on the master kind:
-	   val_r8=tensor_block_norm2(tens,ierr,mast_kind); if(ierr.ne.0) then; ierr=17; return; endif
-	   tens%scalar_value=cmplx(dsqrt(val_r8),0d0,8) !Euclidean (Frobenius) norm of the tensor block
+	   val_r8=tensor_block_norm2(tens,ierr,mast_kind); if(ierr.ne.0) then; ierr=22; return; endif
+	   tens%scalar_value=cmplx(dsqrt(val_r8),0d0,kind=8) !Euclidean (Frobenius) norm of the tensor block
 !Proceed:
 	   if(slk.ne.mast_kind) then
  !REAL4:
@@ -1413,8 +1665,8 @@
 	     if(slk.ne.'  '.and.(.not.associated(tens%data_real4))) then
 !	      allocate(tens%data_real4(0:ls-1),STAT=ierr)
 	      ierr=array_alloc(tens%data_real4,ls,base=0_LONGINT)
-	      if(ierr.ne.0) then; ierr=18; return; endif
-	      res=tensor_block_alloc(tens,'r4',ierr,.TRUE.); if(ierr.ne.0) then; ierr=19; return; endif
+	      if(ierr.ne.0) then; ierr=23; return; endif
+	      res=tensor_block_alloc(tens,'r4',ierr,.TRUE.); if(ierr.ne.0) then; ierr=24; return; endif
 	     endif
 	     if(size(tens%data_real4).eq.ls) then
 	      select case(mast_kind)
@@ -1422,13 +1674,17 @@
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
 	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_real4(l0)=real(tens%data_real8(l0),4); enddo
 !$OMP END PARALLEL DO
+	      case('c4','C4')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_real4(l0)=cmplx4_to_real4(tens%data_cmplx4(l0)); enddo
+!$OMP END PARALLEL DO
 	      case('c8','C8')
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
 	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_real4(l0)=real(cmplx8_to_real8(tens%data_cmplx8(l0)),4); enddo
 !$OMP END PARALLEL DO
 	      end select
 	     else
-	      ierr=20; return !array size mismatch
+	      ierr=25; return !array size mismatch
 	     endif
 	    endif
  !REAL8:
@@ -1437,8 +1693,8 @@
 	     if(slk.ne.'  '.and.(.not.associated(tens%data_real8))) then
 !	      allocate(tens%data_real8(0:ls-1),STAT=ierr)
 	      ierr=array_alloc(tens%data_real8,ls,base=0_LONGINT)
-	      if(ierr.ne.0) then; ierr=21; return; endif
-	      res=tensor_block_alloc(tens,'r8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=22; return; endif
+	      if(ierr.ne.0) then; ierr=26; return; endif
+	      res=tensor_block_alloc(tens,'r8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=27; return; endif
 	     endif
 	     if(size(tens%data_real8).eq.ls) then
 	      select case(mast_kind)
@@ -1446,13 +1702,45 @@
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
 	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_real8(l0)=tens%data_real4(l0); enddo
 !$OMP END PARALLEL DO
+	      case('c4','C4')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_real8(l0)=real(cmplx4_to_real4(tens%data_cmplx4(l0)),8); enddo
+!$OMP END PARALLEL DO
 	      case('c8','C8')
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
 	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_real8(l0)=cmplx8_to_real8(tens%data_cmplx8(l0)); enddo
 !$OMP END PARALLEL DO
 	      end select
 	     else
-	      ierr=23; return !array size mismatch
+	      ierr=28; return !array size mismatch
+	     endif
+	    endif
+ !COMPLEX4:
+	    if((slk.eq.'c4'.or.slk.eq.'C4').or.&
+	      &((mast_kind.ne.'c4'.and.mast_kind.ne.'C4').and.slk.eq.'  '.and.associated(tens%data_cmplx4))) then
+	     if(slk.ne.'  '.and.(.not.associated(tens%data_cmplx4))) then
+!	      allocate(tens%data_cmplx4(0:ls-1),STAT=ierr)
+	      ierr=array_alloc(tens%data_cmplx4,ls,base=0_LONGINT)
+	      if(ierr.ne.0) then; ierr=29; return; endif
+	      res=tensor_block_alloc(tens,'c4',ierr,.TRUE.); if(ierr.ne.0) then; ierr=30; return; endif
+	     endif
+	     if(size(tens%data_cmplx4).eq.ls) then
+	      select case(mast_kind)
+	      case('r4','R4')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx4(l0)=cmplx(tens%data_real4(l0),0.0,kind=4); enddo
+!$OMP END PARALLEL DO
+	      case('r8','R8')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx4(l0)=cmplx(tens%data_real8(l0),0d0,kind=4); enddo
+!$OMP END PARALLEL DO
+	      case('c8','C8')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx4(l0)=cmplx(tens%data_cmplx8(l0),kind=4); enddo
+!$OMP END PARALLEL DO
+	      end select
+	     else
+	      ierr=31; return !array size mismatch
 	     endif
 	    endif
  !COMPLEX8:
@@ -1461,31 +1749,35 @@
 	     if(slk.ne.'  '.and.(.not.associated(tens%data_cmplx8))) then
 !	      allocate(tens%data_cmplx8(0:ls-1),STAT=ierr)
 	      ierr=array_alloc(tens%data_cmplx8,ls,base=0_LONGINT)
-	      if(ierr.ne.0) then; ierr=24; return; endif
-	      res=tensor_block_alloc(tens,'c8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=25; return; endif
+	      if(ierr.ne.0) then; ierr=32; return; endif
+	      res=tensor_block_alloc(tens,'c8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=33; return; endif
 	     endif
 	     if(size(tens%data_cmplx8).eq.ls) then
 	      select case(mast_kind)
 	      case('r4','R4')
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
-	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx8(l0)=cmplx(tens%data_real4(l0),0d0,8); enddo
+	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx8(l0)=cmplx(tens%data_real4(l0),0.0,kind=8); enddo
 !$OMP END PARALLEL DO
 	      case('r8','R8')
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
-	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx8(l0)=cmplx(tens%data_real8(l0),0d0,8); enddo
+	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx8(l0)=cmplx(tens%data_real8(l0),0d0,kind=8); enddo
+!$OMP END PARALLEL DO
+	      case('c4','C4')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+	       do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx8(l0)=cmplx(tens%data_cmplx4(l0),kind=8); enddo
 !$OMP END PARALLEL DO
 	      end select
 	     else
-	      ierr=26; return !array size mismatch
+	      ierr=34; return !array size mismatch
 	     endif
 	    endif
 	   endif
 	  endif
 	 else
-	  ierr=27 !master data kind is not allocated
+	  ierr=35 !master data kind is not allocated
 	 endif
 	elseif(tens%tensor_shape%num_dim.eq.0) then !scalar
-	 if(slk.eq.'--') ierr=28 !the scalar data kind cannot be deleted
+	 if(slk.eq.'--') ierr=36 !the scalar data kind cannot be deleted
 	endif
 	return
 	end subroutine tensor_block_sync
@@ -1508,6 +1800,7 @@
 	integer(LONGINT) l0,l1,ls
 	real(4) fac_r4
 	real(8) fac_r8
+	complex(4) fac_c4
 	complex(8) fac_c8
 
 	ierr=0; ls=tens%tensor_block_size
@@ -1534,6 +1827,17 @@
 	   ierr=2; return
 	  endif
 	 endif
+!CMPLX4:
+	 if(associated(tens%data_cmplx4)) then
+	  if(size(tens%data_cmplx4).eq.ls) then
+	   fac_c4=cmplx(scale_fac,kind=4)
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) FIRSTPRIVATE(fac_c4) SCHEDULE(GUIDED)
+	   do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx4(l0)=tens%data_cmplx4(l0)*fac_c4; enddo
+!$OMP END PARALLEL DO
+	  else
+	   ierr=3; return
+	  endif
+	 endif
 !CMPLX8:
 	 if(associated(tens%data_cmplx8)) then
 	  if(size(tens%data_cmplx8).eq.ls) then
@@ -1542,7 +1846,7 @@
 	   do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx8(l0)=tens%data_cmplx8(l0)*fac_c8; enddo
 !$OMP END PARALLEL DO
 	  else
-	   ierr=3; return
+	   ierr=4; return
 	  endif
 	 endif
 	endif
@@ -1566,6 +1870,16 @@
 
 	ierr=0; ls=tens%tensor_block_size
 	if(ls.gt.0_LONGINT) then
+!CMPLX4:
+	 if(associated(tens%data_cmplx4)) then
+	  if(size(tens%data_cmplx4).eq.ls) then
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+	   do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx4(l0)=conjg(tens%data_cmplx4(l0)); enddo
+!$OMP END PARALLEL DO
+	  else
+	   ierr=1; return
+	  endif
+	 endif
 !CMPLX8:
 	 if(associated(tens%data_cmplx8)) then
 	  if(size(tens%data_cmplx8).eq.ls) then
@@ -1573,7 +1887,7 @@
 	   do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx8(l0)=conjg(tens%data_cmplx8(l0)); enddo
 !$OMP END PARALLEL DO
 	  else
-	   ierr=1; return
+	   ierr=2; return
 	  endif
 	 endif
 	endif
@@ -1584,8 +1898,8 @@
 !This function computes the 1-norm of a tensor block.
 !INPUT:
 ! - tens - tensor block;
-! - data_kind - (optional) data kind, one of {'r4','r8','c8'};
-!               If <data_kind> is not specified, the maximal one will be used (r4->r8->c8).
+! - data_kind - (optional) data kind, one of {'r4','r8','c4','c8'};
+!               If <data_kind> is not specified, the maximal one will be used (r4->r8->c4->c8).
 !OUTPUT:
 ! - tensor_block_norm1 - 1-norm of the tensor block;
 ! - ierr - error code (0:success).
@@ -1637,6 +1951,20 @@
 	   else
 	    ierr=5
 	   endif
+	  case('c4','C4')
+	   if(associated(tens%data_cmplx4)) then
+	    if(size(tens%data_cmplx4).eq.ls) then
+	     val_r4=0.0
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val_r4)
+	     do l0=0_LONGINT,ls-1_LONGINT; val_r4=val_r4+abs(tens%data_cmplx4(l0)); enddo
+!$OMP END PARALLEL DO
+	     tensor_block_norm1=val_r4
+	    else
+	     ierr=6
+	    endif
+	   else
+	    ierr=7
+	   endif
 	  case('c8','C8')
 	   if(associated(tens%data_cmplx8)) then
 	    if(size(tens%data_cmplx8).eq.ls) then
@@ -1646,21 +1974,21 @@
 !$OMP END PARALLEL DO
 	     tensor_block_norm1=val_r8
 	    else
-	     ierr=6
+	     ierr=8
 	    endif
 	   else
-	    ierr=7
+	    ierr=9
 	   endif
 	  case default
-	   ierr=8
+	   ierr=10
 	  end select
 	 else
-	  ierr=9
+	  ierr=11
 	 endif
 	elseif(tens%tensor_shape%num_dim.eq.0) then !scalar tensor
 	 tensor_block_norm1=abs(tens%scalar_value)
 	else !empty tensor
-	 ierr=10
+	 ierr=12
 	endif
 	return
 	end function tensor_block_norm1
@@ -1669,8 +1997,8 @@
 !This function computes the squared Euclidean (Frobenius) 2-norm of a tensor block.
 !INPUT:
 ! - tens - tensor block;
-! - data_kind - (optional) data kind, one of {'r4','r8','c8'};
-!               If <data_kind> is not specified, the maximal one will be used (r4->r8->c8).
+! - data_kind - (optional) data kind, one of {'r4','r8','c4','c8'};
+!               If <data_kind> is not specified, the maximal one will be used (r4->r8->c4->c8).
 !OUTPUT:
 ! - tensor_block_norm2 - squared 2-norm of the tensor block;
 ! - ierr - error code (0:success).
@@ -1722,6 +2050,20 @@
 	   else
 	    ierr=5
 	   endif
+	  case('c4','C4')
+	   if(associated(tens%data_cmplx4)) then
+	    if(size(tens%data_cmplx4).eq.ls) then
+	     val_r4=0d0
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val_r4)
+	     do l0=0_LONGINT,ls-1_LONGINT; val_r4=val_r4+abs(tens%data_cmplx4(l0))**2; enddo
+!$OMP END PARALLEL DO
+	     tensor_block_norm2=val_r4
+	    else
+	     ierr=6
+	    endif
+	   else
+	    ierr=7
+	   endif
 	  case('c8','C8')
 	   if(associated(tens%data_cmplx8)) then
 	    if(size(tens%data_cmplx8).eq.ls) then
@@ -1731,21 +2073,21 @@
 !$OMP END PARALLEL DO
 	     tensor_block_norm2=val_r8
 	    else
-	     ierr=6
+	     ierr=8
 	    endif
 	   else
-	    ierr=7
+	    ierr=9
 	   endif
 	  case default
-	   ierr=8
+	   ierr=10
 	  end select
 	 else
-	  ierr=9
+	  ierr=11
 	 endif
 	elseif(tens%tensor_shape%num_dim.eq.0) then !scalar tensor
 	 tensor_block_norm2=abs(tens%scalar_value)**2
 	else !empty tensor
-	 ierr=10
+	 ierr=12
 	endif
 	return
 	end function tensor_block_norm2
@@ -1764,7 +2106,8 @@
 	integer, intent(inout):: ierr
 	character(2) dtk
 	integer(LONGINT) l0
-	real(8) val
+	real(4) valr4
+	real(8) valr8
 
 	ierr=0
 	if(tens%tensor_shape%num_dim.gt.0) then !true tensor
@@ -1777,11 +2120,11 @@
 	 case('r4','R4')
 	  if(associated(tens%data_real4)) then
 	   if(size(tens%data_real4).eq.tens%tensor_block_size) then
-	    val=0d0
-!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(max:val)
-	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; val=max(val,real(tens%data_real4(l0),8)); enddo
+	    valr4=0.0
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(max:valr4)
+	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr4=max(valr4,abs(tens%data_real4(l0))); enddo
 !$OMP END PARALLEL DO
-	    tensor_block_max=val
+	    tensor_block_max=valr4
 	   else
 	    ierr=3
 	   endif
@@ -1791,38 +2134,52 @@
 	 case('r8','R8')
 	  if(associated(tens%data_real8)) then
 	   if(size(tens%data_real8).eq.tens%tensor_block_size) then
-	    val=0d0
-!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(max:val)
-	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; val=max(val,tens%data_real8(l0)); enddo
+	    valr8=0d0
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(max:valr8)
+	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr8=max(valr8,abs(tens%data_real8(l0))); enddo
 !$OMP END PARALLEL DO
-	    tensor_block_max=val
+	    tensor_block_max=valr8
 	   else
 	    ierr=5
 	   endif
 	  else
 	   ierr=6
 	  endif
-	 case('c8','C8')
-	  if(associated(tens%data_cmplx8)) then
-	   if(size(tens%data_cmplx8).eq.tens%tensor_block_size) then
-	    val=0d0
-!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(max:val)
-	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; val=max(val,abs(tens%data_cmplx8(l0))); enddo
+	 case('c4','C4')
+	  if(associated(tens%data_cmplx4)) then
+	   if(size(tens%data_cmplx4).eq.tens%tensor_block_size) then
+	    valr4=0.0
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(max:valr4)
+	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr4=max(valr4,abs(tens%data_cmplx4(l0))); enddo
 !$OMP END PARALLEL DO
-	    tensor_block_max=val
+	    tensor_block_max=valr4
 	   else
 	    ierr=7
 	   endif
 	  else
 	   ierr=8
 	  endif
+	 case('c8','C8')
+	  if(associated(tens%data_cmplx8)) then
+	   if(size(tens%data_cmplx8).eq.tens%tensor_block_size) then
+	    valr8=0d0
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(max:valr8)
+	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr8=max(valr8,abs(tens%data_cmplx8(l0))); enddo
+!$OMP END PARALLEL DO
+	    tensor_block_max=valr8
+	   else
+	    ierr=9
+	   endif
+	  else
+	   ierr=10
+	  endif
 	 case default
-	  ierr=2; return
+	  ierr=11; return
 	 end select
 	elseif(tens%tensor_shape%num_dim.eq.0) then !scalar
 	 tensor_block_max=abs(tens%scalar_value)
 	else
-	 ierr=9
+	 ierr=12
 	endif
 	return
 	end function tensor_block_max
@@ -1841,7 +2198,8 @@
 	integer, intent(inout):: ierr
 	character(2) dtk
 	integer(LONGINT) l0
-	real(8) val
+	real(4) valr4
+	real(8) valr8
 
 	ierr=0
 	if(tens%tensor_shape%num_dim.gt.0) then !true tensor
@@ -1854,11 +2212,11 @@
 	 case('r4','R4')
 	  if(associated(tens%data_real4)) then
 	   if(size(tens%data_real4).eq.tens%tensor_block_size) then
-	    val=real(tens%data_real4(0),8)
-!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(min:val)
-	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; val=min(val,real(tens%data_real4(l0),8)); enddo
+	    valr4=abs(tens%data_real4(0))
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(min:valr4)
+	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr4=min(valr4,abs(tens%data_real4(l0))); enddo
 !$OMP END PARALLEL DO
-	    tensor_block_min=val
+	    tensor_block_min=valr4
 	   else
 	    ierr=3
 	   endif
@@ -1868,38 +2226,52 @@
 	 case('r8','R8')
 	  if(associated(tens%data_real8)) then
 	   if(size(tens%data_real8).eq.tens%tensor_block_size) then
-	    val=tens%data_real8(0)
-!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(min:val)
-	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; val=min(val,tens%data_real8(l0)); enddo
+	    valr8=abs(tens%data_real8(0))
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(min:valr8)
+	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr8=min(valr8,abs(tens%data_real8(l0))); enddo
 !$OMP END PARALLEL DO
-	    tensor_block_min=val
+	    tensor_block_min=valr8
 	   else
 	    ierr=5
 	   endif
 	  else
 	   ierr=6
 	  endif
-	 case('c8','C8')
-	  if(associated(tens%data_cmplx8)) then
-	   if(size(tens%data_cmplx8).eq.tens%tensor_block_size) then
-	    val=abs(tens%data_cmplx8(0))
-!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(min:val)
-	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; val=min(val,abs(tens%data_cmplx8(l0))); enddo
+	 case('c4','C4')
+	  if(associated(tens%data_cmplx4)) then
+	   if(size(tens%data_cmplx4).eq.tens%tensor_block_size) then
+	    valr4=abs(tens%data_cmplx4(0))
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(min:valr4)
+	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr4=min(valr4,abs(tens%data_cmplx4(l0))); enddo
 !$OMP END PARALLEL DO
-	    tensor_block_min=val
+	    tensor_block_min=valr4
 	   else
 	    ierr=7
 	   endif
 	  else
 	   ierr=8
 	  endif
+	 case('c8','C8')
+	  if(associated(tens%data_cmplx8)) then
+	   if(size(tens%data_cmplx8).eq.tens%tensor_block_size) then
+	    valr8=abs(tens%data_cmplx8(0))
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(min:valr8)
+	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr8=min(valr8,abs(tens%data_cmplx8(l0))); enddo
+!$OMP END PARALLEL DO
+	    tensor_block_min=valr8
+	   else
+	    ierr=9
+	   endif
+	  else
+	   ierr=10
+	  endif
 	 case default
-	  ierr=2; return
+	  ierr=11; return
 	 end select
 	elseif(tens%tensor_shape%num_dim.eq.0) then !scalar
 	 tensor_block_min=abs(tens%scalar_value)
 	else
-	 ierr=9
+	 ierr=12
 	endif
 	return
 	end function tensor_block_min
@@ -1911,7 +2283,7 @@
 ! - tens - tensor block;
 ! - slice - tensor block which will contain the slice (its shape specifies the slice dimensions);
 ! - ext_beg(1:) - beginning offset of each tensor dimension (numeration starts at 0) to slice from;
-! - data_kind - (optional) requested data_kind, one of {'r4','r8','c8'};
+! - data_kind - (optional) requested data_kind, one of {'r4','r8','c4','c8'};
 !OUTPUT:
 ! - slice - filled tensor block slice;
 ! - ierr - error code (0:success).
@@ -1961,45 +2333,56 @@
 	    if(ierr.ne.0) then; ierr=8; return; endif
 	    res=tensor_block_alloc(slice,'r8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=9; return; endif
 	   endif
+	  case('c4','C4')
+	   if(.not.associated(tens%data_cmplx4)) then; ierr=10; return; endif
+	   if(.not.associated(slice%data_cmplx4)) then
+!	    allocate(slice%data_cmplx4(0:ls-1),STAT=ierr)
+	    ierr=array_alloc(slice%data_cmplx4,ls,base=0_LONGINT)
+	    if(ierr.ne.0) then; ierr=11; return; endif
+	    res=tensor_block_alloc(slice,'c4',ierr,.TRUE.); if(ierr.ne.0) then; ierr=12; return; endif
+	   endif
 	  case('c8','C8')
-	   if(.not.associated(tens%data_cmplx8)) then; ierr=10; return; endif
+	   if(.not.associated(tens%data_cmplx8)) then; ierr=13; return; endif
 	   if(.not.associated(slice%data_cmplx8)) then
 !	    allocate(slice%data_cmplx8(0:ls-1),STAT=ierr)
 	    ierr=array_alloc(slice%data_cmplx8,ls,base=0_LONGINT)
-	    if(ierr.ne.0) then; ierr=11; return; endif
-	    res=tensor_block_alloc(slice,'c8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=12; return; endif
+	    if(ierr.ne.0) then; ierr=14; return; endif
+	    res=tensor_block_alloc(slice,'c8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=15; return; endif
 	   endif
 	  case default
-	   ierr=13; return !invalid data kind
+	   ierr=16; return !invalid data kind
 	  end select
 !Check whether the slice is trivial:
 	  kf=0
 	  do i=1,n
 	   if(ext_beg(i).lt.0.or.ext_beg(i).ge.tens%tensor_shape%dim_extent(i).or.slice%tensor_shape%dim_extent(i).le.0.or.&
 	     &ext_beg(i)+slice%tensor_shape%dim_extent(i)-1.ge.tens%tensor_shape%dim_extent(i)) then
-	    ierr=14; return
+	    ierr=17; return
 	   endif
 	   if(slice%tensor_shape%dim_extent(i).ne.tens%tensor_shape%dim_extent(i)) kf=1 !non-trivial
 	  enddo
 !Slicing:
 	  if(kf.eq.0) then !one-to-one copy
-	   call tensor_block_copy(tens,slice,ierr); if(ierr.ne.0) then; ierr=15; return; endif
+	   call tensor_block_copy(tens,slice,ierr); if(ierr.ne.0) then; ierr=18; return; endif
 	  else !true slicing
-	   tlt=tensor_block_layout(tens,ierr); if(ierr.ne.0) then; ierr=16; return; endif
-	   slt=tensor_block_layout(slice,ierr,.TRUE.); if(ierr.ne.0) then; ierr=17; return; endif
+	   tlt=tensor_block_layout(tens,ierr); if(ierr.ne.0) then; ierr=19; return; endif
+	   slt=tensor_block_layout(slice,ierr,.TRUE.); if(ierr.ne.0) then; ierr=20; return; endif
 	   if(slt.eq.tlt) then !layouts coinside
 	    select case(tlt)
 	    case(dimension_led)
 	     select case(dtk)
 	     case('r4','R4')
 	      call tensor_block_slice_dlf(n,tens%data_real4,tens%tensor_shape%dim_extent,&
-	            &slice%data_real4,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=18; return; endif
+	            &slice%data_real4,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=21; return; endif
 	     case('r8','R8')
 	      call tensor_block_slice_dlf(n,tens%data_real8,tens%tensor_shape%dim_extent,&
-	            &slice%data_real8,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=19; return; endif
+	            &slice%data_real8,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=22; return; endif
+	     case('c4','C4')
+	      call tensor_block_slice_dlf(n,tens%data_cmplx4,tens%tensor_shape%dim_extent,&
+	            &slice%data_cmplx4,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=23; return; endif
 	     case('c8','C8')
 	      call tensor_block_slice_dlf(n,tens%data_cmplx8,tens%tensor_shape%dim_extent,&
-	            &slice%data_cmplx8,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=20; return; endif
+	            &slice%data_cmplx8,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=24; return; endif
 	     end select
 	    case(bricked_dense,bricked_ordered)
 	     !`Future
@@ -2008,22 +2391,22 @@
 	    case(compressed)
 	     !`Future
 	    case default
-	     ierr=21; return !invalid tensor layout
+	     ierr=25; return !invalid tensor layout
 	    end select
 	    if(DATA_KIND_SYNC) then
-	     call tensor_block_sync(slice,dtk,ierr); if(ierr.ne.0) then; ierr=22; return; endif
+	     call tensor_block_sync(slice,dtk,ierr); if(ierr.ne.0) then; ierr=26; return; endif
 	    endif
 	   else
-	    ierr=23 !tensor layouts differ
+	    ierr=27 !tensor layouts differ
 	   endif
 	  endif
 	 elseif(n.eq.0) then !scalar
 	  slice%scalar_value=tens%scalar_value
 	 else !empty tensors
-	  ierr=24
+	  ierr=28
 	 endif
 	else
-	 ierr=25 !tensor block and its slice have different ranks
+	 ierr=29 !tensor block and its slice have different ranks
 	endif
 	return
 	end subroutine tensor_block_slice
@@ -2034,7 +2417,7 @@
 ! - tens - tensor block;
 ! - slice - slice to be inserted;
 ! - ext_beg(1:) - beginning offset of each tensor dimension (numeration starts at 0) where to insert;
-! - data_kind - (optional) requested data_kind, one of {'r4','r8','c8'};
+! - data_kind - (optional) requested data_kind, one of {'r4','r8','c4','c8'};
 !OUTPUT:
 ! - tens - modified tensor block;
 ! - ierr - error code (0:success).
@@ -2078,60 +2461,72 @@
 	   if(.not.associated(slice%data_real8)) then
 	    call tensor_block_sync(slice,stk,ierr,'r8'); if(ierr.ne.0) then; ierr=9; return; endif
 	   endif
+	  case('c4','C4')
+	   if(.not.associated(tens%data_cmplx4)) then; ierr=10; return; endif
+	   if(.not.associated(slice%data_cmplx4)) then
+	    call tensor_block_sync(slice,stk,ierr,'c4'); if(ierr.ne.0) then; ierr=11; return; endif
+	   endif
 	  case('c8','C8')
-	   if(.not.associated(tens%data_cmplx8)) then; ierr=10; return; endif
+	   if(.not.associated(tens%data_cmplx8)) then; ierr=12; return; endif
 	   if(.not.associated(slice%data_cmplx8)) then
-	    call tensor_block_sync(slice,stk,ierr,'c8'); if(ierr.ne.0) then; ierr=11; return; endif
+	    call tensor_block_sync(slice,stk,ierr,'c8'); if(ierr.ne.0) then; ierr=13; return; endif
 	   endif
 	  case('--')
-	   dtk=tensor_master_data_kind(tens,ierr); if(ierr.ne.0) then; ierr=12; return; endif
+	   dtk=tensor_master_data_kind(tens,ierr); if(ierr.ne.0) then; ierr=14; return; endif
 	   select case(dtk)
 	   case('r4','R4')
 	    if(.not.associated(slice%data_real4)) then
-	     call tensor_block_sync(slice,stk,ierr,'r4'); if(ierr.ne.0) then; ierr=13; return; endif
+	     call tensor_block_sync(slice,stk,ierr,'r4'); if(ierr.ne.0) then; ierr=15; return; endif
 	    endif
 	   case('r8','R8')
 	    if(.not.associated(slice%data_real8)) then
-	     call tensor_block_sync(slice,stk,ierr,'r8'); if(ierr.ne.0) then; ierr=14; return; endif
+	     call tensor_block_sync(slice,stk,ierr,'r8'); if(ierr.ne.0) then; ierr=16; return; endif
+	    endif
+	   case('c4','C4')
+	    if(.not.associated(slice%data_cmplx4)) then
+	     call tensor_block_sync(slice,stk,ierr,'c4'); if(ierr.ne.0) then; ierr=17; return; endif
 	    endif
 	   case('c8','C8')
 	    if(.not.associated(slice%data_cmplx8)) then
-	     call tensor_block_sync(slice,stk,ierr,'c8'); if(ierr.ne.0) then; ierr=15; return; endif
+	     call tensor_block_sync(slice,stk,ierr,'c8'); if(ierr.ne.0) then; ierr=18; return; endif
 	    endif
 	   case default
-	    ierr=16; return !no master data kind found in <tens>
+	    ierr=19; return !no master data kind found in <tens>
 	   end select
 	  case default
-	   ierr=17; return !invalid data kind
+	   ierr=20; return !invalid data kind
 	  end select
 !Check whether the slice is trivial:
 	  kf=0
 	  do i=1,n
 	   if(ext_beg(i).lt.0.or.ext_beg(i).ge.tens%tensor_shape%dim_extent(i).or.slice%tensor_shape%dim_extent(i).le.0.or.&
 	     &ext_beg(i)+slice%tensor_shape%dim_extent(i)-1.ge.tens%tensor_shape%dim_extent(i)) then
-	    ierr=18; return
+	    ierr=21; return
 	   endif
 	   if(slice%tensor_shape%dim_extent(i).ne.tens%tensor_shape%dim_extent(i)) kf=1 !non-trivial
 	  enddo
 !Insertion:
 	  if(kf.eq.0) then !one-to-one copy
-	   call tensor_block_copy(slice,tens,ierr); if(ierr.ne.0) then; ierr=19; return; endif
+	   call tensor_block_copy(slice,tens,ierr); if(ierr.ne.0) then; ierr=22; return; endif
 	  else !true insertion
-	   tlt=tensor_block_layout(tens,ierr); if(ierr.ne.0) then; ierr=20; return; endif
-	   slt=tensor_block_layout(slice,ierr,.TRUE.); if(ierr.ne.0) then; ierr=21; return; endif
+	   tlt=tensor_block_layout(tens,ierr); if(ierr.ne.0) then; ierr=23; return; endif
+	   slt=tensor_block_layout(slice,ierr,.TRUE.); if(ierr.ne.0) then; ierr=24; return; endif
 	   if(slt.eq.tlt) then
 	    select case(tlt)
 	    case(dimension_led)
 	     select case(dtk)
 	     case('r4','R4')
 	      call tensor_block_insert_dlf(n,tens%data_real4,tens%tensor_shape%dim_extent,&
-	            &slice%data_real4,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=22; return; endif
+	            &slice%data_real4,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=25; return; endif
 	     case('r8','R8')
 	      call tensor_block_insert_dlf(n,tens%data_real8,tens%tensor_shape%dim_extent,&
-	            &slice%data_real8,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=23; return; endif
+	            &slice%data_real8,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=26; return; endif
+	     case('c4','C4')
+	      call tensor_block_insert_dlf(n,tens%data_cmplx4,tens%tensor_shape%dim_extent,&
+	            &slice%data_cmplx4,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=27; return; endif
 	     case('c8','C8')
 	      call tensor_block_insert_dlf(n,tens%data_cmplx8,tens%tensor_shape%dim_extent,&
-	            &slice%data_cmplx8,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=24; return; endif
+	            &slice%data_cmplx8,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=28; return; endif
 	     end select
 	    case(bricked_dense,bricked_ordered)
 	     !`Future
@@ -2140,22 +2535,22 @@
 	    case(compressed)
 	     !`Future
 	    case default
-	     ierr=25; return !invalid tensor layout
+	     ierr=29; return !invalid tensor layout
 	    end select
 	    if(DATA_KIND_SYNC) then
-	     call tensor_block_sync(tens,dtk,ierr); if(ierr.ne.0) then; ierr=26; return; endif
+	     call tensor_block_sync(tens,dtk,ierr); if(ierr.ne.0) then; ierr=30; return; endif
 	    endif
 	   else
-	    ierr=27 !tensor layouts differ
+	    ierr=31 !tensor layouts differ
 	   endif
 	  endif
 	 elseif(n.eq.0) then !scalar
 	  tens%scalar_value=slice%scalar_value
 	 else !empty tensors
-	  ierr=28
+	  ierr=32
 	 endif
 	else
-	 ierr=29 !tensor block and the slice have different ranks
+	 ierr=33 !tensor block and the slice have different ranks
 	endif
 	return
 	end subroutine tensor_block_insert
@@ -2215,6 +2610,14 @@
 	       im(1:tens%tensor_shape%num_dim)=ext_beg(1:tens%tensor_shape%num_dim)
 	       l1=l0; do i=tens%tensor_shape%num_dim,1,-1; im(i)=im(i)+l1/bases(i); l1=mod(l1,bases(i)); enddo
 	       write(ifh,'(D23.15,64(1x,i5))') tens%data_real8(l0),im(1:tens%tensor_shape%num_dim)
+	      endif
+	     enddo
+	    case('c4','C4')
+	     do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT
+	      if(abs(tens%data_cmplx4(l0)).gt.prth) then
+	       im(1:tens%tensor_shape%num_dim)=ext_beg(1:tens%tensor_shape%num_dim)
+	       l1=l0; do i=tens%tensor_shape%num_dim,1,-1; im(i)=im(i)+l1/bases(i); l1=mod(l1,bases(i)); enddo
+	       write(ifh,'("(",D23.15,",",D23.15,")",64(1x,i5))') tens%data_cmplx4(l0),im(1:tens%tensor_shape%num_dim)
 	      endif
 	     enddo
 	    case('c8','C8')
@@ -2277,6 +2680,7 @@
 	logical cptrn_ok
 	real(4) valr4
 	real(8) valr8
+	complex(4) valc4
 	complex(8) valc8
 
 	ierr=0
@@ -2291,6 +2695,7 @@
 	 endif
 	 if(dtk.ne.'r4'.and.dtk.ne.'R4'.and.&
 	   &dtk.ne.'r8'.and.dtk.ne.'R8'.and.&
+	   &dtk.ne.'c4'.and.dtk.ne.'C4'.and.&
 	   &dtk.ne.'c8'.and.dtk.ne.'C8') then; ierr=2; return; endif
 	 ks=tensor_block_layout(tens_in,ierr); if(ierr.ne.0) then; ierr=3; return; endif
 	 kf=tensor_block_layout(tens_out,ierr); if(ierr.ne.0) then; ierr=4; return; endif
@@ -2316,7 +2721,7 @@
 	      call tensor_block_ftrace_dlf(contr_ptrn,ord_rest,tens_in%data_real4,rank_in,&
 	            &tens_in%tensor_shape%dim_extent,valr4,ierr)
 	      if(ierr.ne.0) then; ierr=9; return; endif
-	      tens_out%scalar_value=cmplx(real(valr4,8),0d0,8)
+	      tens_out%scalar_value=cmplx(real(valr4,8),0d0,kind=8)
 	     endif
 	    else
 	     ierr=10; return
@@ -2339,33 +2744,56 @@
 	      call tensor_block_ftrace_dlf(contr_ptrn,ord_rest,tens_in%data_real8,rank_in,&
 	            &tens_in%tensor_shape%dim_extent,valr8,ierr)
 	      if(ierr.ne.0) then; ierr=15; return; endif
-	      tens_out%scalar_value=cmplx(valr8,0d0,8)
+	      tens_out%scalar_value=cmplx(valr8,0d0,kind=8)
 	     endif
 	    else
 	     ierr=16; return
 	    endif
+	   case('c4','C4')
+	    if(associated(tens_in%data_cmplx4)) then
+	     if(rank_out.gt.0.and.(.not.associated(tens_out%data_cmplx4))) then
+	      slk=tensor_master_data_kind(tens_out,ierr); if(ierr.ne.0) then; ierr=17; return; endif
+	      if(slk.eq.'--') then; ierr=18; return; endif
+	      dlt='c4'; call tensor_block_sync(tens_out,slk,ierr,dlt); if(ierr.ne.0) then; ierr=19; return; endif
+	     else
+	      dlt='  '
+	     endif
+	     if(rank_out.gt.0) then !partial trace
+	      call tensor_block_ptrace_dlf(contr_ptrn,ord_rest,tens_in%data_cmplx4,rank_in,tens_in%tensor_shape%dim_extent,&
+	            &tens_out%data_cmplx4,rank_out,tens_out%tensor_shape%dim_extent,ierr)
+	      if(ierr.ne.0) then; ierr=20; return; endif
+	     else !full trace
+	      valc4=cmplx(tens_out%scalar_value,kind=4)
+	      call tensor_block_ftrace_dlf(contr_ptrn,ord_rest,tens_in%data_cmplx4,rank_in,&
+	            &tens_in%tensor_shape%dim_extent,valc4,ierr)
+	      if(ierr.ne.0) then; ierr=21; return; endif
+	      tens_out%scalar_value=cmplx(valc4,kind=8)
+	     endif
+	    else
+	     ierr=22; return
+	    endif
 	   case('c8','C8')
 	    if(associated(tens_in%data_cmplx8)) then
 	     if(rank_out.gt.0.and.(.not.associated(tens_out%data_cmplx8))) then
-	      slk=tensor_master_data_kind(tens_out,ierr); if(ierr.ne.0) then; ierr=17; return; endif
-	      if(slk.eq.'--') then; ierr=18; return; endif
-	      dlt='c8'; call tensor_block_sync(tens_out,slk,ierr,dlt); if(ierr.ne.0) then; ierr=19; return; endif
+	      slk=tensor_master_data_kind(tens_out,ierr); if(ierr.ne.0) then; ierr=23; return; endif
+	      if(slk.eq.'--') then; ierr=24; return; endif
+	      dlt='c8'; call tensor_block_sync(tens_out,slk,ierr,dlt); if(ierr.ne.0) then; ierr=25; return; endif
 	     else
 	      dlt='  '
 	     endif
 	     if(rank_out.gt.0) then !partial trace
 	      call tensor_block_ptrace_dlf(contr_ptrn,ord_rest,tens_in%data_cmplx8,rank_in,tens_in%tensor_shape%dim_extent,&
 	            &tens_out%data_cmplx8,rank_out,tens_out%tensor_shape%dim_extent,ierr)
-	      if(ierr.ne.0) then; ierr=20; return; endif
+	      if(ierr.ne.0) then; ierr=26; return; endif
 	     else !full trace
 	      valc8=tens_out%scalar_value
 	      call tensor_block_ftrace_dlf(contr_ptrn,ord_rest,tens_in%data_cmplx8,rank_in,&
 	            &tens_in%tensor_shape%dim_extent,valc8,ierr)
-	      if(ierr.ne.0) then; ierr=21; return; endif
+	      if(ierr.ne.0) then; ierr=27; return; endif
 	      tens_out%scalar_value=valc8
 	     endif
 	    else
-	     ierr=22; return
+	     ierr=28; return
 	    endif
 	   end select
 	  case(bricked_dense,bricked_ordered)
@@ -2375,21 +2803,21 @@
 	  case(compressed)
 	   !`Future
 	  case default
-	   ierr=23; return
+	   ierr=29; return
 	  end select
 	  if(DATA_KIND_SYNC) then
-	   call tensor_block_sync(tens_out,dtk,ierr); if(ierr.ne.0) then; ierr=24; return; endif
+	   call tensor_block_sync(tens_out,dtk,ierr); if(ierr.ne.0) then; ierr=30; return; endif
 	  endif
 	  if(dlt.ne.'  ') then
-	   call tensor_block_sync(tens_out,dlt,ierr,'--'); if(ierr.ne.0) then; ierr=25; return; endif
+	   call tensor_block_sync(tens_out,dlt,ierr,'--'); if(ierr.ne.0) then; ierr=31; return; endif
 	  endif
 	 else
-	  ierr=26 !tensor storage layouts differ
+	  ierr=32 !tensor storage layouts differ
 	 endif
 	elseif(rank_in.eq.0.and.rank_out.eq.0) then !two scalars
 	 tens_out%scalar_value=tens_in%scalar_value
 	else
-	 ierr=27
+	 ierr=33
 	endif
 	return
 	contains
@@ -2433,7 +2861,7 @@
 !This function compares two tensor blocks.
 !INPUT:
 ! - tens1, tens2 - two tensor blocks to compare;
-! - data_kind - (optional) requested data kind, one of {'r4','r8','c8'};
+! - data_kind - (optional) requested data kind, one of {'r4','r8','c4','c8'};
 ! - rel - if .TRUE., a relative comparison will be invoked: DIFF(a,b)/ABSMAX(a,b), (default=.FALSE.:absolute comparison);
 ! - cmp_thresh - (optional) numerical comparison threshold (real8);
 !OUTPUT:
@@ -2557,6 +2985,41 @@
 	   else
 	    tensor_block_cmp=.FALSE.; ierr=10
 	   endif
+	  case('c4','C4')
+	   cmp_thr4=real(cmp_thr8,4)
+	   if(associated(tens1%data_cmplx4).and.associated(tens2%data_cmplx4)) then
+	    l1=size(tens1%data_cmplx4); l2=size(tens2%data_cmplx4)
+	    if(l1.eq.l2.and.l1.eq.tens1%tensor_block_size.and.l1.eq.tens2%tensor_block_size.and.l1.gt.0) then
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l2) FIRSTPRIVATE(cmp_thr4)
+	     do l0=0_LONGINT,l1-1_LONGINT,chunk_size
+	      if(rel_comp) then !relative
+!$OMP DO SCHEDULE(GUIDED)
+	       do l2=l0,min(l0+chunk_size-1_LONGINT,l1-1_LONGINT)
+	        f1=abs(tens1%data_cmplx4(l2)); f2=abs(tens2%data_cmplx4(l2))
+	        if(abs(tens1%data_cmplx4(l2)-tens2%data_cmplx4(l2))/max(f1,f2).gt.cmp_thr4) diffc=diffc+1_LONGINT
+	       enddo
+!$OMP END DO
+	      else !absolute
+!$OMP DO SCHEDULE(GUIDED)
+	       do l2=l0,min(l0+chunk_size-1_LONGINT,l1-1_LONGINT)
+	        if(abs(tens1%data_cmplx4(l2)-tens2%data_cmplx4(l2)).gt.cmp_thr4) diffc=diffc+1_LONGINT
+	       enddo
+!$OMP END DO
+	      endif
+!$OMP CRITICAL
+	      if(diffc.gt.0_LONGINT.and.tensor_block_cmp) tensor_block_cmp=.FALSE.
+!$OMP END CRITICAL
+!$OMP BARRIER
+!$OMP FLUSH(tensor_block_cmp)
+	      if(.not.(tensor_block_cmp.or.no_exit)) exit
+	     enddo
+!$OMP END PARALLEL
+	    else
+	     tensor_block_cmp=.FALSE.; ierr=11
+	    endif
+	   else
+	    tensor_block_cmp=.FALSE.; ierr=12
+	   endif
 	  case('c8','C8')
 	   if(associated(tens1%data_cmplx8).and.associated(tens2%data_cmplx8)) then
 	    l1=size(tens1%data_cmplx8); l2=size(tens2%data_cmplx8)
@@ -2586,20 +3049,20 @@
 	     enddo
 !$OMP END PARALLEL
 	    else
-	     tensor_block_cmp=.FALSE.; ierr=11
+	     tensor_block_cmp=.FALSE.; ierr=13
 	    endif
 	   else
-	    tensor_block_cmp=.FALSE.; ierr=12
+	    tensor_block_cmp=.FALSE.; ierr=14
 	   endif
 	  case default
-	   tensor_block_cmp=.FALSE.; ierr=13
+	   tensor_block_cmp=.FALSE.; ierr=15
 	  end select
 	 case(sparse_list)
 	  !`Future
 	 case(compressed)
 	  !`Future
 	 case default
-	  tensor_block_cmp=.FALSE.; ierr=14
+	  tensor_block_cmp=.FALSE.; ierr=16
 	 end select
 	 if(present(diff_count)) diff_count=diffc
 	elseif(tensor_block_cmp.and.tens1%tensor_shape%num_dim.eq.0) then !two scalars
@@ -2708,17 +3171,39 @@
 	    ierr=12; return
 	   endif
 	  endif
+ !COMPLEX4:
+	  if(associated(tens_in%data_cmplx4)) then
+	   if(tens_in%tensor_block_size.gt.1_LONGINT) then
+	    if(TRANS_SHMEM) then
+	     call tensor_block_copy_dlf(n,tens_in%tensor_shape%dim_extent,trn,tens_in%data_cmplx4,tens_out%data_cmplx4,&
+	                               &ierr,lconj)
+	     if(ierr.ne.0) then; ierr=13; return; endif
+	    else
+	     call tensor_block_copy_scatter_dlf(n,tens_in%tensor_shape%dim_extent,trn,tens_in%data_cmplx4,tens_out%data_cmplx4,&
+	                                       &ierr,lconj)
+	     if(ierr.ne.0) then; ierr=14; return; endif
+	    endif
+	   elseif(tens_in%tensor_block_size.eq.1_LONGINT) then
+	    if(lconj) then
+	     tens_out%data_cmplx4(0)=conjg(tens_in%data_cmplx4(0))
+	    else
+	     tens_out%data_cmplx4(0)=tens_in%data_cmplx4(0)
+	    endif
+	   else
+	    ierr=15; return
+	   endif
+	  endif
  !COMPLEX8:
 	  if(associated(tens_in%data_cmplx8)) then
 	   if(tens_in%tensor_block_size.gt.1_LONGINT) then
 	    if(TRANS_SHMEM) then
 	     call tensor_block_copy_dlf(n,tens_in%tensor_shape%dim_extent,trn,tens_in%data_cmplx8,tens_out%data_cmplx8,&
 	                               &ierr,lconj)
-	     if(ierr.ne.0) then; ierr=13; return; endif
+	     if(ierr.ne.0) then; ierr=16; return; endif
 	    else
 	     call tensor_block_copy_scatter_dlf(n,tens_in%tensor_shape%dim_extent,trn,tens_in%data_cmplx8,tens_out%data_cmplx8,&
 	                                       &ierr,lconj)
-	     if(ierr.ne.0) then; ierr=14; return; endif
+	     if(ierr.ne.0) then; ierr=17; return; endif
 	    endif
 	   elseif(tens_in%tensor_block_size.eq.1_LONGINT) then
 	    if(lconj) then
@@ -2727,7 +3212,7 @@
 	     tens_out%data_cmplx8(0)=tens_in%data_cmplx8(0)
 	    endif
 	   else
-	    ierr=15; return
+	    ierr=18; return
 	   endif
 	  endif
 	 case(bricked_dense,bricked_ordered)
@@ -2737,11 +3222,11 @@
 	 case(compressed)
 	  !`Future
 	 case default
-	  ierr=16; return
+	  ierr=19; return
 	 end select
 	elseif(n.eq.0) then !scalar (0-dimension tensor)
 	 if(tens_out%tensor_shape%num_dim.gt.0) then
-	  call tensor_block_destroy(tens_out,ierr); if(ierr.ne.0) then; ierr=17; return; endif
+	  call tensor_block_destroy(tens_out,ierr); if(ierr.ne.0) then; ierr=20; return; endif
 	 endif
 	 tens_out%tensor_shape%num_dim=0; tens_out%tensor_block_size=tens_in%tensor_block_size
 	 if(lconj) then
@@ -2750,7 +3235,7 @@
 	  tens_out%scalar_value=tens_in%scalar_value
 	 endif
 	else !tens_in%tensor_shape%num_dim<0
-	 call tensor_block_destroy(tens_out,ierr); if(ierr.ne.0) then; ierr=18; return; endif
+	 call tensor_block_destroy(tens_out,ierr); if(ierr.ne.0) then; ierr=21; return; endif
 	endif
 	return
 	end subroutine tensor_block_copy
@@ -2762,7 +3247,7 @@
 ! - tens0, tens1 - initialized! tensor blocks;
 ! - scale_fac - (optional) scaling factor;
 ! - arg_conj - (optional) argument complex conjugation (Bit 0 -> Destination, Bit 1 -> Left);
-! - data_kind - (optional) requested data kind, one of {'r4','r8','c8'};
+! - data_kind - (optional) requested data kind, one of {'r4','r8','c4','c8'};
 !OUTPUT:
 ! - tens0 - modified tensor block;
 ! - ierr - error code (0:success);
@@ -2783,6 +3268,7 @@
         logical:: tencom,scale_present,dconj,lconj
         real(4):: val_r4
         real(8):: val_r8
+        complex(4):: val_c4,l_c4
         complex(8):: val_c8,l_c8
 
 	ierr=0
@@ -2792,7 +3278,7 @@
 	if(present(scale_fac)) then
 	 val_c8=scale_fac; scale_present=.TRUE.
 	else
-	 val_c8=cmplx(1d0,0d0,8); scale_present=.FALSE.
+	 val_c8=(1d0,0d0); scale_present=.FALSE.
 	endif
 	if(present(arg_conj)) then
 	 k=arg_conj
@@ -2875,13 +3361,61 @@
 	      if(dtk.eq.'r8'.or.dtk.eq.'R8') then; ierr=16; return; endif
 	     endif
 	    endif
+ !COMPLEX4:
+	    if(dtk.eq.'c4'.or.dtk.eq.'C4'.or.dtk.eq.'  ') then
+	     if(associated(tens0%data_cmplx4)) then
+	      if(.not.associated(tens1%data_cmplx4)) then
+	       slk=tensor_master_data_kind(tens1,ierr); if(ierr.ne.0) then; ierr=17; return; endif
+	       if(slk.eq.'--') then; ierr=18; return; endif
+	       dlt='c4'; call tensor_block_sync(tens1,slk,ierr,dlt); if(ierr.ne.0) then; ierr=19; return; endif
+	      else
+	       dlt='  '
+	      endif
+	      if(size(tens0%data_cmplx4).eq.ls.and.tens1%tensor_block_size.eq.ls) then
+	       if(lconj) then
+	        if(scale_present) then !scaling present
+                 val_c4=cmplx(val_c8,kind=4)
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_c4)
+	         do l0=0_LONGINT,ls-1_LONGINT
+	          tens0%data_cmplx4(l0)=tens0%data_cmplx4(l0)+conjg(tens1%data_cmplx4(l0))*val_c4
+	         enddo
+!$OMP END PARALLEL DO
+	        else !no scaling
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+	         do l0=0_LONGINT,ls-1_LONGINT
+	          tens0%data_cmplx4(l0)=tens0%data_cmplx4(l0)+conjg(tens1%data_cmplx4(l0))
+	         enddo
+!$OMP END PARALLEL DO
+	        endif
+	       else
+	        if(scale_present) then !scaling present
+                 val_c4=cmplx(val_c8,kind=4)
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_c4)
+	         do l0=0_LONGINT,ls-1_LONGINT; tens0%data_cmplx4(l0)=tens0%data_cmplx4(l0)+tens1%data_cmplx4(l0)*val_c4; enddo
+!$OMP END PARALLEL DO
+	        else !no scaling
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+	         do l0=0_LONGINT,ls-1_LONGINT; tens0%data_cmplx4(l0)=tens0%data_cmplx4(l0)+tens1%data_cmplx4(l0); enddo
+!$OMP END PARALLEL DO
+	        endif
+	       endif
+	       if(dlt.ne.'  ') then
+	        call tensor_block_sync(tens1,dlt,ierr,'--'); if(ierr.ne.0) then; ierr=20; return; endif
+	       endif
+	      else
+	       ierr=21; return
+	      endif
+	     else
+	      if(dtk.eq.'c4'.or.dtk.eq.'C4') then; ierr=22; return; endif
+	     endif
+	    endif
  !COMPLEX8:
 	    if(dtk.eq.'c8'.or.dtk.eq.'C8'.or.dtk.eq.'  ') then
 	     if(associated(tens0%data_cmplx8)) then
 	      if(.not.associated(tens1%data_cmplx8)) then
-	       slk=tensor_master_data_kind(tens1,ierr); if(ierr.ne.0) then; ierr=17; return; endif
-	       if(slk.eq.'--') then; ierr=18; return; endif
-	       dlt='c8'; call tensor_block_sync(tens1,slk,ierr,dlt); if(ierr.ne.0) then; ierr=19; return; endif
+	       slk=tensor_master_data_kind(tens1,ierr); if(ierr.ne.0) then; ierr=23; return; endif
+	       if(slk.eq.'--') then; ierr=24; return; endif
+	       dlt='c8'; call tensor_block_sync(tens1,slk,ierr,dlt); if(ierr.ne.0) then; ierr=25; return; endif
 	      else
 	       dlt='  '
 	      endif
@@ -2912,39 +3446,39 @@
 	        endif
 	       endif
 	       if(dlt.ne.'  ') then
-	        call tensor_block_sync(tens1,dlt,ierr,'--'); if(ierr.ne.0) then; ierr=20; return; endif
+	        call tensor_block_sync(tens1,dlt,ierr,'--'); if(ierr.ne.0) then; ierr=26; return; endif
 	       endif
 	      else
-	       ierr=21; return
+	       ierr=27; return
 	      endif
 	     else
-	      if(dtk.eq.'c8'.or.dtk.eq.'C8') then; ierr=22; return; endif
+	      if(dtk.eq.'c8'.or.dtk.eq.'C8') then; ierr=28; return; endif
 	     endif
 	    endif
 !Sync the destination tensor:
 	    if(dtk.ne.'  ') then
 	     if(DATA_KIND_SYNC) then
-	      call tensor_block_sync(tens0,dtk,ierr); if(ierr.ne.0) then; ierr=23; return; endif
+	      call tensor_block_sync(tens0,dtk,ierr); if(ierr.ne.0) then; ierr=29; return; endif
 	     endif
 	    else
-	     slk=tensor_master_data_kind(tens0,ierr); if(ierr.ne.0) then; ierr=24; return; endif
-	     if(slk.eq.'--') then; ierr=25; return; endif
-	     val_r8=tensor_block_norm2(tens0,ierr,slk); if(ierr.ne.0) then; ierr=26; return; endif
-	     tens0%scalar_value=cmplx(dsqrt(val_r8),0d0,8) !Euclidean norm of the destination tensor block
+	     slk=tensor_master_data_kind(tens0,ierr); if(ierr.ne.0) then; ierr=30; return; endif
+	     if(slk.eq.'--') then; ierr=31; return; endif
+	     val_r8=tensor_block_norm2(tens0,ierr,slk); if(ierr.ne.0) then; ierr=32; return; endif
+	     tens0%scalar_value=cmplx(dsqrt(val_r8),0d0,kind=8) !Euclidean norm of the destination tensor block
 	    endif
 	   else
-	    ierr=27 !%tensor_block_size less or equal to zero for an allocated tensor block
+	    ierr=33 !%tensor_block_size less or equal to zero for an allocated tensor block
 	   endif
 	  case(sparse_list)
 	   !`Future
 	  case(compressed)
 	   !`Future
 	  case default
-	   ierr=28 !invalid storage layout
+	   ierr=34 !invalid storage layout
 	  end select
 	 endif
 	else
-	 ierr=29 !incompatible shapes of the tensor blocks
+	 ierr=35 !incompatible shapes of the tensor blocks
 	endif
 	return
 	end subroutine tensor_block_add
@@ -2969,7 +3503,7 @@
 ! - dtens - initialized! destination tensor argument (tensor block);
 ! - alpha - BLAS alpha (complex);
 ! - arg_conj - argument complex conjugation flags: Bit 0 -> Destination, Bit 1 -> Left, Bit 2 -> Right tensor argument;
-! - data_kind - (optional) requested data kind, one of {'r4','r8','c8'};
+! - data_kind - (optional) requested data kind, one of {'r4','r8','c4','c8'};
 ! - ord_rest(1:left_rank+right_rank) - (optional) index ordering restrictions (for contracted indices only);
 !OUTPUT:
 ! - dtens - modified destination tensor (tensor block);
@@ -3003,6 +3537,7 @@
         character(1):: ltrm,rtrm
         real(4):: d_r4
         real(8):: d_r8,start_gemm,finish_gemm
+        complex(4):: d_c4,l_c4,r_c4
         complex(8):: d_c8,l_c8,r_c8,alf
         logical:: contr_ok,ltransp,rtransp,dtransp,transp,lconj,rconj,dconj
 
@@ -3161,16 +3696,16 @@
 !         rtp%tensor_shape%dim_extent(1:rrank) !debug
 !        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): result index extents:",128(1x,i4))') &
 !         dtp%tensor_shape%dim_extent(1:drank) !debug
-         call calculate_matrix_dimensions(dtb,nlu,nru,dtp,lld,lrd,ierr); if(ierr.ne.0) then; ierr=12; goto 999; endif
-         call calculate_matrix_dimensions(ltb,ncd,nlu,ltp,lcd,l0,ierr); if(ierr.ne.0) then; ierr=13; goto 999; endif
+         call calculate_matrix_dimensions(dtb,nlu,nru,dtp,lld,lrd,ierr); if(ierr.ne.0) then; ierr=13; goto 999; endif
+         call calculate_matrix_dimensions(ltb,ncd,nlu,ltp,lcd,l0,ierr); if(ierr.ne.0) then; ierr=14; goto 999; endif
          if(rtrm.eq.'C') then !R(r,c) matrix shape
-          call calculate_matrix_dimensions(rtb,nru,ncd,rtp,l2,l1,ierr); if(ierr.ne.0) then; ierr=14; goto 999; endif
+          call calculate_matrix_dimensions(rtb,nru,ncd,rtp,l2,l1,ierr); if(ierr.ne.0) then; ierr=15; goto 999; endif
          else !R(c,r) matrix shape
-          call calculate_matrix_dimensions(rtb,ncd,nru,rtp,l1,l2,ierr); if(ierr.ne.0) then; ierr=14; goto 999; endif
+          call calculate_matrix_dimensions(rtb,ncd,nru,rtp,l1,l2,ierr); if(ierr.ne.0) then; ierr=16; goto 999; endif
          endif
 !        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): matrix dimensions (left,right,contr): "&
 !         &,i10,1x,i10,1x,i10)') lld,lrd,lcd !debug
-         if(l0.ne.lld.or.l1.ne.lcd.or.l2.ne.lrd) then; ierr=15; goto 999; endif
+         if(l0.ne.lld.or.l1.ne.lcd.or.l2.ne.lrd) then; ierr=17; goto 999; endif
          if(rtrm.eq.'C') then; l2=lrd; else; l2=lcd; endif !leading dimension for the right matrix
  !Multiply two matrices (dtp += ltp * rtp):
          if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
@@ -3181,40 +3716,53 @@
 	  case('r4','R4')
 #ifdef NO_BLAS
 	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real4,rtp%data_real4,dtp%data_real4,ierr,real(alf,4))
-	   if(ierr.ne.0) then; ierr=16; goto 999; endif
+	   if(ierr.ne.0) then; ierr=18; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
 	    call sgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),real(alf,4),ltp%data_real4,int(lcd,4),rtp%data_real4,int(l2,4),&
 	              &1.0,dtp%data_real4,int(lld,4))
 	   else
 	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real4,rtp%data_real4,dtp%data_real4,ierr,real(alf,4))
-	    if(ierr.ne.0) then; ierr=17; goto 999; endif
+	    if(ierr.ne.0) then; ierr=19; goto 999; endif
 	   endif
 #endif
 	  case('r8','R8')
 #ifdef NO_BLAS
 	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real8,rtp%data_real8,dtp%data_real8,ierr,real(alf,8))
-	   if(ierr.ne.0) then; ierr=18; goto 999; endif
+	   if(ierr.ne.0) then; ierr=20; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
 	    call dgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),real(alf,8),ltp%data_real8,int(lcd,4),rtp%data_real8,int(l2,4),&
 	              &1d0,dtp%data_real8,int(lld,4))
 	   else
 	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real8,rtp%data_real8,dtp%data_real8,ierr,real(alf,8))
-	    if(ierr.ne.0) then; ierr=19; goto 999; endif
+	    if(ierr.ne.0) then; ierr=21; goto 999; endif
+	   endif
+#endif
+	  case('c4','C4')
+#ifdef NO_BLAS
+	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx4,rtp%data_cmplx4,dtp%data_cmplx4,ierr,cmplx(alf,kind=4))
+	   if(ierr.ne.0) then; ierr=22; goto 999; endif
+#else
+	   if(.not.DISABLE_BLAS) then
+	    call cgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),cmplx(alf,kind=4),ltp%data_cmplx4,int(lcd,4),&
+                      &rtp%data_cmplx4,int(l2,4),(1.0,0.0),dtp%data_cmplx4,int(lld,4))
+	   else
+	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx4,rtp%data_cmplx4,dtp%data_cmplx4,ierr,cmplx(alf,kind=4))
+	    if(ierr.ne.0) then; ierr=23; goto 999; endif
 	   endif
 #endif
 	  case('c8','C8')
 #ifdef NO_BLAS
 	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx8,rtp%data_cmplx8,dtp%data_cmplx8,ierr,alf)
-	   if(ierr.ne.0) then; ierr=20; goto 999; endif
+	   if(ierr.ne.0) then; ierr=24; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
 	    call zgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),alf,ltp%data_cmplx8,int(lcd,4),rtp%data_cmplx8,int(l2,4),&
 	              &(1d0,0d0),dtp%data_cmplx8,int(lld,4))
 	   else
 	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx8,rtp%data_cmplx8,dtp%data_cmplx8,ierr,alf)
-	    if(ierr.ne.0) then; ierr=21; goto 999; endif
+	    if(ierr.ne.0) then; ierr=25; goto 999; endif
 	   endif
 #endif
 	  end select
@@ -3223,17 +3771,22 @@
 	  case('r4','R4')
 	   d_r4=0.0
 	   call tensor_block_fcontract_dlf(lcd,ltp%data_real4,rtp%data_real4,d_r4,ierr,real(alf,4))
-	   if(ierr.ne.0) then; ierr=22; goto 999; endif
-	   dtp%scalar_value=dtp%scalar_value+cmplx(d_r4,0d0,8)
+	   if(ierr.ne.0) then; ierr=26; goto 999; endif
+	   dtp%scalar_value=dtp%scalar_value+cmplx(real(d_r4,8),0d0,kind=8)
 	  case('r8','R8')
 	   d_r8=0d0
 	   call tensor_block_fcontract_dlf(lcd,ltp%data_real8,rtp%data_real8,d_r8,ierr,real(alf,8))
-	   if(ierr.ne.0) then; ierr=23; goto 999; endif
-	   dtp%scalar_value=dtp%scalar_value+cmplx(d_r8,0d0,8)
+	   if(ierr.ne.0) then; ierr=27; goto 999; endif
+	   dtp%scalar_value=dtp%scalar_value+cmplx(d_r8,0d0,kind=8)
+	  case('c4','C4')
+	   d_c4=(0.0,0.0)
+	   call tensor_block_fcontract_dlf(lcd,ltp%data_cmplx4,rtp%data_cmplx4,d_c4,ierr,cmplx(alf,kind=4))
+	   if(ierr.ne.0) then; ierr=28; goto 999; endif
+	   dtp%scalar_value=dtp%scalar_value+cmplx(d_c4,kind=8)
 	  case('c8','C8')
-	   d_c8=cmplx(0d0,0d0,8)
+	   d_c8=(0d0,0d0)
 	   call tensor_block_fcontract_dlf(lcd,ltp%data_cmplx8,rtp%data_cmplx8,d_c8,ierr,alf)
-	   if(ierr.ne.0) then; ierr=24; goto 999; endif
+	   if(ierr.ne.0) then; ierr=29; goto 999; endif
 	   dtp%scalar_value=dtp%scalar_value+d_c8
 	  end select
 	 case(ADD_TENSOR)
@@ -3241,14 +3794,14 @@
 	   if(lconj) then; k=1*2+0; else; k=0; endif !bit 0 -> D; bit 1 -> L
 	   if(rconj) then; d_c8=conjg(rtp%scalar_value); else; d_c8=rtp%scalar_value; endif
 	   call tensor_block_add(dtp,ltp,ierr,scale_fac=d_c8*alf,arg_conj=k,data_kind=dtk)
-	   if(ierr.ne.0) then; ierr=25; goto 999; endif
+	   if(ierr.ne.0) then; ierr=30; goto 999; endif
 	  elseif(ltb.eq.scalar_tensor.and.rtb.ne.scalar_tensor) then
 	   if(rconj) then; k=1*2+0; else; k=0; endif !bit 0 -> D; bit 1 -> L
 	   if(lconj) then; d_c8=conjg(ltp%scalar_value); else; d_c8=ltp%scalar_value; endif
 	   call tensor_block_add(dtp,rtp,ierr,scale_fac=d_c8*alf,arg_conj=k,data_kind=dtk)
-	   if(ierr.ne.0) then; ierr=26; goto 999; endif
+	   if(ierr.ne.0) then; ierr=31; goto 999; endif
 	  else
-	   ierr=27; goto 999
+	   ierr=32; goto 999
 	  endif
 	 case(MULTIPLY_SCALARS)
 	  if(lconj) then; l_c8=conjg(ltp%scalar_value); else; l_c8=ltp%scalar_value; endif
@@ -3262,7 +3815,7 @@
 	  select case(dtb)
 	  case(scalar_tensor)
 	  case(dimension_led)
-	   call tensor_block_copy(dtp,dtens,ierr,transp=do2n); if(ierr.ne.0) then; ierr=28; goto 999; endif
+	   call tensor_block_copy(dtp,dtens,ierr,transp=do2n); if(ierr.ne.0) then; ierr=33; goto 999; endif
 	  case(bricked_dense,bricked_ordered)
 	   !`Future
 	  case(sparse_list)
@@ -3270,11 +3823,11 @@
 	  case(compressed)
 	   !`Future
 	  case default
-	   ierr=12; goto 999
+	   ierr=34; goto 999
 	  end select
 	 endif
 	 if(DATA_KIND_SYNC) then
-	  call tensor_block_sync(dtens,dtk,ierr); if(ierr.ne.0) then; ierr=29; goto 999; endif
+	  call tensor_block_sync(dtens,dtk,ierr); if(ierr.ne.0) then; ierr=35; goto 999; endif
 	 endif
  !Destroy temporary tensor blocks:
 999	 nullify(ltp); nullify(rtp); nullify(dtp)
@@ -3294,7 +3847,7 @@
           &nthr,finish_gemm-start_gemm !debug
 	 endif
 	else
-	 ierr=30
+	 ierr=36
 	endif
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): exit error code: ",i5)') ierr !debug
 	return
@@ -3376,13 +3929,17 @@
 	  if(associated(ltens%data_cmplx8).and.associated(rtens%data_cmplx8).and.associated(dtens%data_cmplx8)) then
 	   dtkd='c8'
 	  else
-	   if(associated(ltens%data_real8).and.associated(rtens%data_real8).and.associated(dtens%data_real8)) then
-	    dtkd='r8'
+	   if(associated(ltens%data_cmplx4).and.associated(rtens%data_cmplx4).and.associated(dtens%data_cmplx4)) then
+	    dtkd='c4'
 	   else
-	    if(associated(ltens%data_real4).and.associated(rtens%data_real4).and.associated(dtens%data_real4)) then
-	     dtkd='r4'
+	    if(associated(ltens%data_real8).and.associated(rtens%data_real8).and.associated(dtens%data_real8)) then
+	     dtkd='r8'
 	    else
-	     ier=101
+	     if(associated(ltens%data_real4).and.associated(rtens%data_real4).and.associated(dtens%data_real4)) then
+	      dtkd='r4'
+	     else
+	      ier=101
+	     endif
 	    endif
 	   endif
 	  endif
@@ -3390,13 +3947,17 @@
 	  if(associated(ltens%data_cmplx8).and.associated(rtens%data_cmplx8)) then
 	   dtkd='c8'
 	  else
-	   if(associated(ltens%data_real8).and.associated(rtens%data_real8)) then
-	    dtkd='r8'
+	   if(associated(ltens%data_cmplx4).and.associated(rtens%data_cmplx4)) then
+	    dtkd='c4'
 	   else
-	    if(associated(ltens%data_real4).and.associated(rtens%data_real4)) then
-	     dtkd='r4'
+	    if(associated(ltens%data_real8).and.associated(rtens%data_real8)) then
+	     dtkd='r8'
 	    else
-	     ier=102
+	     if(associated(ltens%data_real4).and.associated(rtens%data_real4)) then
+	      dtkd='r4'
+	     else
+	      ier=102
+	     endif
 	    endif
 	   endif
 	  endif
@@ -3404,13 +3965,17 @@
 	  if(associated(ltens%data_cmplx8).or.associated(rtens%data_cmplx8)) then
 	   dtkd='c8'
 	  else
-	   if(associated(ltens%data_real8).or.associated(rtens%data_real8)) then
-	    dtkd='r8'
+	   if(associated(ltens%data_cmplx4).or.associated(rtens%data_cmplx4)) then
+	    dtkd='c4'
 	   else
-	    if(associated(ltens%data_real4).or.associated(rtens%data_real4)) then
-	     dtkd='r4'
+	    if(associated(ltens%data_real8).or.associated(rtens%data_real8)) then
+	     dtkd='r8'
 	    else
-	     ier=103
+	     if(associated(ltens%data_real4).or.associated(rtens%data_real4)) then
+	      dtkd='r4'
+	     else
+	      ier=103
+	     endif
 	    endif
 	   endif
 	  endif
@@ -4580,6 +5145,7 @@
 !       'sp': tensor shape pointers (%extent, %divider, %group);
 !       'r4': %data_real4 pointer;
 !       'r8': %data_real8 pointer;
+!       'c4': %data_cmplx4 pointer;
 !       'c8': %data_cmplx8 pointer;
 ! - sts: if present, makes the function set the status to <sts> instead of queriyng;
 !OUTPUT:
@@ -4592,7 +5158,8 @@
 !    Bits 0-2: %dim_extent, %dim_divider%, %dim_group;
 !    Bit 4: %data_real4;
 !    Bit 5: %data_real8;
-!    Bit 6: %data_cmplx8.
+!    Bit 6: %data_cmplx4.
+!    Bit 7: %data_cmplx8.
         implicit none
         type(tensor_block_t), intent(inout):: tens
         character(2), intent(in):: dk
@@ -4665,7 +5232,7 @@
            endif
           endif
          endif
-        case('c8','C8')
+        case('c4','C4')
          if(present(sts)) then !set
           if(sts) then
            tens%ptr_alloc=ibset(tens%ptr_alloc,6)
@@ -4676,14 +5243,31 @@
          else !query
           tensor_block_alloc=btest(tens%ptr_alloc,6)
           if(tensor_block_alloc) then
-           if(.not.associated(tens%data_cmplx8)) then
-            if(VERBOSE) write(CONS_OUT,'("ERROR(tensor_algebra::tensor_block_alloc): disassociated C8 marked allocated!")')
+           if(.not.associated(tens%data_cmplx4)) then
+            if(VERBOSE) write(CONS_OUT,'("ERROR(tensor_algebra::tensor_block_alloc): disassociated C4 marked allocated!")')
             ierr=5; return
            endif
           endif
          endif
+        case('c8','C8')
+         if(present(sts)) then !set
+          if(sts) then
+           tens%ptr_alloc=ibset(tens%ptr_alloc,7)
+          else
+           tens%ptr_alloc=ibclr(tens%ptr_alloc,7)
+          endif
+          tensor_block_alloc=sts
+         else !query
+          tensor_block_alloc=btest(tens%ptr_alloc,7)
+          if(tensor_block_alloc) then
+           if(.not.associated(tens%data_cmplx8)) then
+            if(VERBOSE) write(CONS_OUT,'("ERROR(tensor_algebra::tensor_block_alloc): disassociated C8 marked allocated!")')
+            ierr=6; return
+           endif
+          endif
+         endif
         case default
-         ierr=6
+         ierr=7
         end select
         return
         end function tensor_block_alloc
@@ -5139,6 +5723,78 @@
 	end subroutine tensor_block_slice_dlf_r8
 !-----------------------------------------------------------------------------------------------
 #ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_slice_dlf_c4
+#endif
+	subroutine tensor_block_slice_dlf_c4(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr) !PARALLEL
+!This subroutine extracts a slice from a tensor block.
+!INPUT:
+! - dim_num - number of tensor dimensions;
+! - tens(0:) - tensor block (array);
+! - tens_ext(1:dim_num) - dimension extents for <tens>;
+! - slice_ext(1:dim_num) - dimension extents for <slice>;
+! - ext_beg(1:dim_num) - beginning dimension offsets for <tens> (numeration starts at 0);
+!OUTPUT:
+! - slice(0:) - slice (array);
+! - ierr - error code (0:success).
+!NOTES:
+! - No argument validity checks.
+	implicit none
+!---------------------------------------
+	integer, parameter:: real_kind=4
+!---------------------------------------
+	integer, intent(in):: dim_num,tens_ext(1:dim_num),slice_ext(1:dim_num),ext_beg(1:dim_num)
+	complex(real_kind), intent(in):: tens(0:*)
+	complex(real_kind), intent(out):: slice(0:*)
+	integer, intent(inout):: ierr
+	integer i,j,k,l,m,n,ks,kf,im(1:dim_num)
+	integer(LONGINT):: lts,lss,l_in,l_out,lb,le,ll,bases_in(1:dim_num),bases_out(1:dim_num),segs(0:MAX_THREADS) !`Is segs(:) threadsafe?
+	real(8) time_beg
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
+!DIR$ ATTRIBUTES ALIGN:128:: real_kind,im,bases_in,bases_out,segs
+#endif
+
+	ierr=0
+!	time_beg=thread_wtime() !debug
+	if(dim_num.gt.0) then
+	 lts=1_LONGINT; do i=1,dim_num; bases_in(i)=lts; lts=lts*tens_ext(i); enddo   !tensor block indexing bases
+	 lss=1_LONGINT; do i=1,dim_num; bases_out(i)=lss; lss=lss*slice_ext(i); enddo !slice indexing bases
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(i,m,n,im,l_in,l_out,lb,le,ll)
+#ifndef NO_OMP
+	 n=omp_get_thread_num(); m=omp_get_num_threads()
+#else
+	 n=0; m=1
+#endif
+!$OMP MASTER
+	 segs(0)=0_LONGINT; call divide_segment(lss,int(m,LONGINT),segs(1:),ierr); do i=2,m; segs(i)=segs(i)+segs(i-1); enddo
+!$OMP END MASTER
+!$OMP BARRIER
+!$OMP FLUSH(segs)
+	 l_out=segs(n); do i=dim_num,1,-1; im(i)=l_out/bases_out(i); l_out=l_out-im(i)*bases_out(i); enddo
+	 l_in=ext_beg(1); do i=2,dim_num; l_in=l_in+(ext_beg(i)+im(i))*bases_in(i); enddo
+	 lb=int(im(1),LONGINT); le=int(slice_ext(1)-1,LONGINT); l_out=segs(n)-lb
+	 sloop: do while(l_out+lb.lt.segs(n+1))
+	  le=min(le,segs(n+1)-1_LONGINT-l_out) !to avoid different threads doing the same work
+	  do ll=lb,le; slice(l_out+ll)=tens(l_in+ll); enddo
+	  l_out=l_out+le+1_LONGINT; lb=0_LONGINT
+	  do i=2,dim_num
+	   if(im(i)+1.lt.slice_ext(i)) then
+	    im(i)=im(i)+1; l_in=l_in+bases_in(i); exit
+	   else
+	    l_in=l_in-im(i)*bases_in(i); im(i)=0
+	   endif
+	  enddo
+	 enddo sloop
+!$OMP END PARALLEL
+	else
+	 ierr=1 !zero-rank tensor
+	endif
+!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_slice_dlf_c4): kernel time/error code: ",F10.4,1x,i3)') &
+!        thread_wtime(time_beg),ierr !debug
+	return
+	end subroutine tensor_block_slice_dlf_c4
+!-----------------------------------------------------------------------------------------------
+#ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_slice_dlf_c8
 #endif
 	subroutine tensor_block_slice_dlf_c8(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr) !PARALLEL
@@ -5353,6 +6009,78 @@
 !        thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_insert_dlf_r8
+!------------------------------------------------------------------------------------------------
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_insert_dlf_c4
+#endif
+	subroutine tensor_block_insert_dlf_c4(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr) !PARALLEL
+!This subroutine inserts a slice into a tensor block.
+!INPUT:
+! - dim_num - number of tensor dimensions;
+! - tens_ext(1:dim_num) - dimension extents for <tens>;
+! - slice(0:) - slice (array);
+! - slice_ext(1:dim_num) - dimension extents for <slice>;
+! - ext_beg(1:dim_num) - beginning dimension offsets for <tens> (numeration starts at 0);
+!OUTPUT:
+! - tens(0:) - tensor block (array);
+! - ierr - error code (0:success).
+!NOTES:
+! - No argument validity checks.
+	implicit none
+!---------------------------------------
+	integer, parameter:: real_kind=4
+!---------------------------------------
+	integer, intent(in):: dim_num,tens_ext(1:dim_num),slice_ext(1:dim_num),ext_beg(1:dim_num)
+	complex(real_kind), intent(in):: slice(0:*)
+	complex(real_kind), intent(inout):: tens(0:*)
+	integer, intent(inout):: ierr
+	integer i,j,k,l,m,n,ks,kf,im(1:dim_num)
+	integer(LONGINT):: lts,lss,l_in,l_out,lb,le,ll,bases_in(1:dim_num),bases_out(1:dim_num),segs(0:MAX_THREADS) !`Is segs(:) threadsafe?
+	real(8) time_beg
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
+!DIR$ ATTRIBUTES ALIGN:128:: real_kind,im,bases_in,bases_out,segs
+#endif
+
+	ierr=0
+!	time_beg=thread_wtime() !debug
+	if(dim_num.gt.0) then
+	 lts=1_LONGINT; do i=1,dim_num; bases_out(i)=lts; lts=lts*tens_ext(i); enddo !tensor block indexing bases
+	 lss=1_LONGINT; do i=1,dim_num; bases_in(i)=lss; lss=lss*slice_ext(i); enddo !slice indexing bases
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(i,m,n,im,l_in,l_out,lb,le,ll)
+#ifndef NO_OMP
+	 n=omp_get_thread_num(); m=omp_get_num_threads()
+#else
+	 n=0; m=1
+#endif
+!$OMP MASTER
+	 segs(0)=0_LONGINT; call divide_segment(lss,int(m,LONGINT),segs(1:),ierr); do i=2,m; segs(i)=segs(i)+segs(i-1); enddo
+!$OMP END MASTER
+!$OMP BARRIER
+!$OMP FLUSH(segs)
+	 l_in=segs(n); do i=dim_num,1,-1; im(i)=l_in/bases_in(i); l_in=l_in-im(i)*bases_in(i); enddo
+	 l_out=ext_beg(1); do i=2,dim_num; l_out=l_out+(ext_beg(i)+im(i))*bases_out(i); enddo
+	 lb=int(im(1),LONGINT); le=int(slice_ext(1)-1,LONGINT); l_in=segs(n)-lb
+	 sloop: do while(l_in+lb.lt.segs(n+1))
+	  le=min(le,segs(n+1)-1_LONGINT-l_in) !to avoid different threads doing the same work
+	  do ll=lb,le; tens(l_out+ll)=slice(l_in+ll); enddo
+	  l_in=l_in+le+1_LONGINT; lb=0_LONGINT
+	  do i=2,dim_num
+	   if(im(i)+1.lt.slice_ext(i)) then
+	    im(i)=im(i)+1; l_out=l_out+bases_out(i)
+	   else
+	    l_out=l_out-im(i)*bases_out(i); im(i)=0
+	   endif
+	  enddo
+	 enddo sloop
+!$OMP END PARALLEL
+	else
+	 ierr=1 !zero-rank tensor
+	endif
+!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_insert_dlf_c4): kernel time/error code: ",F10.4,1x,i3)') &
+!        thread_wtime(time_beg),ierr !debug
+	return
+	end subroutine tensor_block_insert_dlf_c4
 !------------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_insert_dlf_c8
@@ -5915,6 +6643,283 @@
 	end subroutine tensor_block_copy_dlf_r8
 !-------------------------------------------------------------------------------------------------------
 #ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_copy_dlf_c4
+#endif
+	subroutine tensor_block_copy_dlf_c4(dim_num,dim_extents,dim_transp,tens_in,tens_out,ierr,conjug) !PARALLEL
+!Given a dense tensor block, this subroutine makes a copy of it, permuting the indices according to the <dim_transp>.
+!The algorithm is cache-efficient (Author: Dmitry I. Lyakh (Liakh): quant4me@gmail.com) (C) 2014.
+!INPUT:
+! - dim_num - number of dimensions (>0);
+! - dim_extents(1:dim_num) - dimension extents;
+! - dim_transp(0:dim_num) - index permutation (O2N), dim_transp(0) is the sign of the permutation;
+! - tens_in(0:) - input tensor data;
+! - conjug - (optional) complex conjugation flag;
+!OUTPUT:
+! - tens_out(0:) - output (possibly transposed) tensor data;
+! - ierr - error code (0:success).
+	implicit none
+!---------------------------------------
+	integer, parameter:: real_kind=4
+	logical, parameter:: cache_efficiency=.TRUE.
+	integer(LONGINT), parameter:: cache_line_len=64/(real_kind*2) !cache line length (words)
+	integer(LONGINT), parameter:: cache_line_min=cache_line_len*2 !lower bound for the input/output minor volume: => L1_cache_line*2
+	integer(LONGINT), parameter:: cache_line_lim=cache_line_len*4 !upper bound for the input/output minor volume: <= SQRT(L1_size)
+	integer(LONGINT), parameter:: small_tens_size=2**10 !up to this size it is useless to apply cache efficiency (fully fits in L1)
+	integer(LONGINT), parameter:: vec_size=2**8 !loop reorganization parameter for direct copy
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind,cache_efficiency,cache_line_len,cache_line_min,cache_line_lim,small_tens_size,vec_size
+!DIR$ ATTRIBUTES ALIGN:128:: real_kind,cache_efficiency,cache_line_len,cache_line_min,cache_line_lim,small_tens_size,vec_size
+#endif
+!---------------------------------------------------------------------
+	integer, intent(in):: dim_num,dim_extents(1:*),dim_transp(0:*)
+	complex(real_kind), intent(in):: tens_in(0:*)
+	complex(real_kind), intent(out):: tens_out(0:*)
+	integer, intent(inout):: ierr
+	logical, intent(in), optional:: conjug
+	integer i,j,k,l,m,n,k1,k2,ks,kf,split_in,split_out
+	integer im(1:dim_num),n2o(0:dim_num+1),ipr(1:dim_num+1),dim_beg(1:dim_num),dim_end(1:dim_num)
+	integer(LONGINT) bases_in(1:dim_num+1),bases_out(1:dim_num+1),bases_pri(1:dim_num+1),segs(0:MAX_THREADS) !`Is segs(:) threadsafe?
+	integer(LONGINT) bs,l0,l1,l2,l3,ll,lb,le,ls,l_in,l_out,seg_in,seg_out,vol_min,vol_ext
+	logical trivial,conj
+	real(8) time_beg,tm
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES ALIGN:128:: im,n2o,ipr,dim_beg,dim_end,bases_in,bases_out,bases_pri,segs
+#endif
+	ierr=0
+	time_beg=thread_wtime() !debug
+	if(present(conjug)) then; conj=conjug; else; conj=.FALSE.; endif !optional complex conjugation
+	if(dim_num.lt.0) then
+	 ierr=1; return
+	elseif(dim_num.eq.0) then
+	 if(conj) then; tens_out(0)=conjg(tens_in(0)); else; tens_out(0)=tens_in(0); endif
+	 return
+	endif
+!Check the index permutation:
+	trivial=.TRUE.; do i=1,dim_num; if(dim_transp(i).ne.i) then; trivial=.FALSE.; exit; endif; enddo
+	if(trivial.and.cache_efficiency) then
+!Trivial index permutation (no permutation):
+ !Compute indexing bases:
+	 bs=1_LONGINT; do i=1,dim_num; bases_in(i)=bs; bs=bs*dim_extents(i); enddo
+ !Copy input to output:
+	 if(conj) then
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l1)
+!$OMP DO SCHEDULE(GUIDED)
+	  do l0=0_LONGINT,bs-1_LONGINT-mod(bs,vec_size),vec_size
+	   do l1=0_LONGINT,vec_size-1_LONGINT; tens_out(l0+l1)=conjg(tens_in(l0+l1)); enddo
+	  enddo
+!$OMP END DO NOWAIT
+!$OMP SINGLE
+	  do l0=bs-mod(bs,vec_size),bs-1_LONGINT; tens_out(l0)=conjg(tens_in(l0)); enddo
+!$OMP END SINGLE
+!$OMP END PARALLEL
+	 else
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l1)
+!$OMP DO SCHEDULE(GUIDED)
+	  do l0=0_LONGINT,bs-1_LONGINT-mod(bs,vec_size),vec_size
+	   do l1=0_LONGINT,vec_size-1_LONGINT; tens_out(l0+l1)=tens_in(l0+l1); enddo
+	  enddo
+!$OMP END DO NOWAIT
+!$OMP SINGLE
+	  do l0=bs-mod(bs,vec_size),bs-1_LONGINT; tens_out(l0)=tens_in(l0); enddo
+!$OMP END SINGLE
+!$OMP END PARALLEL
+	 endif
+	else
+!Non-trivial index permutation:
+ !Compute indexing bases:
+	 do i=1,dim_num; n2o(dim_transp(i))=i; enddo; n2o(dim_num+1)=dim_num+1 !get the N2O
+	 bs=1_LONGINT; do i=1,dim_num; bases_in(i)=bs; bs=bs*dim_extents(i); enddo; bases_in(dim_num+1)=bs
+	 bs=1_LONGINT; do i=1,dim_num; bases_out(n2o(i))=bs; bs=bs*dim_extents(n2o(i)); enddo; bases_out(dim_num+1)=bs
+ !Configure cache-efficient algorithm:
+	 if(bs.le.small_tens_size.or.(.not.cache_efficiency)) then !tensor block is too small to think hard about it
+	  ipr(1:dim_num+1)=(/(j,j=1,dim_num+1)/); kf=dim_num !trivial priorities, all indices are minor
+	  split_in=kf; seg_in=dim_extents(split_in); split_out=kf; seg_out=dim_extents(split_out)
+	 else
+	  do k1=1,dim_num; if(bases_in(k1+1).ge.cache_line_lim) exit; enddo; k1=k1-1
+	  do k2=1,dim_num; if(bases_out(n2o(k2+1)).ge.cache_line_lim) exit; enddo; k2=k2-1
+	  do j=k1+1,dim_num; if(dim_transp(j).le.k2) then; k1=k1+1; else; exit; endif; enddo
+	  do j=k2+1,dim_num; if(n2o(j).le.k1) then; k2=k2+1; else; exit; endif; enddo
+	  if(bases_in(k1+1).lt.cache_line_min.and.bases_out(n2o(k2+1)).ge.cache_line_min) then !split the last minor input dim
+	   k1=k1+1; split_in=k1; seg_in=(cache_line_lim-1_LONGINT)/bases_in(split_in)+1_LONGINT
+	   split_out=n2o(k2); seg_out=dim_extents(split_out)
+	  elseif(bases_in(k1+1).ge.cache_line_min.and.bases_out(n2o(k2+1)).lt.cache_line_min) then !split the last minor output dim
+	   k2=k2+1; split_in=n2o(k2); seg_in=(cache_line_lim-1_LONGINT)/bases_out(split_in)+1_LONGINT
+	   split_out=k1; seg_out=dim_extents(split_out)
+	  elseif(bases_in(k1+1).lt.cache_line_min.and.bases_out(n2o(k2+1)).lt.cache_line_min) then !split both
+	   k1=k1+1; k2=k2+1
+	   if(k1.eq.n2o(k2)) then
+	    split_in=k1; seg_in=(cache_line_lim-1_LONGINT)/min(bases_in(split_in),bases_out(split_in))+1_LONGINT
+	    split_out=k1; seg_out=dim_extents(split_out)
+	   else
+	    split_in=k1; seg_in=(cache_line_lim-1_LONGINT)/bases_in(split_in)+1_LONGINT
+	    split_out=n2o(k2); seg_out=(cache_line_lim-1_LONGINT)/bases_out(split_out)+1_LONGINT
+	   endif
+	  else !split none
+	   split_in=k1; seg_in=dim_extents(split_in)
+	   split_out=n2o(k2); seg_out=dim_extents(split_out)
+	  endif
+	  vol_min=1_LONGINT
+	  if(seg_in.lt.dim_extents(split_in)) vol_min=vol_min*seg_in
+	  if(seg_out.lt.dim_extents(split_out)) vol_min=vol_min*seg_out
+	  if(vol_min.gt.1_LONGINT) then
+	   do j=1,k1
+	    if(j.ne.split_in.and.j.ne.split_out) vol_min=vol_min*dim_extents(j)
+	   enddo
+	   do j=1,k2
+	    l=n2o(j)
+	    if(l.gt.k1.and.l.ne.split_in.and.l.ne.split_out) vol_min=vol_min*dim_extents(l)
+	   enddo
+	   l=int((cache_line_lim*cache_line_lim)/vol_min,4)
+	   if(l.ge.2) then
+	    if(split_in.eq.split_out) then
+	     seg_in=seg_in*l
+	    else
+	     if(l.gt.4) then
+	      l=int(sqrt(float(l)),4)
+	      seg_in=min(seg_in*l,int(dim_extents(split_in),LONGINT))
+	      seg_out=min(seg_out*l,int(dim_extents(split_out),LONGINT))
+	     else
+	      seg_in=min(seg_in*l,int(dim_extents(split_in),LONGINT))
+	     endif
+	    endif
+	   endif
+	  endif
+	  l=0
+	  do while(l.lt.k1)
+	   l=l+1; ipr(l)=l; if(bases_in(l+1).ge.cache_line_min) exit
+	  enddo
+	  m=l+1
+	  j=0
+	  do while(j.lt.k2)
+	   j=j+1; n=n2o(j)
+	   if(n.ge.m) then; l=l+1; ipr(l)=n; endif
+	   if(bases_out(n2o(j+1)).ge.cache_line_min) exit
+	  enddo
+	  n=j+1
+	  do j=m,k1; if(dim_transp(j).ge.n) then; l=l+1; ipr(l)=j; endif; enddo
+	  do j=n,k2; if(n2o(j).gt.k1) then; l=l+1; ipr(l)=n2o(j); endif; enddo
+	  kf=l
+	  do j=k2+1,dim_num; if(n2o(j).gt.k1) then; l=l+1; ipr(l)=n2o(j); endif; enddo !kf is the length of the combined minor set
+	  ipr(dim_num+1)=dim_num+1 !special setting
+	 endif
+	 vol_ext=1_LONGINT; do j=kf+1,dim_num; vol_ext=vol_ext*dim_extents(ipr(j)); enddo !external volume
+!	 write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_c4): extents:",99(1x,i5))') dim_extents(1:dim_num) !debug
+!	 write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_c4): permutation:",99(1x,i2))') dim_transp(1:dim_num) !debug
+!	 write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_c4): minor ",i3,": priority:",99(1x,i2))') &
+!         kf,ipr(1:dim_num) !debug
+!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_c4): vol_ext ",i11,": segs:",4(1x,i5))') &
+!         vol_ext,split_in,split_out,seg_in,seg_out !debug
+ !Transpose:
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(i,j,m,n,ks,l0,l1,l2,l3,ll,lb,le,ls,l_in,l_out,vol_min,im,dim_beg,dim_end)
+#ifndef NO_OMP
+	 n=omp_get_thread_num(); m=omp_get_num_threads() !multi-threaded execution
+#else
+	 n=0; m=1 !serial execution
+#endif
+!	 if(n.eq.0) write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_c4): number of threads = ",i5)') m !debug
+         if(kf.lt.dim_num) then !external indices present
+!$OMP MASTER
+	  segs(0)=0_LONGINT; call divide_segment(vol_ext,int(m,LONGINT),segs(1:),i); do j=2,m; segs(j)=segs(j)+segs(j-1); enddo
+	  l0=1_LONGINT; do i=kf+1,dim_num; bases_pri(ipr(i))=l0; l0=l0*dim_extents(ipr(i)); enddo !priority bases
+!$OMP END MASTER
+!$OMP BARRIER
+!$OMP FLUSH(segs,bases_pri)
+	  dim_beg(1:dim_num)=0; dim_end(1:dim_num)=dim_extents(1:dim_num)-1
+	  l2=dim_end(split_in); l3=dim_end(split_out); ls=bases_out(1)
+	  loop0: do l1=0_LONGINT,l3,seg_out !output dimension
+	   dim_beg(split_out)=l1; dim_end(split_out)=min(l1+seg_out-1_LONGINT,l3)
+	   do l0=0_LONGINT,l2,seg_in !input dimension
+	    dim_beg(split_in)=l0; dim_end(split_in)=min(l0+seg_in-1_LONGINT,l2)
+	    ll=segs(n); do i=dim_num,kf+1,-1; j=ipr(i); im(j)=ll/bases_pri(j); ll=ll-im(j)*bases_pri(j); enddo
+	    vol_min=1_LONGINT; do i=1,kf; j=ipr(i); vol_min=vol_min*(dim_end(j)-dim_beg(j)+1); im(j)=dim_beg(j); enddo
+	    l_in=0_LONGINT; do j=1,dim_num; l_in=l_in+im(j)*bases_in(j); enddo
+	    l_out=0_LONGINT; do j=1,dim_num; l_out=l_out+im(j)*bases_out(j); enddo
+	    le=dim_end(1)-dim_beg(1); lb=(segs(n+1)-segs(n))*vol_min; ks=0
+	    loop1: do while(lb.gt.0_LONGINT)
+	     if(conj) then
+	      do ll=0_LONGINT,le
+	       tens_out(l_out+ll*ls)=conjg(tens_in(l_in+ll))
+	      enddo
+	     else
+	      do ll=0_LONGINT,le
+	       tens_out(l_out+ll*ls)=tens_in(l_in+ll)
+	      enddo
+	     endif
+	     lb=lb-(le+1_LONGINT)
+	     do i=2,dim_num
+	      j=ipr(i) !old index number
+	      if(im(j).lt.dim_end(j)) then
+	       im(j)=im(j)+1; l_in=l_in+bases_in(j); l_out=l_out+bases_out(j)
+	       ks=ks+1; exit
+	      else
+	       l_in=l_in-(im(j)-dim_beg(j))*bases_in(j); l_out=l_out-(im(j)-dim_beg(j))*bases_out(j); im(j)=dim_beg(j)
+	      endif
+	     enddo !i
+	     ks=ks-1; if(ks.lt.0) exit loop1
+	    enddo loop1
+	    if(lb.ne.0_LONGINT) then
+	     if(VERBOSE) write(CONS_OUT,'("ERROR(tensor_algebra::tensor_block_copy_dlf_c4): invalid remainder: ",i11,1x,i4)') lb,n
+!!!$OMP ATOMIC WRITE SEQ_CST
+!$OMP ATOMIC WRITE
+	     ierr=2
+	     exit loop0
+	    endif
+	   enddo !l0
+          enddo loop0 !l1
+         else !external indices absent
+!$OMP MASTER
+	  l0=1_LONGINT; do i=kf+1,dim_num; bases_pri(ipr(i))=l0; l0=l0*dim_extents(ipr(i)); enddo !priority bases
+!$OMP END MASTER
+!$OMP BARRIER
+!$OMP FLUSH(bases_pri)
+	  dim_beg(1:dim_num)=0; dim_end(1:dim_num)=dim_extents(1:dim_num)-1
+          l2=dim_end(split_in); l3=dim_end(split_out); ls=bases_out(1)
+!$OMP DO SCHEDULE(DYNAMIC) COLLAPSE(2)
+	  do l1=0_LONGINT,l3,seg_out !output dimension
+	   do l0=0_LONGINT,l2,seg_in !input dimension
+	    dim_beg(split_out)=l1; dim_end(split_out)=min(l1+seg_out-1_LONGINT,l3)
+	    dim_beg(split_in)=l0; dim_end(split_in)=min(l0+seg_in-1_LONGINT,l2)
+	    vol_min=1_LONGINT; do i=1,kf; j=ipr(i); vol_min=vol_min*(dim_end(j)-dim_beg(j)+1); im(j)=dim_beg(j); enddo
+	    l_in=0_LONGINT; do j=1,dim_num; l_in=l_in+im(j)*bases_in(j); enddo
+	    l_out=0_LONGINT; do j=1,dim_num; l_out=l_out+im(j)*bases_out(j); enddo
+	    le=dim_end(1)-dim_beg(1); lb=vol_min; ks=0
+	    loop2: do while(lb.gt.0_LONGINT)
+	     if(conj) then
+	      do ll=0_LONGINT,le
+	       tens_out(l_out+ll*ls)=conjg(tens_in(l_in+ll))
+	      enddo
+	     else
+	      do ll=0_LONGINT,le
+	       tens_out(l_out+ll*ls)=tens_in(l_in+ll)
+	      enddo
+	     endif
+	     lb=lb-(le+1_LONGINT)
+	     do i=2,dim_num
+	      j=ipr(i) !old index number
+	      if(im(j).lt.dim_end(j)) then
+	       im(j)=im(j)+1; l_in=l_in+bases_in(j); l_out=l_out+bases_out(j)
+	       ks=ks+1; exit
+	      else
+	       l_in=l_in-(im(j)-dim_beg(j))*bases_in(j); l_out=l_out-(im(j)-dim_beg(j))*bases_out(j); im(j)=dim_beg(j)
+	      endif
+	     enddo !i
+	     ks=ks-1; if(ks.lt.0) exit loop2
+	    enddo loop2
+	   enddo !l0
+          enddo !l1
+!$OMP END DO
+         endif
+!$OMP END PARALLEL
+	endif !trivial or not
+	tm=thread_wtime(time_beg) !debug
+	if(LOGGING.gt.0) then
+	 write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_c4): Done: ",F10.4," sec, ",F10.4," GB/s, error ",i3)') &
+	 tm,dble(2_LONGINT*bs*real_kind*2_LONGINT)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	endif
+	return
+	end subroutine tensor_block_copy_dlf_c4
+!-------------------------------------------------------------------------------------------------------
+#ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_copy_dlf_c8
 #endif
 	subroutine tensor_block_copy_dlf_c8(dim_num,dim_extents,dim_transp,tens_in,tens_out,ierr,conjug) !PARALLEL
@@ -6315,6 +7320,85 @@
 	end subroutine tensor_block_copy_scatter_dlf_r8
 !---------------------------------------------------------------------------------------------------------------
 #ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_copy_scatter_dlf_c4
+#endif
+	subroutine tensor_block_copy_scatter_dlf_c4(dim_num,dim_extents,dim_transp,tens_in,tens_out,ierr,conjug) !PARALLEL
+!Given a dense tensor block, this subroutine makes a copy of it, permuting the indices according to the <dim_transp>.
+!INPUT:
+! - dim_num - number of dimensions (>0);
+! - dim_extents(1:dim_num) - dimension extents;
+! - dim_transp(0:dim_num) - index permutation (O2N);
+! - tens_in(0:) - input tensor data;
+! - conjug - (optional) complex conjugation flag;
+!OUTPUT:
+! - tens_out(0:) - output (possibly transposed) tensor data;
+! - ierr - error code (0:success).
+	implicit none
+!---------------------------------------
+	integer, parameter:: real_kind=4
+!---------------------------------------
+	integer, intent(in):: dim_num,dim_extents(1:*)
+	integer, intent(in):: dim_transp(0:*)
+	complex(real_kind), intent(in):: tens_in(0:*)
+	complex(real_kind), intent(out):: tens_out(0:*)
+	integer, intent(inout):: ierr
+	logical, intent(in), optional:: conjug
+	integer i,k,n2o(dim_num)
+	integer(LONGINT) j,l,m,n,base_in(dim_num),base_out(dim_num)
+	logical trivial,conj
+	real(8) time_beg
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
+!DIR$ ATTRIBUTES ALIGN:128:: real_kind,n2o,base_in,base_out
+#endif
+
+	ierr=0
+!	time_beg=thread_wtime() !debug
+	if(present(conjug)) then; conj=conjug; else; conj=.FALSE.; endif !optional complex conjugation
+	if(dim_num.eq.0) then !scalar tensor
+	 if(conj) then; tens_out(0)=conjg(tens_in(0)); else; tens_out(0)=tens_in(0); endif
+	elseif(dim_num.gt.0) then
+	 trivial=.TRUE.; do i=1,dim_num; if(dim_transp(i).ne.i) then; trivial=.FALSE.; exit; endif; enddo
+	 n=dim_extents(1); do i=2,dim_num; n=n*dim_extents(i); enddo
+	 if(trivial) then !trivial permutation
+	  if(conj) then
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i) SCHEDULE(GUIDED)
+	   do l=0_LONGINT,n-1_LONGINT; tens_out(l)=conjg(tens_in(l)); enddo
+!$OMP END PARALLEL DO
+	  else
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i) SCHEDULE(GUIDED)
+	   do l=0_LONGINT,n-1_LONGINT; tens_out(l)=tens_in(l); enddo
+!$OMP END PARALLEL DO
+	  endif
+	 else !non-trivial permutation
+	  do i=1,dim_num; n2o(dim_transp(i))=i; enddo
+	  j=1_LONGINT; do i=1,dim_num; base_in(i)=j; j=j*dim_extents(i); enddo
+	  j=1_LONGINT; do i=1,dim_num; k=n2o(i); base_out(k)=j; j=j*dim_extents(k); enddo
+	  if(conj) then
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i,j,k,l) SCHEDULE(GUIDED)
+	   do m=0_LONGINT,n-1_LONGINT
+	    l=0_LONGINT; j=m; do k=dim_num,1,-1; l=l+(j/base_in(k))*base_out(k); j=mod(j,base_in(k)); enddo
+	    tens_out(l)=conjg(tens_in(m))
+	   enddo
+!$OMP END PARALLEL DO
+	  else
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(i,j,k,l) SCHEDULE(GUIDED)
+	   do m=0_LONGINT,n-1_LONGINT
+	    l=0_LONGINT; j=m; do k=dim_num,1,-1; l=l+(j/base_in(k))*base_out(k); j=mod(j,base_in(k)); enddo
+	    tens_out(l)=tens_in(m)
+	   enddo
+!$OMP END PARALLEL DO
+	  endif
+	 endif
+	else
+	 ierr=1
+	endif
+!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_scatter_dlf_c4): kernel time/error code = ",F10.4,1x,i3)') &
+!        thread_wtime(time_beg),ierr !debug
+	return
+	end subroutine tensor_block_copy_scatter_dlf_c4
+!---------------------------------------------------------------------------------------------------------------
+#ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_copy_scatter_dlf_c8
 #endif
 	subroutine tensor_block_copy_scatter_dlf_c8(dim_num,dim_extents,dim_transp,tens_in,tens_out,ierr,conjug) !PARALLEL
@@ -6480,6 +7564,49 @@
 	end subroutine tensor_block_fcontract_dlf_r8
 !--------------------------------------------------------------------------------
 #ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_fcontract_dlf_c4
+#endif
+	subroutine tensor_block_fcontract_dlf_c4(dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
+!This subroutine fully reduces two vectors derived from the corresponding tensors by index permutations:
+!dtens+=ltens(0:dc-1)*rtens(0:dc-1)*alpha, where dtens is a scalar.
+	implicit none
+!---------------------------------------
+	integer, parameter:: real_kind=4 !real data kind
+!---------------------------------------
+	integer(LONGINT), intent(in):: dc
+	complex(real_kind), intent(in):: ltens(0:*),rtens(0:*) !true tensors
+	complex(real_kind), intent(inout):: dtens !scalar
+	integer, intent(inout):: ierr !error code
+	complex(real_kind), intent(in), optional:: alpha
+	integer i,j,k,l,m,n
+	complex(real_kind) val,alf
+	integer(LONGINT) l0
+	real(8) time_beg,tm
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
+!DIR$ ATTRIBUTES ALIGN:128:: real_kind
+#endif
+
+	ierr=0
+!	time_beg=thread_wtime() !debug
+!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_c4): dc: ",i9)') dc !debug
+	if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
+	if(dc.gt.0_LONGINT) then
+	 val=(0.0,0.0)
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val)
+	 do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(l0)*rtens(l0)*alf; enddo
+!$OMP END PARALLEL DO
+	 dtens=dtens+val
+	else
+	 ierr=1
+	endif
+!       tm=thread_wtime(time_beg) !debug
+!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_c4): time/speed/error = ",2(F10.4,1x),i3)') &
+!        tm,dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	return
+	end subroutine tensor_block_fcontract_dlf_c4
+!--------------------------------------------------------------------------------
+#ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_fcontract_dlf_c8
 #endif
 	subroutine tensor_block_fcontract_dlf_c8(dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
@@ -6508,7 +7635,7 @@
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_c8): dc: ",i9)') dc !debug
 	if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
 	if(dc.gt.0_LONGINT) then
-	 val=cmplx(0d0,0d0,real_kind)
+	 val=(0d0,0d0)
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val)
 	 do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(l0)*rtens(l0)*alf; enddo
 !$OMP END PARALLEL DO
@@ -6808,7 +7935,7 @@
 	endif
 !	tm=thread_wtime(time_beg) !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_r4): time/speed/error = ",2(F10.4,1x),i3)') &
-!        tm,dble(dr*dl*dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
+!        tm,2d0*dble(dr*dl*dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_pcontract_dlf_r4
 !--------------------------------------------------------------------------------------
@@ -7098,9 +8225,299 @@
 	endif
 !	tm=thread_wtime(time_beg) !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_r8): time/speed/error = ",2(F10.4,1x),i3)') &
-!        tm,dble(dr*dl*dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
+!        tm,2d0*dble(dr*dl*dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_pcontract_dlf_r8
+!--------------------------------------------------------------------------------------
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_pcontract_dlf_c4
+#endif
+	subroutine tensor_block_pcontract_dlf_c4(dl,dr,dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
+!This subroutine multiplies two matrices derived from the corresponding tensors by index permutations:
+!dtens(0:dl-1,0:dr-1)+=ltens(0:dc-1,0:dl-1)*rtens(0:dc-1,0:dr-1)*alpha
+!The result is a matrix as well (cannot be a scalar, see tensor_block_fcontract).
+	implicit none
+!---------------------------------------
+	integer, parameter:: real_kind=4                   !real data kind
+	integer(LONGINT), parameter:: red_mat_size=32      !the size of the local reduction matrix
+	integer(LONGINT), parameter:: arg_cache_size=2**15 !cache-size dependent parameter (increase it as there are more cores per node)
+	integer, parameter:: min_distr_seg_size=128  !min segment size of an omp distributed dimension
+	integer, parameter:: cdim_stretch=2          !makes the segmentation of the contracted dimension coarser
+	integer, parameter:: core_slope=16           !regulates the slope of the segment size of the distributed dimension w.r.t. the number of cores
+	integer, parameter:: ker1=0                  !kernel 1 scheme #
+	integer, parameter:: ker2=0                  !kernel 2 scheme #
+	integer, parameter:: ker3=0                  !kernel 3 scheme #
+!----------------------------------
+	logical, parameter:: no_case1=.FALSE.
+	logical, parameter:: no_case2=.FALSE.
+	logical, parameter:: no_case3=.FALSE.
+	logical, parameter:: no_case4=.FALSE.
+!----------------------------------------------
+	integer(LONGINT), intent(in):: dl,dr,dc !matrix dimensions
+	complex(real_kind), intent(in):: ltens(0:*),rtens(0:*) !input arguments
+	complex(real_kind), intent(inout):: dtens(0:*) !output argument
+	integer, intent(inout):: ierr !error code
+	complex(real_kind), intent(in), optional:: alpha
+	integer i,j,k,l,m,n,nthr
+	integer(LONGINT) ll,lr,ld,l0,l1,l2,b0,b1,b2,e0r,e0,e1,e2,ls,lf,cl,cr,cc,chunk
+	complex(real_kind) vec(0:7),redm(0:red_mat_size-1,0:red_mat_size-1),val,alf !`thread private (redm)?
+	real(8) time_beg,tm
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind,red_mat_size,arg_cache_size,min_distr_seg_size,cdim_stretch,core_slope,ker1,ker2,ker3
+!DIR$ ATTRIBUTES OFFLOAD:mic:: no_case1,no_case2,no_case3,no_case4
+!DIR$ ATTRIBUTES ALIGN:128:: real_kind,red_mat_size,arg_cache_size,min_distr_seg_size,cdim_stretch,core_slope,ker1,ker2,ker3
+!DIR$ ATTRIBUTES ALIGN:128:: no_case1,no_case2,no_case3,no_case4,vec,redm
+#endif
+
+	ierr=0
+!	time_beg=thread_wtime() !debug
+	if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
+	if(dl.gt.0_LONGINT.and.dr.gt.0_LONGINT.and.dc.gt.0_LONGINT) then
+#ifndef NO_OMP
+	 nthr=omp_get_max_threads()
+#else
+	 nthr=1
+#endif
+	 if(dr.ge.core_slope*nthr.and.(.not.no_case1)) then !the right dimension is large enough to be distributed
+!	  write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): kernel case/scheme: 1/",i1)') ker1 !debug
+	  select case(ker1)
+	  case(0)
+!SCHEME 0:
+	   cr=min(dr,int(max(core_slope*nthr,min_distr_seg_size),LONGINT))
+	   cc=min(dc,max((arg_cache_size*int(cdim_stretch,LONGINT))/cr,1_LONGINT))
+	   cl=min(dl,min(max(arg_cache_size/cc,1_LONGINT),max(arg_cache_size/cr,1_LONGINT)))
+!	   write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): cl,cr,cc,dl,dr,dc:",6(1x,i9))') &
+!           cl,cr,cc,dl,dr,dc !debug
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(b0,b1,b2,e0r,e0,e1,e2,l0,l1,l2,ll,lr,ld,vec)
+	   do b0=0_LONGINT,dc-1_LONGINT,cc
+	    e0=min(b0+cc-1_LONGINT,dc-1_LONGINT)
+	    e0r=mod(e0-b0+1_LONGINT,8_LONGINT)
+	    do b1=0_LONGINT,dl-1_LONGINT,cl
+	     e1=min(b1+cl-1_LONGINT,dl-1_LONGINT)
+	     do b2=0_LONGINT,dr-1_LONGINT,cr
+	      e2=min(b2+cr-1_LONGINT,dr-1_LONGINT)
+!$OMP DO SCHEDULE(GUIDED)
+	      do l2=b2,e2
+	       ld=l2*dl
+	       do l1=b1,e1
+	        ll=l1*dc+b0; lr=l2*dc+b0; vec(:)=cmplx(0E0_real_kind,0E0_real_kind,kind=real_kind)
+	        do l0=b0,e0-e0r,8_LONGINT
+	         vec(0)=vec(0)+ltens(ll)*rtens(lr)*alf
+	         vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)*alf
+	         vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)*alf
+	         vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)*alf
+	         vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)*alf
+	         vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)*alf
+	         vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)*alf
+	         vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)*alf
+	         ll=ll+8_LONGINT; lr=lr+8_LONGINT
+	        enddo
+	        do l0=0_LONGINT,e0r-1_LONGINT
+	         vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)*alf
+	        enddo
+	        vec(0)=vec(0)+vec(4)
+	        vec(1)=vec(1)+vec(5)
+	        vec(2)=vec(2)+vec(6)
+	        vec(3)=vec(3)+vec(7)
+	        dtens(ld+l1)=dtens(ld+l1)+vec(0)+vec(1)+vec(2)+vec(3)
+	       enddo
+	      enddo
+!$OMP END DO NOWAIT
+	     enddo
+	    enddo
+!$OMP BARRIER
+	   enddo
+!$OMP END PARALLEL
+	  case(1)
+!SCHEME 1:
+	   chunk=max(arg_cache_size/dc,1_LONGINT)
+!          write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): chunk,dl,dr,dc:",4(1x,i9))') chunk,dl,dr,dc !debug
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l1,l2,ll,lr,ld,ls,lf,val)
+	   do ls=0_LONGINT,dl-1_LONGINT,chunk
+	    lf=min(ls+chunk-1_LONGINT,dl-1_LONGINT)
+!!$OMP DO SCHEDULE(DYNAMIC,chunk)
+!$OMP DO SCHEDULE(GUIDED)
+	    do l2=0_LONGINT,dr-1_LONGINT
+	     lr=l2*dc; ld=l2*dl
+	     do l1=ls,lf
+	      ll=l1*dc
+	      val=dtens(ld+l1)
+	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
+	      dtens(ld+l1)=val
+	     enddo
+	    enddo
+!$OMP END DO NOWAIT
+	   enddo
+!$OMP END PARALLEL
+	  case(2)
+!SCHEME 2:
+	   chunk=max(arg_cache_size/dc,1_LONGINT)
+	   if(mod(dl,chunk).ne.0) then; ls=dl/chunk+1_LONGINT; else; ls=dl/chunk; endif
+	   if(mod(dr,chunk).ne.0) then; lf=dr/chunk+1_LONGINT; else; lf=dr/chunk; endif
+!	   write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): chunk,ls,lf,dl,dr,dc:",6(1x,i9))') &
+!           chunk,ls,lf,dl,dr,dc !debug
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(b0,b1,b2,l0,l1,l2,ll,lr,ld,val) SCHEDULE(GUIDED)
+	   do b0=0_LONGINT,lf*ls-1_LONGINT
+	    b2=b0/ls*chunk; b1=mod(b0,ls)*chunk
+	    do l2=b2,min(b2+chunk-1_LONGINT,dr-1_LONGINT)
+	     lr=l2*dc; ld=l2*dl
+	     do l1=b1,min(b1+chunk-1_LONGINT,dl-1_LONGINT)
+	      ll=l1*dc
+	      val=dtens(ld+l1)
+	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
+	      dtens(ld+l1)=val
+	     enddo
+	    enddo
+	   enddo
+!$OMP END PARALLEL DO
+	  case(3)
+!SCHEME 3:
+!	   write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): dl,dr,dc:",3(1x,i9))') dl,dr,dc !debug
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0,l1,l2,ll,lr,ld,val) SCHEDULE(DYNAMIC)
+	   do l2=0_LONGINT,dr-1_LONGINT
+	    lr=l2*dc; ld=l2*dl
+	    do l1=0_LONGINT,dl-1_LONGINT
+	     ll=l1*dc
+	     val=dtens(ld+l1)
+	     do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
+	     dtens(ld+l1)=val
+	    enddo
+	   enddo
+!$OMP END PARALLEL DO
+	  case default
+	   ierr=1
+	  end select
+	 else !dr is small
+	  if(dl.ge.core_slope*nthr.and.(.not.no_case2)) then !the left dimension is large enough to be distributed
+!	   write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): kernel case/scheme: 2/",i1)') ker2 !debug
+	   select case(ker2)
+	   case(0)
+!SCHEME 0:
+!           write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): dl,dr,dc:",3(1x,i9))') dl,dr,dc !debug
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l1,l2,b2,ll,lr,ld,e0r,vec)
+            e0r=mod(dc,8_LONGINT)
+	    do l2=0_LONGINT,dr-1_LONGINT
+	     b2=l2*dc; ld=l2*dl
+!$OMP DO SCHEDULE(GUIDED)
+	     do l1=0_LONGINT,dl-1_LONGINT
+	      ll=l1*dc; lr=b2; vec(:)=cmplx(0E0_real_kind,0E0_real_kind,kind=real_kind)
+	      do l0=0_LONGINT,dc-1_LONGINT-e0r,8_LONGINT
+	       vec(0)=vec(0)+ltens(ll)*rtens(lr)*alf
+	       vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)*alf
+	       vec(2)=vec(2)+ltens(ll+2_LONGINT)*rtens(lr+2_LONGINT)*alf
+	       vec(3)=vec(3)+ltens(ll+3_LONGINT)*rtens(lr+3_LONGINT)*alf
+	       vec(4)=vec(4)+ltens(ll+4_LONGINT)*rtens(lr+4_LONGINT)*alf
+	       vec(5)=vec(5)+ltens(ll+5_LONGINT)*rtens(lr+5_LONGINT)*alf
+	       vec(6)=vec(6)+ltens(ll+6_LONGINT)*rtens(lr+6_LONGINT)*alf
+	       vec(7)=vec(7)+ltens(ll+7_LONGINT)*rtens(lr+7_LONGINT)*alf
+	       ll=ll+8_LONGINT; lr=lr+8_LONGINT
+	      enddo
+	      do l0=0_LONGINT,e0r-1_LONGINT
+	       vec(l0)=vec(l0)+ltens(ll+l0)*rtens(lr+l0)*alf
+	      enddo
+	      vec(0)=vec(0)+vec(4)
+	      vec(1)=vec(1)+vec(5)
+	      vec(2)=vec(2)+vec(6)
+	      vec(3)=vec(3)+vec(7)
+	      dtens(ld+l1)=dtens(ld+l1)+vec(0)+vec(1)+vec(2)+vec(3)
+	     enddo
+!$OMP END DO NOWAIT
+	    enddo
+!$OMP END PARALLEL
+	   case(1)
+!SCHEME 1:
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0,l1,l2,ll,lr,val) SCHEDULE(GUIDED) COLLAPSE(2)
+	    do l2=0_LONGINT,dr-1_LONGINT
+	     do l1=0_LONGINT,dl-1_LONGINT
+	      ll=l1*dc; lr=l2*dc
+	      val=dtens(l2*dl+l1)
+	      do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
+	      dtens(l2*dl+l1)=val
+	     enddo
+	    enddo
+!$OMP END PARALLEL DO
+	   case default
+	    ierr=2
+	   end select
+	  else !dr & dl are both small
+	   if(dc.ge.core_slope*nthr.and.(.not.no_case3)) then !the contraction dimension is large enough to be distributed
+!	    write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): kernel case/scheme: 3/",i1)') ker3 !debug
+	    select case(ker3)
+	    case(0)
+!SCHEME 0:
+!            write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): dl,dr,dc:",3(1x,i9))') dl,dr,dc !debug
+             redm(:,:)=cmplx(0E0_real_kind,0E0_real_kind,kind=real_kind)
+             do b2=0_LONGINT,dr-1_LONGINT,red_mat_size
+              e2=min(red_mat_size-1_LONGINT,dr-1_LONGINT-b2)
+              do b1=0_LONGINT,dl-1_LONGINT,red_mat_size
+               e1=min(red_mat_size-1_LONGINT,dl-1_LONGINT-b1)
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l1,l2,ll,lr)
+	       do l2=0_LONGINT,e2
+	        lr=(b2+l2)*dc
+	        do l1=0_LONGINT,e1
+	         ll=(b1+l1)*dc
+!$OMP MASTER
+	         val=cmplx(0E0_real_kind,0E0_real_kind,kind=real_kind)
+!$OMP END MASTER
+!$OMP BARRIER
+!$OMP DO SCHEDULE(GUIDED) REDUCTION(+:val)
+	         do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
+!$OMP END DO
+!$OMP MASTER
+		 redm(l1,l2)=val
+!$OMP END MASTER
+	        enddo
+	       enddo
+!$OMP END PARALLEL
+	       do l2=0_LONGINT,e2
+	        ld=(b2+l2)*dl
+	        do l1=0_LONGINT,e1
+	         dtens(ld+b1+l1)=dtens(ld+b1+l1)+redm(l1,l2)
+	        enddo
+	       enddo
+	      enddo
+	     enddo
+	    case default
+	     ierr=3
+	    end select
+	   else !dr & dl & dc are all small
+	    if(dr*dl.ge.core_slope*nthr.and.(.not.no_case4)) then !the destination matrix is large enough to be distributed
+!	     write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): kernel case: 4")') !debug
+!	     write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): dl,dr,dc:",3(1x,i9))') dl,dr,dc !debug
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0,l1,l2,ll,lr,val) SCHEDULE(GUIDED) COLLAPSE(2)
+	     do l2=0_LONGINT,dr-1_LONGINT
+	      do l1=0_LONGINT,dl-1_LONGINT
+	       ll=l1*dc; lr=l2*dc
+	       val=dtens(l2*dl+l1)
+	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
+	       dtens(l2*dl+l1)=val
+	      enddo
+	     enddo
+!$OMP END PARALLEL DO
+	    else !all matrices are very small (serial execution)
+!	     write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): kernel case: 5 (serial)")') !debug
+!	     write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): dl,dr,dc:",3(1x,i9))') dl,dr,dc !debug
+	     do l2=0_LONGINT,dr-1_LONGINT
+	      lr=l2*dc; ld=l2*dl
+	      do l1=0_LONGINT,dl-1_LONGINT
+	       ll=l1*dc
+	       val=dtens(ld+l1)
+	       do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(ll+l0)*rtens(lr+l0)*alf; enddo
+	       dtens(ld+l1)=val
+	      enddo
+	     enddo
+	    endif
+	   endif
+	  endif
+	 endif
+	else
+	 ierr=4
+	endif
+!	tm=thread_wtime(time_beg) !debug
+!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c4): time/speed/error = ",2(F10.4,1x),i3)') &
+!        tm,8d0*dble(dr*dl*dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	return
+	end subroutine tensor_block_pcontract_dlf_c4
 !--------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_pcontract_dlf_c8
@@ -7173,7 +8590,7 @@
 	      do l2=b2,e2
 	       ld=l2*dl
 	       do l1=b1,e1
-	        ll=l1*dc+b0; lr=l2*dc+b0; vec(:)=cmplx(0E0_real_kind,0E0_real_kind,real_kind)
+	        ll=l1*dc+b0; lr=l2*dc+b0; vec(:)=cmplx(0E0_real_kind,0E0_real_kind,kind=real_kind)
 	        do l0=b0,e0-e0r,8_LONGINT
 	         vec(0)=vec(0)+ltens(ll)*rtens(lr)*alf
 	         vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)*alf
@@ -7273,7 +8690,7 @@
 	     b2=l2*dc; ld=l2*dl
 !$OMP DO SCHEDULE(GUIDED)
 	     do l1=0_LONGINT,dl-1_LONGINT
-	      ll=l1*dc; lr=b2; vec(:)=cmplx(0E0_real_kind,0E0_real_kind,real_kind)
+	      ll=l1*dc; lr=b2; vec(:)=cmplx(0E0_real_kind,0E0_real_kind,kind=real_kind)
 	      do l0=0_LONGINT,dc-1_LONGINT-e0r,8_LONGINT
 	       vec(0)=vec(0)+ltens(ll)*rtens(lr)*alf
 	       vec(1)=vec(1)+ltens(ll+1_LONGINT)*rtens(lr+1_LONGINT)*alf
@@ -7319,7 +8736,7 @@
 	    case(0)
 !SCHEME 0:
 !            write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c8): dl,dr,dc:",3(1x,i9))') dl,dr,dc !debug
-             redm(:,:)=cmplx(0E0_real_kind,0E0_real_kind,real_kind)
+             redm(:,:)=cmplx(0E0_real_kind,0E0_real_kind,kind=real_kind)
              do b2=0_LONGINT,dr-1_LONGINT,red_mat_size
               e2=min(red_mat_size-1_LONGINT,dr-1_LONGINT-b2)
               do b1=0_LONGINT,dl-1_LONGINT,red_mat_size
@@ -7330,7 +8747,7 @@
 	        do l1=0_LONGINT,e1
 	         ll=(b1+l1)*dc
 !$OMP MASTER
-	         val=cmplx(0E0_real_kind,0E0_real_kind,real_kind)
+	         val=cmplx(0E0_real_kind,0E0_real_kind,kind=real_kind)
 !$OMP END MASTER
 !$OMP BARRIER
 !$OMP DO SCHEDULE(GUIDED) REDUCTION(+:val)
@@ -7388,7 +8805,7 @@
 	endif
 !	tm=thread_wtime(time_beg) !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_pcontract_dlf_c8): time/speed/error = ",2(F10.4,1x),i3)') &
-!        tm,dble(dr*dl*dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
+!        tm,8d0*dble(dr*dl*dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_pcontract_dlf_c8
 !------------------------------------------------------------------------------------------------------
@@ -7611,6 +9028,115 @@
 	end subroutine tensor_block_ftrace_dlf_r8
 !------------------------------------------------------------------------------------------------------
 #ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_ftrace_dlf_c4
+#endif
+	subroutine tensor_block_ftrace_dlf_c4(contr_ptrn,ord_rest,tens_in,rank_in,dims_in,val_out,ierr) !PARALLEL
+!This subroutine takes a full trace in a tensor block and accumulates it into a scalar.
+!A full trace consists of one or more pairwise index contractions such that no single index is left uncontracted.
+!Consequently, only even rank tensor blocks can be passed here.
+!INPUT:
+! - contr_ptrn(1:rank_in) - index contraction pattern;
+! - ord_rest(1:rank_in) - index ordering restrictions (for contracted indices);
+! - tens_in - input tensor block;
+! - rank_in - rank of <tens_in>;
+! - dims_in(1:rank_in) - dimension extents of <tens_in>;
+! - val_out - initialized! scalar;
+!OUTPUT:
+! - val_out - modified scalar (the trace has been accumulated in);
+! - ierr - error code (0:success).
+!NOTES:
+! - The algorithm used here is not cache-efficient, and I doubt there is any (D.I.L.).
+! - No thorough argument checks.
+!`Enable index ordering restrictions.
+	implicit none
+!---------------------------------------
+	integer, parameter:: real_kind=4
+!---------------------------------------
+	integer, intent(in):: rank_in,contr_ptrn(1:rank_in),ord_rest(1:rank_in),dims_in(1:rank_in)
+	complex(real_kind), intent(in):: tens_in(0:*)
+	complex(real_kind), intent(inout):: val_out
+	integer, intent(inout):: ierr
+	integer i,j,k,l,m,n,ks,kf,im(1:rank_in),ic(1:rank_in)
+	integer(LONGINT) bases_in(1:rank_in),bases_tr(1:rank_in),segs(0:MAX_THREADS),ls,lc,l_in,l0  !`Is segs(:) threadsafe?
+	complex(real_kind) val_tr
+	real(8) time_beg
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
+!DIR$ ATTRIBUTES ALIGN:128:: real_kind,im,ic,bases_in,bases_tr,segs
+#endif
+
+	ierr=0
+!	time_beg=thread_wtime() !debug
+	if(rank_in.gt.0.and.mod(rank_in,2).eq.0) then !even rank since index contractions are pairwise
+!Set index links:
+	 do i=1,rank_in
+	  j=contr_ptrn(i)
+	  if(j.lt.0) then !contracted index
+	   if(-j.gt.rank_in) then; ierr=1; return; endif
+	   if(contr_ptrn(-j).ne.-i) then; ierr=2; return; endif
+	   if(dims_in(-j).ne.dims_in(i)) then; ierr=3; return; endif
+	   if(-j.gt.i) then; ic(i)=-j; elseif(-j.lt.i) then; ic(i)=0; else; ierr=4; return; endif
+	  else
+	   ierr=5; return
+	  endif
+	 enddo
+!Compute indexing bases:
+	 ls=1_LONGINT; do i=1,rank_in; bases_in(i)=ls; ls=ls*dims_in(i); enddo !total size of the tensor block
+	 lc=1_LONGINT
+	 do i=1,rank_in
+	  if(ic(i).gt.0) then; bases_tr(i)=lc; lc=lc*dims_in(i); else; bases_tr(i)=1_LONGINT; endif !size of the trace range
+	 enddo
+!Trace:
+	 if(lc.gt.1_LONGINT) then !tracing over multiple elements
+	  val_tr=(0.0,0.0)
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(i,j,m,n,kf,l0,l_in,im) REDUCTION(+:val_tr)
+#ifndef NO_OMP
+	  n=omp_get_thread_num(); m=omp_get_num_threads()
+#else
+	  n=0; m=1
+#endif
+!$OMP MASTER
+	  segs(0)=0_LONGINT; call divide_segment(lc,int(m,LONGINT),segs(1:),ierr); do i=2,m; segs(i)=segs(i)+segs(i-1); enddo
+!$OMP END MASTER
+!$OMP BARRIER
+!$OMP FLUSH(segs)
+	  l0=segs(n)
+	  do i=rank_in,1,-1 !init multiindex for each thread
+	   if(ic(i).gt.0) then; im(i)=l0/bases_tr(i); l0=mod(l0,bases_tr(i)); im(ic(i))=im(i); endif
+	  enddo
+	  kf=0; l_in=im(1); do i=2,rank_in; l_in=l_in+im(i)*bases_in(i); enddo !start offset for each thread
+	  tloop: do l0=segs(n),segs(n+1)-1_LONGINT
+	   val_tr=val_tr+tens_in(l_in)
+	   do i=1,rank_in
+	    j=ic(i)
+	    if(j.gt.0) then
+	     if(im(i)+1.lt.dims_in(i)) then
+	      im(i)=im(i)+1; im(j)=im(j)+1; l_in=l_in+bases_in(i)+bases_in(j)
+	      kf=kf+1; exit
+	     else
+	      l_in=l_in-im(i)*bases_in(i)-im(j)*bases_in(j); im(i)=0; im(j)=0
+	     endif
+	    endif
+	   enddo
+	   kf=kf-1; if(kf.lt.0) exit tloop
+	  enddo tloop
+!$OMP END PARALLEL
+	  val_out=val_out+val_tr
+	 elseif(lc.eq.1_LONGINT) then !tracing over only one element
+	  if(ls.ne.1_LONGINT) then; ierr=6; return; endif
+	  val_out=val_out+tens_in(0)
+	 else
+	  ierr=7 !negative or zero trace range
+	 endif
+	else
+	 ierr=8 !negative or zero tensor rank
+	endif
+!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_ftrace_dlf_c4): kernel time/error code: ",F10.4,1x,i3)') &
+!        thread_wtime(time_beg),ierr !debug
+	return
+	end subroutine tensor_block_ftrace_dlf_c4
+!------------------------------------------------------------------------------------------------------
+#ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_ftrace_dlf_c8
 #endif
 	subroutine tensor_block_ftrace_dlf_c8(contr_ptrn,ord_rest,tens_in,rank_in,dims_in,val_out,ierr) !PARALLEL
@@ -7671,7 +9197,7 @@
 	 enddo
 !Trace:
 	 if(lc.gt.1_LONGINT) then !tracing over multiple elements
-	  val_tr=cmplx(0d0,0d0,8)
+	  val_tr=(0d0,0d0)
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(i,j,m,n,kf,l0,l_in,im) REDUCTION(+:val_tr)
 #ifndef NO_OMP
 	  n=omp_get_thread_num(); m=omp_get_num_threads()
@@ -8038,6 +9564,165 @@
 	end subroutine tensor_block_ptrace_dlf_r8
 !-------------------------------------------------------------------------------------------------------------------------
 #ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_ptrace_dlf_c4
+#endif
+	subroutine tensor_block_ptrace_dlf_c4(contr_ptrn,ord_rest,tens_in,rank_in,dims_in,tens_out,rank_out,dims_out,ierr) !PARALLEL
+!This subroutine takes a partial trace in a tensor block and accumulates it into the destination tensor block.
+!A partial trace consists of one or more pairwise index contractions such that at least one index is left uncontracted.
+!INPUT:
+! - contr_ptrn(1:rank_in) - index contraction pattern;
+! - ord_rest(1:rank_in) - index ordering restrictions (for contracted indices);
+! - tens_in - input tensor block;
+! - rank_in - rank of <tens_in>;
+! - dims_in(1:rank_in) - dimension extents of <tens_in>;
+! - tens_out - initialized! output tensor block;
+! - rank_out - rank of <tens_out>;
+! - dims_out(1:rank_out) - dimension extents of <tens_out>;
+!OUTPUT:
+! - tens_out - modified output tensor block;
+! - ierr - error code (0:success).
+!NOTES:
+! - The algorithm used here is not cache-efficient, and I doubt there is any (D.I.L.).
+! - No thorough argument checks.
+!`Enable index ordering restrictions.
+	implicit none
+!---------------------------------------
+	integer, parameter:: real_kind=4
+!---------------------------------------
+	integer, intent(in):: rank_in,rank_out,contr_ptrn(1:rank_in),ord_rest(1:rank_in),dims_in(1:rank_in),dims_out(1:rank_out)
+	complex(real_kind), intent(in):: tens_in(0:*)
+	complex(real_kind), intent(inout):: tens_out(0:*)
+	integer, intent(inout):: ierr
+	integer i,j,k,l,m,n,ks,kf,im(1:rank_in),ic(1:rank_in),ip(1:rank_out)
+	integer(LONGINT) bases_in(1:rank_in),bases_out(1:rank_out),bases_tr(1:rank_in),segs(0:MAX_THREADS)  !`Is segs(:) threadsafe?
+	integer(LONGINT) li,lo,lc,l_in,l_out,l0
+        complex(real_kind) val_tr
+	real(8) time_beg
+#ifndef NO_PHI
+!DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
+!DIR$ ATTRIBUTES ALIGN:128:: real_kind,im,ic,ip,bases_in,bases_out,bases_tr,segs
+#endif
+
+	ierr=0
+!	time_beg=thread_wtime() !debug
+	if(rank_out.gt.0.and.rank_out.lt.rank_in.and.mod(rank_in-rank_out,2).eq.0) then !even rank difference because of pairwise index contractions
+!Set index links:
+	 ip(1:rank_out)=0
+	 do i=1,rank_in
+	  j=contr_ptrn(i)
+	  if(j.lt.0) then !contracted index
+	   if(-j.gt.rank_in) then; ierr=1; return; endif
+	   if(contr_ptrn(-j).ne.-i) then; ierr=2; return; endif
+	   if(dims_in(-j).ne.dims_in(i)) then; ierr=3; return; endif
+	   if(-j.gt.i) then; ic(i)=-j; elseif(-j.lt.i) then; ic(i)=0; else; ierr=4; return; endif
+	  elseif(j.gt.0) then !uncontracted index
+	   if(j.gt.rank_out) then; ierr=5; return; endif
+	   if(dims_out(j).ne.dims_in(i)) then; ierr=6; return; endif
+	   if(ip(j).eq.0) then; ip(j)=ip(j)+1; else; ierr=7; return; endif
+	   ic(i)=-j
+	  else
+	   ierr=8; return
+	  endif
+	 enddo
+	 do i=1,rank_out; if(ip(i).ne.1) then; ierr=9; return; endif; enddo
+	 do i=1,rank_in; if(ic(i).lt.0) then; ip(-ic(i))=i; endif; enddo
+!Compute indexing bases:
+	 li=1_LONGINT; lc=1_LONGINT
+	 do i=1,rank_in
+	  bases_in(i)=li; li=li*dims_in(i) !input indexing bases
+	  if(ic(i).gt.0) then; bases_tr(i)=lc; lc=lc*dims_in(i); else; bases_tr(i)=1_LONGINT; endif !trace range bases
+	 enddo
+	 lo=1_LONGINT; do i=1,rank_out; bases_out(i)=lo; lo=lo*dims_out(i); enddo !output indexing bases
+!Trace:
+	 if(lo.ge.1_LONGINT.and.li.gt.1_LONGINT) then
+	  if(lo.gt.lc) then !Scheme 1
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(i,j,m,n,kf,l0,l_in,l_out,im,val_tr)
+#ifndef NO_OMP
+	   n=omp_get_thread_num(); m=omp_get_num_threads()
+#else
+	   n=0; m=1
+#endif
+!$OMP MASTER
+	   segs(0)=0_LONGINT; call divide_segment(lo,int(m,LONGINT),segs(1:),ierr); do i=2,m; segs(i)=segs(i)+segs(i-1); enddo
+!$OMP END MASTER
+!$OMP BARRIER
+!$OMP FLUSH(segs)
+	   do l_out=segs(n),segs(n+1)-1_LONGINT
+	    im(1:rank_in)=0; l0=l_out; do i=rank_out,1,-1; im(ip(i))=l0/bases_out(i); l0=mod(l0,bases_out(i)); enddo
+	    l_in=im(1); do i=2,rank_in; l_in=l_in+im(i)*bases_in(i); enddo
+	    val_tr=(0.0,0.0); kf=0
+	    cloop: do l0=0_LONGINT,lc-1_LONGINT
+	     val_tr=val_tr+tens_in(l_in)
+	     do i=1,rank_in
+	      j=ic(i)
+	      if(j.gt.0) then
+	       if(im(i)+1.lt.dims_in(i)) then
+	        im(i)=im(i)+1; im(j)=im(j)+1; l_in=l_in+bases_in(i)+bases_in(j)
+	        kf=kf+1; exit
+	       else
+	        l_in=l_in-im(i)*bases_in(i)-im(j)*bases_in(j); im(i)=0; im(j)=0
+	       endif
+	      endif
+	     enddo
+	     kf=kf-1; if(kf.lt.0) exit cloop
+	    enddo cloop
+	    tens_out(l_out)=tens_out(l_out)+val_tr
+	   enddo
+!$OMP END PARALLEL
+	  else !Scheme 2
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(i,j,m,n,kf,l0,l_in,l_out,im,val_tr)
+#ifndef NO_OMP
+	   n=omp_get_thread_num(); m=omp_get_num_threads()
+#else
+	   n=0; m=1
+#endif
+!$OMP MASTER
+	   segs(0)=0_LONGINT; call divide_segment(lc,int(m,LONGINT),segs(1:),ierr); do i=2,m; segs(i)=segs(i)+segs(i-1); enddo
+!$OMP END MASTER
+!$OMP BARRIER
+!$OMP FLUSH(segs)
+	   do l_out=0_LONGINT,lo-1_LONGINT
+	    l0=l_out; do i=rank_out,1,-1; im(ip(i))=l0/bases_out(i); l0=mod(l0,bases_out(i)); enddo
+	    l0=segs(n)
+	    do i=rank_in,1,-1
+	     if(ic(i).gt.0) then; im(i)=l0/bases_tr(i); l0=mod(l0,bases_tr(i)); im(ic(i))=im(i); endif
+	    enddo
+	    l_in=im(1); do i=2,rank_in; l_in=l_in+im(i)*bases_in(i); enddo
+	    val_tr=(0.0,0.0); kf=0
+	    tloop: do l0=segs(n),segs(n+1)-1_LONGINT
+	     val_tr=val_tr+tens_in(l_in)
+	     do i=1,rank_in
+	      j=ic(i)
+	      if(j.gt.0) then
+	       if(im(i)+1.lt.dims_in(i)) then
+	        im(i)=im(i)+1; im(j)=im(j)+1; l_in=l_in+bases_in(i)+bases_in(j)
+	        kf=kf+1; exit
+	       else
+	        l_in=l_in-im(i)*bases_in(i)-im(j)*bases_in(j); im(i)=0; im(j)=0
+	       endif
+	      endif
+	     enddo
+	     kf=kf-1; if(kf.lt.0) exit tloop
+	    enddo tloop
+!$OMP ATOMIC UPDATE
+	    tens_out(l_out)=tens_out(l_out)+val_tr
+	   enddo
+!$OMP END PARALLEL
+	  endif
+	 elseif(lo.eq.1_LONGINT.and.li.eq.1_LONGINT) then
+	  tens_out(0)=tens_out(0)+tens_in(0)
+	 else
+	  ierr=10
+	 endif
+	else
+	 ierr=11
+	endif
+!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_ptrace_dlf_c4): kernel time/error code: ",F10.4,1x,i3)') &
+!        thread_wtime(time_beg),ierr !debug
+	return
+	end subroutine tensor_block_ptrace_dlf_c4
+!-------------------------------------------------------------------------------------------------------------------------
+#ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_ptrace_dlf_c8
 #endif
 	subroutine tensor_block_ptrace_dlf_c8(contr_ptrn,ord_rest,tens_in,rank_in,dims_in,tens_out,rank_out,dims_out,ierr) !PARALLEL
@@ -8124,7 +9809,7 @@
 	   do l_out=segs(n),segs(n+1)-1_LONGINT
 	    im(1:rank_in)=0; l0=l_out; do i=rank_out,1,-1; im(ip(i))=l0/bases_out(i); l0=mod(l0,bases_out(i)); enddo
 	    l_in=im(1); do i=2,rank_in; l_in=l_in+im(i)*bases_in(i); enddo
-	    val_tr=cmplx(0d0,0d0,8); kf=0
+	    val_tr=(0d0,0d0); kf=0
 	    cloop: do l0=0_LONGINT,lc-1_LONGINT
 	     val_tr=val_tr+tens_in(l_in)
 	     do i=1,rank_in
@@ -8162,7 +9847,7 @@
 	     if(ic(i).gt.0) then; im(i)=l0/bases_tr(i); l0=mod(l0,bases_tr(i)); im(ic(i))=im(i); endif
 	    enddo
 	    l_in=im(1); do i=2,rank_in; l_in=l_in+im(i)*bases_in(i); enddo
-	    val_tr=cmplx(0d0,0d0,8); kf=0
+	    val_tr=(0d0,0d0); kf=0
 	    tloop: do l0=segs(n),segs(n+1)-1_LONGINT
 	     val_tr=val_tr+tens_in(l_in)
 	     do i=1,rank_in

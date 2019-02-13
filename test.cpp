@@ -228,7 +228,7 @@ void test_talsh_cxx(int * ierr)
 
 void test_talsh_qc(int * ierr)
 {
- using ComplexType = std::complex<double>;
+ using ComplexType = std::complex<float>;
 
  constexpr int NUM_CONTRACTIONS_CPU = 2; //number of tensor contractions to be executed by TAL-SH on multicore CPU
  constexpr int NUM_CONTRACTIONS_GPU = 4; //number of tensor contractions to be executed by TAL-SH on multiple GPU
