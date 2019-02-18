@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: C++ TAL-SH task
-REVISION: 2019/02/08
+REVISION: 2019/02/13
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -60,7 +60,7 @@ public:
 private:
 
 //Methods:
- talsh_task_t * get_talsh_task_ptr();
+ talsh_task_t * getTalshTaskPtr();
 
 //Data members:
  talsh_task_t talsh_task_;                    //TAL-SH task handle
