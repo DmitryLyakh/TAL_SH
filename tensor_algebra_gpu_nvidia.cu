@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2019/02/07
+REVISION: 2019/02/19
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -2857,6 +2857,7 @@ __host__ int cuda_task_status(cudaTask_t *cuda_task)
   if(errc == 0){
    cuda_task->task_error=0; task_stat=CUDA_TASK_COMPLETED; //CUDA task completed, memory released cleanly
   }else{
+   if(VERBOSE) printf("#ERROR(NV-TAL:cuda_task_status): cuda_task_finalize error %d\n",errc);
    cuda_task->task_error=127; task_stat=CUDA_TASK_ERROR; //CUDA task completed, memory could not be released cleanly
   }
   gpu_stats[cuda_task->gpu_id].tasks_completed++;
@@ -2915,7 +2916,11 @@ __host__ int cuda_task_completed(cudaTask_t *cuda_task)
   }
  }
  if(ret_stat == CUDA_TASK_COMPLETED){
-  errc=cuda_task_finalize(cuda_task); if(errc != 0) cuda_task->task_error=127; //resources could not be released properly
+  errc=cuda_task_finalize(cuda_task);
+  if(errc != 0){
+   if(VERBOSE) printf("#ERROR(NV-TAL:cuda_task_completed): cuda_task_finalize error %d\n",errc);
+   cuda_task->task_error=127; //resources could not be released properly
+  }
  }
  errc=gpu_activate(cur_gpu);
  return ret_stat;
