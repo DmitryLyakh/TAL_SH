@@ -1649,13 +1649,22 @@ int tensDevRsc_release_all(talsh_dev_rsc_t * drsc)
 //Release global memory:
   if(drsc->gmem_p != NULL){
    if(drsc->mem_attached){
-    errc=tensDevRsc_detach_mem(drsc); if(errc) n=NOT_CLEAN;
+    errc=tensDevRsc_detach_mem(drsc);
+    if(errc){
+     if(VERBOSE) printf("#ERROR(NV-TAL:tensDevRsc_release_all): tensDevRsc_detach_mem error %d\n",errc);
+     n=NOT_CLEAN;
+    }
    }else{
-    errc=tensDevRsc_free_mem(drsc); if(errc) n=NOT_CLEAN;
+    errc=tensDevRsc_free_mem(drsc);
+    if(errc){
+     if(VERBOSE) printf("#ERROR(NV-TAL:tensDevRsc_release_all): tensDevRsc_free_mem error %d\n",errc);
+     n=NOT_CLEAN;
+    }
    }
   }
  }
  errc=tensDevRsc_clean(drsc);
+ if(n != 0 && VERBOSE) printf("#ERROR(NV-TAL:tensDevRsc_release_all): Error %d\n",n);
  return n;
 }
 
@@ -3280,26 +3289,66 @@ __host__ static int cuda_task_finalize(cudaTask_t *cuda_task) //do not call this
    }
 // Release temporary resources (always):
    if(tens_arg->tens_p->tmp_rsc != NULL){
-    errc=tensDevRsc_release_all(tens_arg->tens_p->tmp_rsc); if(errc) ret_stat=NOT_CLEAN;
+    errc=tensDevRsc_release_all(tens_arg->tens_p->tmp_rsc);
+    if(errc){
+     if(VERBOSE) printf("#ERROR(NV-TAL:cuda_task_finalize): tmp_rsc resource release error %d\n",errc);
+     ret_stat=NOT_CLEAN;
+    }
    }
 // Release source/destination resources if needed:
    if(tens_arg->tens_p->dst_rsc == tens_arg->tens_p->src_rsc) tens_arg->tens_p->dst_rsc=NULL;
    if(cuda_task->task_error == 0){ //coherence control for successfully completed CUDA tasks
     if(bts < 2){
-     if(s_d_same == NOPE){errc=tensDevRsc_release_all(tens_arg->tens_p->src_rsc); if(errc) ret_stat=NOT_CLEAN;}
-     if(bts == 0 && tens_arg->tens_p->dst_rsc != NULL){errc=tensDevRsc_release_all(tens_arg->tens_p->dst_rsc); if(errc) ret_stat=NOT_CLEAN;}
+     if(s_d_same == NOPE){
+      errc=tensDevRsc_release_all(tens_arg->tens_p->src_rsc);
+      if(errc){
+       if(VERBOSE) printf("#ERROR(NV-TAL:cuda_task_finalize): src_rsc resource release error %d\n",errc);
+       ret_stat=NOT_CLEAN;
+      }
+     }
+     if(bts == 0 && tens_arg->tens_p->dst_rsc != NULL){
+      errc=tensDevRsc_release_all(tens_arg->tens_p->dst_rsc);
+      if(errc){
+       if(VERBOSE) printf("#ERROR(NV-TAL:cuda_task_finalize): dst_rsc resource release error %d\n",errc);
+       ret_stat=NOT_CLEAN;
+      }
+     }
     }else if(bts == 2){
-     if(s_d_same == NOPE && tens_arg->tens_p->dst_rsc != NULL){errc=tensDevRsc_release_all(tens_arg->tens_p->dst_rsc); if(errc) ret_stat=NOT_CLEAN;}
+     if(s_d_same == NOPE && tens_arg->tens_p->dst_rsc != NULL){
+      errc=tensDevRsc_release_all(tens_arg->tens_p->dst_rsc);
+      if(errc){
+       if(VERBOSE) printf("#ERROR(NV-TAL:cuda_task_finalize): dst_rsc resource release error %d\n",errc);
+       ret_stat=NOT_CLEAN;
+      }
+     }
     }
    }else{ //failed CUDA task
-    if(tens_arg->tens_p->dst_rsc != NULL){errc=tensDevRsc_release_all(tens_arg->tens_p->dst_rsc); if(errc) ret_stat=NOT_CLEAN;}
+    if(tens_arg->tens_p->dst_rsc != NULL){
+     errc=tensDevRsc_release_all(tens_arg->tens_p->dst_rsc);
+     if(errc){
+      if(VERBOSE) printf("#ERROR(NV-TAL:cuda_task_finalize): dst_rsc resource release error %d\n",errc);
+      ret_stat=NOT_CLEAN;
+     }
+    }
    }
 // Release multi-index entries if any:
    if(tens_arg->prmn_p != NULL){ //if .prmn_p is not from the internal pinned slab nothing will be done:
-    if(mi_entry_pinned(tens_arg->prmn_p) == YEP){errc=mi_entry_release(tens_arg->prmn_p); if(errc) ret_stat=NOT_CLEAN; tens_arg->prmn_p=NULL;}
+    if(mi_entry_pinned(tens_arg->prmn_p) == YEP){
+     errc=mi_entry_release(tens_arg->prmn_p);
+     if(errc){
+      if(VERBOSE) printf("#ERROR(NV-TAL:cuda_task_finalize): permutation entry release error %d\n",errc);
+      ret_stat=NOT_CLEAN;
+     }
+     tens_arg->prmn_p=NULL;
+    }
    }
    if(tens_arg->const_mem_entry >= 0){
-    errc=const_args_entry_free(cuda_task->gpu_id,tens_arg->const_mem_entry); if(errc) ret_stat=NOT_CLEAN; tens_arg->const_mem_entry=0;
+    errc=const_args_entry_free(cuda_task->gpu_id,tens_arg->const_mem_entry);
+    if(errc){
+     if(VERBOSE) printf("#ERROR(NV-TAL:cuda_task_finalize): constant memory resource release error %d\n",errc);
+     ret_stat=NOT_CLEAN;
+    }
+    tens_arg->const_mem_entry=0;
    }
    //printf("\n#DEBUG(NV-TAL::cuda_task_finalize): tensBlck_t argument %d end state:\n",i); tensBlck_print(tens_arg->tens_p); //debug
   }else{
@@ -3309,7 +3358,11 @@ __host__ static int cuda_task_finalize(cudaTask_t *cuda_task) //do not call this
  }
 //Release prefactor resource, if needed:
  if(cuda_task->pref_ptr != NULL){
-  errc=slab_entry_release(&prefactors,cuda_task->pref_ptr); if(errc != 0) ret_stat=NOT_CLEAN;
+  errc=slab_entry_release(&prefactors,cuda_task->pref_ptr);
+  if(errc){
+   if(VERBOSE) printf("#ERROR(NV-TAL:cuda_task_finalize): prefactor release error %d\n",errc);
+   ret_stat=NOT_CLEAN;
+  }
   cuda_task->pref_ptr=NULL;
  }
  return ret_stat;
