@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/02/13
+REVISION: 2019/02/19
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -21,9 +21,11 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 ------------------------------------------------------------------------
 **/
 
-#include <assert.h>
-
 #include "talsh_task.hpp"
+
+#include <iostream>
+
+#include <assert.h>
 
 namespace talsh{
 
@@ -64,9 +66,17 @@ bool TensorTask::wait()
  int stats = TALSH_TASK_COMPLETED;
  if(talshTaskIsEmpty(&talsh_task_) != YEP){
   int errc;
-  if(talshTaskComplete(&talsh_task_,&stats,&errc) != YEP){
+  int completed = talshTaskComplete(&talsh_task_,&stats,&errc);
+  if(errc != TALSH_SUCCESS) std::cout << "#ERROR(TAL-SH:TensorTask.wait): Task completion check failed: Error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS);
+  if(completed != YEP){
    errc = talshTaskWait(&talsh_task_,&stats);
+   if(errc != TALSH_SUCCESS) std::cout << "#ERROR(TAL-SH:TensorTask.wait): Task completion wait failed: Error " << errc << std::endl; //debug
    assert(errc == TALSH_SUCCESS);
+  }
+  if(stats != TALSH_TASK_COMPLETED){ //debug
+   std::cout << "#ERROR(TAL-SH:TensorTask.wait): Task completed with error: Status " << stats << std::endl;
+   talshTaskPrint(&talsh_task_);
   }
  }
  return (stats == TALSH_TASK_COMPLETED);
@@ -79,6 +89,8 @@ bool TensorTask::test(int * status)
  if(talshTaskIsEmpty(&talsh_task_) != YEP){
   int errc;
   res = (talshTaskComplete(&talsh_task_,status,&errc) == YEP);
+  if(errc != TALSH_SUCCESS) std::cout << "#ERROR(TAL-SH:TensorTask.test): Task completion check failed: Error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS);
  }else{ //empty task: Completed = TRUE
   *status = TALSH_TASK_EMPTY;
  }
