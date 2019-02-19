@@ -1581,20 +1581,36 @@ int tensDevRsc_free_mem(talsh_dev_rsc_t * drsc)
  switch(devk){
   case DEV_HOST:
    if(drsc->buf_entry >= 0){
-    errc=free_buf_entry_host(drsc->buf_entry); if(errc != 0) n=NOT_CLEAN;
+    errc=free_buf_entry_host(drsc->buf_entry);
+    if(errc != 0){
+     if(VERBOSE) printf("#ERROR(NV-TAL:tensDevRsc_free_mem): free_buf_entry_host error %d\n",errc);
+     n=NOT_CLEAN;
+    }
     drsc->buf_entry=-1;
    }else{
-    errc=host_mem_free_pin(drsc->gmem_p); if(errc != 0) n=NOT_CLEAN;
+    errc=host_mem_free_pin(drsc->gmem_p);
+    if(errc != 0){
+     if(VERBOSE) printf("#ERROR(NV-TAL:tensDevRsc_free_mem): host_mem_free_pin error %d\n",errc);
+     n=NOT_CLEAN;
+    }
    }
    drsc->gmem_p=NULL;
    break;
   case DEV_NVIDIA_GPU:
 #ifndef NO_GPU
    if(drsc->buf_entry >= 0){
-    errc=free_buf_entry_gpu(devn,drsc->buf_entry); if(errc != 0) n=NOT_CLEAN;
+    errc=free_buf_entry_gpu(devn,drsc->buf_entry);
+    if(errc != 0){
+     if(VERBOSE) printf("#ERROR(NV-TAL:tensDevRsc_free_mem): free_buf_entry_gpu error %d\n",errc);
+     n=NOT_CLEAN;
+    }
     drsc->buf_entry=-1;
    }else{
-    errc=gpu_mem_free(drsc->gmem_p,devn); if(errc != 0) n=NOT_CLEAN;
+    errc=gpu_mem_free(drsc->gmem_p,devn);
+    if(errc != 0){
+     if(VERBOSE) printf("#ERROR(NV-TAL:tensDevRsc_free_mem): gpu_mem_free error %d\n",errc);
+     n=NOT_CLEAN;
+    }
    }
    drsc->gmem_p=NULL;
    break;
