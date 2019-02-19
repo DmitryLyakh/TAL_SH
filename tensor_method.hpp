@@ -9,8 +9,6 @@ Copyright (C) 2018-2019 Oak Ridge National Laboratory (UT-Battelle) **/
 
 #ifdef EXATN_SERVICE
 
-#include "identifiable.h"
-
 //Byte packet (interoperable):
 typedef struct{
  void * base_addr;  //base address (non-owning pointer to an application owned buffer)
@@ -22,14 +20,15 @@ typedef struct{
 typedef struct{
  int num_dims;      //number of dimensions
  int data_kind;     //data kind
- void * body_ptr;   //pointer to the tensor data
+ void * body_ptr;   //non-owning pointer to the tensor data
  long long * bases; //dimension bases
  long long * dims;  //dimension extents
 } TensorDenseBlock;
 
 
 //External tensor method (identifiable):
-class TensorMethod: public Identifiable{
+template <typename IdentifiableConcept>
+class TensorMethod: public IdentifiableConcept{
 public:
 
  TensorMethod() = default;
@@ -40,7 +39,7 @@ public:
  virtual void unpack(const BytePacket & packet) = 0;
 
  //Application-defined external tensor method:
- virtual int apply(TensorDenseBlock local_tensor) = 0;
+ virtual int apply(const TensorDenseBlock & local_tensor) = 0;
 
 };
 
