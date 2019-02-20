@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2019/01/26
+REVISION: 2019/02/20
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -524,7 +524,9 @@ static int free_buf_entry(ab_conf_t ab_conf, size_t *ab_occ, size_t ab_occ_size,
    ab_occ[m]-=k;
   }
  }else{
-  omp_unset_nest_lock(&mem_lock); return 3;
+  omp_unset_nest_lock(&mem_lock);
+  if(VERBOSE) printf("#ERROR(TAL-SH:mem_manager:free_buf_entry): Partially occupied buffer entry detected: %llu %llu\n",ab_occ[entry_num],blck_sizes[i]);
+  return 3;
  }
 #pragma omp flush
  omp_unset_nest_lock(&mem_lock);
@@ -754,7 +756,7 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
     Other negative integers on return mean an error. **/
 {
  int i,ben,dev_kind,dev_num,lev;
- size_t buf_size,buf_offset;
+ size_t buf_size,buf_offset,prev_entry_occ,prev_lev_size;
  size_t *blck_sz,*occ;
  ab_conf_t *ab_conf;
 
@@ -798,11 +800,13 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
   default:
    omp_unset_nest_lock(&mem_lock); return -3; //invalid device kind
  }
+ prev_entry_occ=0; prev_lev_size=0;
  if(buf_offset < buf_size){ //address is in the buffer space
   lev=0;
   while(lev < ab_conf->buf_depth){
    if(buf_offset%blck_sz[lev] == 0){
     i=ab_get_1d_pos(*ab_conf,lev,buf_offset/blck_sz[lev]);
+    prev_entry_occ=occ[i]; prev_lev_size=blck_sz[lev]; //debug
     if(occ[i] == blck_sz[lev]){
      ben=i;
     }else if(occ[i] == 0){
@@ -817,12 +821,13 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
    //if(DEBUG) printf("\n#DEBUG(mem_manager:get_buf_entry_from_address): Address %p -> Buffer entry %d\n",addr,ben); //debug
    if(buf_offset != ab_get_offset(*ab_conf,lev,buf_offset/blck_sz[lev],blck_sz)){omp_unset_nest_lock(&mem_lock); return -4;} //trap
   }else{
+   omp_unset_nest_lock(&mem_lock);
    if(VERBOSE){
-    printf("\n#ERROR(TALSH:mem_manager:get_buf_entry_from_address): Wrong buffer address alignment or corruption: %p %d\n",addr,lev);
+    printf("\n#ERROR(TALSH:mem_manager:get_buf_entry_from_address): Wrong buffer address alignment or corruption: %p %d %llu %llu\n",addr,lev-1,prev_lev_size,prev_entry_occ);
     print_blck_buf_sizes_host();
     fflush(stdout);
    }
-   omp_unset_nest_lock(&mem_lock); return -5; //address is not aligned to any buffer entry base
+   return -5; //address is not aligned to any buffer entry base
   }
  }
 #pragma omp flush
