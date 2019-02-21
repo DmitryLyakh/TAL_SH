@@ -1,5 +1,5 @@
 /** TAL-SH: Tensor Method Interface
-REVISION: 2019/02/19
+REVISION: 2019/02/20
 
 Copyright (C) 2018-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2018-2019 Oak Ridge National Laboratory (UT-Battelle) **/
@@ -11,8 +11,8 @@ Copyright (C) 2018-2019 Oak Ridge National Laboratory (UT-Battelle) **/
 
 //Byte packet (interoperable):
 typedef struct{
- void * base_addr;  //base address (non-owning pointer to an application owned buffer)
- size_t size_bytes; //actual size of the byte packet in bytes
+ void * base_addr;              //base address (non-owning pointer to an application owned buffer)
+ unsigned long long size_bytes; //actual size of the byte packet in bytes
 } BytePacket;
 
 

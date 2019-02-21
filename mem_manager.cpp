@@ -446,6 +446,7 @@ static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, siz
 /** This function finds an appropriate argument buffer entry in any given argument buffer **/
 {
  int i,j,k,l,m,n;
+ size_t bsz;
 
  omp_set_nest_lock(&mem_lock);
 #pragma omp flush
@@ -490,11 +491,11 @@ static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, siz
   }
  } //enddo i
  if(*entry_num >= 0 && *entry_num < ab_occ_size){
-  k=blck_sizes[i]; ab_occ[m]=k;
+  bsz=blck_sizes[i]; ab_occ[m]=bsz;
   while(i>0){ //modify occupancy of the upper-level parental entries
    l=ab_get_parent(ab_conf,i,l); i--; m=ab_get_1d_pos(ab_conf,i,l);
    if(m < 0 || m >= ab_occ_size){omp_unset_nest_lock(&mem_lock); return 4;}
-   ab_occ[m]+=k;
+   ab_occ[m]+=bsz;
   }
  }else{ //no appropriate entry found: not an error
   if(bsize > blck_sizes[0]){
@@ -512,16 +513,17 @@ static int free_buf_entry(ab_conf_t ab_conf, size_t *ab_occ, size_t ab_occ_size,
 /** This function releases an argument buffer entry in any given argument buffer **/
 {
  int i,j,k,m;
+ size_t bsz;
 
  omp_set_nest_lock(&mem_lock);
 #pragma omp flush
  k=ab_get_2d_pos(ab_conf,entry_num,&i,&j); if(k != 0){omp_unset_nest_lock(&mem_lock); return 1;}
  if(ab_occ[entry_num] == blck_sizes[i]){ //buffer entries are always occupied as a whole
-  k=blck_sizes[i]; ab_occ[entry_num]=0;
+  bsz=blck_sizes[i]; ab_occ[entry_num]=0;
   while(i>0){ //modify occupancy of the upper-level parental entries
    j=ab_get_parent(ab_conf,i,j); i--; m=ab_get_1d_pos(ab_conf,i,j);
    if(m < 0 || m >= ab_occ_size){omp_unset_nest_lock(&mem_lock); return 2;}
-   ab_occ[m]-=k;
+   ab_occ[m]-=bsz;
   }
  }else{
   omp_unset_nest_lock(&mem_lock);
@@ -800,17 +802,17 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
   default:
    omp_unset_nest_lock(&mem_lock); return -3; //invalid device kind
  }
- prev_entry_occ=0; prev_lev_size=0;
  if(buf_offset < buf_size){ //address is in the buffer space
+  prev_entry_occ=0; prev_lev_size=0;
   lev=0;
   while(lev < ab_conf->buf_depth){
    if(buf_offset%blck_sz[lev] == 0){
     i=ab_get_1d_pos(*ab_conf,lev,buf_offset/blck_sz[lev]);
-    prev_entry_occ=occ[i]; prev_lev_size=blck_sz[lev]; //debug
-    if(occ[i] == blck_sz[lev]){
-     ben=i;
-    }else if(occ[i] == 0){
+    if(occ[i] == 0){
      break;
+    }else{
+     if(occ[i] == blck_sz[lev]) ben=i;
+     prev_entry_occ=occ[i]; prev_lev_size=blck_sz[lev]; //debug
     }
    }
    ++lev;
