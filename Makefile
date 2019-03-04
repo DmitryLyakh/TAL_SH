@@ -1,6 +1,7 @@
 NAME = talsh
 
 #ADJUST THE FOLLOWING ACCORDINGLY:
+
 #Cross-compiling wrappers (only for Cray): [WRAP|NOWRAP]:
 export WRAP ?= NOWRAP
 #Compiler: [GNU|PGI|INTEL|CRAY|IBM]:
@@ -18,16 +19,17 @@ export GPU_SM_ARCH ?= 35
 #Operating system: [LINUX|NO_LINUX]:
 export EXA_OS ?= LINUX
 
+
 #ADJUST EXTRAS (optional):
+
 #Fast GPU tensor transpose (cuTT library): [YES|NO]:
 export WITH_CUTT ?= NO
+#In-place GPU tensor contractions (cuTensor library): [YES|NO]
+export WITH_CUTENSOR ?= NO
 
 #GPU fine timing [YES|NO]:
 export GPU_FINE_TIMING ?= YES
 
-#WORKAROUNDS (ignore if you do not experience problems):
-#Fool CUDA 7.0 with GCC > 4.9: [YES|NO]:
-export FOOL_CUDA ?= NO
 
 #SET YOUR LOCAL PATHS (for unwrapped builds):
 
@@ -71,6 +73,8 @@ export PATH_CUDA ?= /usr/local/cuda
  export PATH_CUDA_BIN ?= $(PATH_CUDA)/bin
 # cuTT path (only set this if you use cuTT library):
 export PATH_CUTT ?= /home/dima/src/cutt
+# cuTensor path (only set this if you use cuTensor library):
+export PATH_CUTENSOR ?= /home/dima/src/cutensor
 
 #YOU ARE DONE! MAKE IT!
 
@@ -211,17 +215,27 @@ ifeq ($(GPU_CUDA),CUDA)
 CUDA_INC_NOWRAP = -I$(PATH_CUDA_INC)
 CUDA_INC_WRAP = -I.
 ifeq ($(WITH_CUTT),YES)
-CUDA_INC = $(CUDA_INC_$(WRAP)) -I$(PATH_CUTT)/include
+CUDA_INC_PRE1 = $(CUDA_INC_$(WRAP)) -I$(PATH_CUTT)/include
 else
-CUDA_INC = $(CUDA_INC_$(WRAP))
+CUDA_INC_PRE1 = $(CUDA_INC_$(WRAP))
+endif
+ifeq ($(WITH_CUTENSOR),YES)
+CUDA_INC = $(CUDA_INC_PRE1) -I$(PATH_CUTENSOR)/include
+else
+CUDA_INC = $(CUDA_INC_PRE1)
 endif
 else
 CUDA_INC = -I.
 endif
 
 #CUDA LIBS:
-CUDA_LINK_NOWRAP = -L$(PATH_CUDA_LIB) -lcudart -lcublas
-CUDA_LINK_WRAP = -lcudart -lcublas
+ifeq ($(WITH_CUTENSOR),YES)
+CUDA_LINK_NOWRAP = -L$(PATH_CUDA_LIB) -L$(PATH_CUTENSOR)/lib -lcutensor -lcublas -lcudart
+CUDA_LINK_WRAP = -L$(PATH_CUTENSOR)/lib -lcutensor -lcublas -lcudart
+else
+CUDA_LINK_NOWRAP = -L$(PATH_CUDA_LIB) -lcublas -lcudart
+CUDA_LINK_WRAP = -lcublas -lcudart
+endif
 CUDA_LINK_CUDA = $(CUDA_LINK_$(WRAP))
 CUDA_LINK_NOCUDA = -L.
 CUDA_LINK = $(CUDA_LINK_$(GPU_CUDA))
@@ -243,17 +257,17 @@ CUDA_HOST_COMPILER ?= /usr/bin/g++
 CUDA_HOST_NOWRAP = -I.
 CUDA_HOST_WRAP = -I.
 CUDA_HOST = $(CUDA_HOST_$(WRAP))
-CUDA_FLAGS_DEV = --compile -arch=$(GPU_SM) -g -G -DDEBUG_GPU -w
-CUDA_FLAGS_OPT = --compile -arch=$(GPU_SM) -O3 -lineinfo -w
-CUDA_FLAGS_PRF = --compile -arch=$(GPU_SM) -g -G -O3 -w
-CUDA_FLAGS_CUDA = $(CUDA_HOST) $(CUDA_FLAGS_$(BUILD_TYPE)) -D_FORCE_INLINES -Xcompiler $(PIC_FLAG_CUDA)
-ifeq ($(FOOL_CUDA),NO)
-CUDA_FLAGS_PRE1 = $(CUDA_FLAGS_CUDA) -D$(EXA_OS)
-else
-CUDA_FLAGS_PRE1 = $(CUDA_FLAGS_CUDA) -D$(EXA_OS) -D__GNUC__=4
-endif
+CUDA_FLAGS_DEV = --compile -arch=$(GPU_SM) -std=c++11 -g -G -DDEBUG_GPU -w
+CUDA_FLAGS_OPT = --compile -arch=$(GPU_SM) -std=c++11 -O3 -lineinfo -w
+CUDA_FLAGS_PRF = --compile -arch=$(GPU_SM) -std=c++11 -g -G -O3 -w
+CUDA_FLAGS_CUDA = $(CUDA_HOST) $(CUDA_FLAGS_$(BUILD_TYPE)) -D_FORCE_INLINES -D$(EXA_OS) -Xcompiler $(PIC_FLAG_CUDA)
 ifeq ($(WITH_CUTT),YES)
-CUDA_FLAGS_PRE2 = $(CUDA_FLAGS_PRE1) -DUSE_CUTT
+CUDA_FLAGS_PRE1 = $(CUDA_FLAGS_CUDA) -DUSE_CUTT
+else
+CUDA_FLAGS_PRE1 = $(CUDA_FLAGS_CUDA)
+endif
+ifeq ($(WITH_CUTENSOR),YES)
+CUDA_FLAGS_PRE2 = $(CUDA_FLAGS_PRE1) -DUSE_CUTENSOR
 else
 CUDA_FLAGS_PRE2 = $(CUDA_FLAGS_PRE1)
 endif
@@ -340,8 +354,9 @@ LTHREAD = $(LTHREAD_$(TOOLKIT))
 LFLAGS = $(MPI_LINK) $(LA_LINK) $(LTHREAD) $(CUDA_LINK) $(LIB)
 
 OBJS =  ./OBJ/dil_basic.o ./OBJ/stsubs.o ./OBJ/combinatoric.o ./OBJ/symm_index.o ./OBJ/timer.o ./OBJ/timers.o ./OBJ/nvtx_profile.o \
-	./OBJ/tensor_algebra.o ./OBJ/tensor_algebra_cpu.o ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_dil_omp.o \
-	./OBJ/mem_manager.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/talshf.o ./OBJ/talshc.o ./OBJ/talsh_task.o ./OBJ/talshxx.o
+	./OBJ/byte_packet.o ./OBJ/tensor_method.o ./OBJ/tensor_algebra.o ./OBJ/tensor_algebra_cpu.o ./OBJ/tensor_algebra_cpu_phi.o \
+	./OBJ/tensor_dil_omp.o ./OBJ/mem_manager.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/talshf.o ./OBJ/talshc.o \
+	./OBJ/talsh_task.o ./OBJ/talshxx.o
 
 $(NAME): lib$(NAME).a ./OBJ/test.o ./OBJ/main.o
 	$(FCOMP) ./OBJ/main.o ./OBJ/test.o lib$(NAME).a $(LFLAGS) -o test_$(NAME).x
@@ -382,6 +397,12 @@ endif
 
 ./OBJ/nvtx_profile.o: nvtx_profile.c nvtx_profile.h
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) nvtx_profile.c -o ./OBJ/nvtx_profile.o
+
+./OBJ/byte_packet.o: byte_packet.cpp byte_packet.h
+	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) byte_packet.cpp -o ./OBJ/byte_packet.o
+
+./OBJ/tensor_method.o: tensor_method.cpp tensor_method.hpp byte_packet.h
+	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) tensor_method.cpp -o ./OBJ/tensor_method.o
 
 ./OBJ/tensor_algebra.o: tensor_algebra.F90 ./OBJ/dil_basic.o
 	$(FCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(FFLAGS) tensor_algebra.F90 -o ./OBJ/tensor_algebra.o

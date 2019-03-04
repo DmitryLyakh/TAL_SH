@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/02/07
+REVISION: 2019/03/03
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -61,6 +61,9 @@ FOR DEVELOPER(s):
 #include <omp.h>
 
 #include "talsh.h"
+
+//PARAMETERS:
+static int VERBOSE=1; //verbosity for errors
 
 //GLOBALS:
 // General:
@@ -1017,13 +1020,23 @@ int talshTensorDestruct(talsh_tens_t * tens_block) //in: non-NULL pointer to a t
  if(tens_block == NULL) return TALSH_INVALID_ARGS;
  if(tens_block->shape_p != NULL){
   i=tensShape_destroy(tens_block->shape_p); tens_block->shape_p=NULL;
-  if(i == 0 || i == NOT_CLEAN){if(errc == 0) errc=i;}else{errc=TALSH_FAILURE;}
+  if(i == 0 || i == NOT_CLEAN){
+   if(errc == 0) errc=i;
+   if(i == NOT_CLEAN && VERBOSE != 0) printf("#ERROR(talshTensorDestruct): Unable to cleanly destroy tensor shape!\n");
+  }else{
+   errc=TALSH_FAILURE;
+  }
  }
  if(tens_block->ndev > tens_block->dev_rsc_len){tens_block->ndev=tens_block->dev_rsc_len; errc=TALSH_FAILURE;}
  if(tens_block->dev_rsc != NULL){
   for(j=0;j<tens_block->ndev;++j){
    i=tensDevRsc_release_all(&(tens_block->dev_rsc[j]));
-   if(i == 0 || i == NOT_CLEAN){if(errc == 0) errc=i;}else{errc=TALSH_FAILURE;}
+   if(i == 0 || i == NOT_CLEAN){
+    if(errc == 0) errc=i;
+    if(i == NOT_CLEAN && VERBOSE != 0) printf("#ERROR(talshTensorDestruct): Unable to cleanly release tensor body image %d\n",j);
+   }else{
+    errc=TALSH_FAILURE;
+   }
   }
   free(tens_block->dev_rsc); tens_block->dev_rsc=NULL;
  }

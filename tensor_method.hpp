@@ -1,5 +1,5 @@
 /** TAL-SH: Tensor Method Interface
-REVISION: 2019/02/20
+REVISION: 2019/02/26
 
 Copyright (C) 2018-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2018-2019 Oak Ridge National Laboratory (UT-Battelle) **/
@@ -9,21 +9,18 @@ Copyright (C) 2018-2019 Oak Ridge National Laboratory (UT-Battelle) **/
 
 #ifdef EXATN_SERVICE
 
-//Byte packet (interoperable):
-typedef struct{
- void * base_addr;              //base address (non-owning pointer to an application owned buffer)
- unsigned long long size_bytes; //actual size of the byte packet in bytes
-} BytePacket;
+#include "byte_packet.h"
 
-
-//Dense tensor block (interoperable):
+//Dense tensor block view (interoperable):
 typedef struct{
  int num_dims;      //number of dimensions
  int data_kind;     //data kind
  void * body_ptr;   //non-owning pointer to the tensor data
- long long * bases; //dimension bases
- long long * dims;  //dimension extents
+ long long * bases; //non-owning pointer to dimension bases
+ long long * dims;  //non-owning pointer to dimension extents
 } TensorDenseBlock;
+
+unsigned long long getDenseTensorVolume(const TensorDenseBlock &);
 
 
 //External tensor method (identifiable):
@@ -36,7 +33,7 @@ public:
 
  //Packing/unpacking data members into/from a plain byte packet:
  virtual void pack(BytePacket & packet) = 0;
- virtual void unpack(const BytePacket & packet) = 0;
+ virtual void unpack(BytePacket & packet) = 0;
 
  //Application-defined external tensor method:
  virtual int apply(const TensorDenseBlock & local_tensor) = 0;

@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2019/02/19
+REVISION: 2019/03/03
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -172,6 +172,10 @@ static talsh_stats_t gpu_stats[MAX_GPUS_PER_NODE]; //runtime statistics for all 
 // Infrastructure for CUBLAS:
 static cublasHandle_t cublas_handle[MAX_GPUS_PER_NODE]; //each GPU present on a node obtains its own cuBLAS context handle
 #endif /*NO_BLAS*/
+#ifdef USE_CUTENSOR
+// Infrastructure for cuTensor:
+static cutensorHandle_t cutensor_handle[MAX_GPUS_PER_NODE]; //each GPU present on a node obtains its own cuTensor context handle
+#endif /*USE_CUTENSOR*/
 // Slabs for the GPU asynchronous resources:
 //  CUDA stream handles:
 static cudaStream_t CUDAStreamBank[MAX_GPUS_PER_NODE][MAX_CUDA_TASKS]; //pre-allocated CUDA stream handles (for each CUDA device)
@@ -1912,6 +1916,9 @@ no GPU will be initialized. **/
 #ifndef NO_BLAS
  cublasStatus_t err_cublas;
 #endif
+#ifdef USE_CUTENSOR
+ cutensorStatus_t err_cutensor;
+#endif
 
  n=0; for(i=0;i<MAX_GPUS_PER_NODE;i++) gpu_up[i]=GPU_OFF; //initial GPU status
  if(gpu_beg >= 0 && gpu_end >= gpu_beg){
@@ -1931,14 +1938,19 @@ no GPU will be initialized. **/
 //SHMEM width:
      errc=gpu_set_shmem_width(GPU_SHMEM_WIDTH);
      if(errc != 0 && VERBOSE) printf("#WARNING(tensor_algebra_gpu_nvidia:init_gpus): Unable to set GPU SHMEM width %d: Error %d \n",GPU_SHMEM_WIDTH,errc);
-//cuBLAS.v2 context:
 #ifndef NO_BLAS
+//cuBLAS.v2 context:
      err_cublas=cublasCreate(&(cublas_handle[i]));
      if(err_cublas == CUBLAS_STATUS_SUCCESS){
       gpu_up[i]=GPU_MINE_CUBLAS;
       err_cublas=cublasSetPointerMode(cublas_handle[i],CUBLAS_POINTER_MODE_DEVICE);
       if(err_cublas != CUBLAS_STATUS_SUCCESS) gpu_up[i]=GPU_MINE;
      }
+#endif
+#ifdef USE_CUTENSOR
+//cuTensor context:
+     err_cutensor=cutensorCreate(&(cutensor_handle[i]),NULL,0);
+     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) return -7;
 #endif
     }
 //CUDA stream bank:
@@ -2010,6 +2022,9 @@ If <gpu_beg> > <gpu_end>, nothing wil be done. **/
 #ifndef NO_BLAS
  cublasStatus_t err_cublas;
 #endif
+#ifdef USE_CUTENSOR
+ cutensorStatus_t err_cutensor;
+#endif
  failure=0; n=0;
  if(gpu_beg >= 0 && gpu_end >= gpu_beg){
   err=cudaGetDeviceCount(&i); if(err != cudaSuccess) return -1;
@@ -2022,6 +2037,9 @@ If <gpu_beg> > <gpu_end>, nothing wil be done. **/
    if(gpu_up[i] > GPU_OFF){
     n++; err=cudaSetDevice(i);
     if(err == cudaSuccess){
+#ifdef USE_CUTENSOR
+     err_cutensor=cutensorDestroy(cutensor_handle[i]);
+#endif
 #ifndef NO_BLAS
      if(gpu_up[i] >= GPU_MINE_CUBLAS){err_cublas=cublasDestroy(cublas_handle[i]); if(err_cublas == CUBLAS_STATUS_SUCCESS) gpu_up[i]=GPU_MINE;}
 #endif
@@ -2328,7 +2346,10 @@ int tensShape_destruct(talsh_tens_shape_t * tshape)
    return -2;
   }
  }
- if(n != 0) n=NOT_CLEAN;
+ if(n != 0){
+  if(VERBOSE) printf("#ERROR(tensShape_destruct): Resource release error %d\n",n);
+  n=NOT_CLEAN;
+ }
  errc=tensShape_clean(tshape);
  return n; //either 0 or NOT_CLEAN
 }
@@ -3187,7 +3208,13 @@ __host__ static int cuda_task_set_arg(cudaTask_t *cuda_task, unsigned int arg_nu
     the provided tensor block and the required temporary multi-index entries are acquired.
     If the multi-index resources cannot be acquired at this time, TRY_LATER is returned. **/
 {
- int cae,errc;
+ int cae,errc,i;
+ unsigned int n;
+#ifdef USE_CUTENSOR
+ cutensorStatus_t err_cutensor;
+ int64_t exts[MAX_TENSOR_RANK];
+#endif
+
  if(cuda_task == NULL) return -1;
  if(cuda_task->task_error >= 0 || cuda_task->gpu_id < 0 || cuda_task->gpu_id >= MAX_GPUS_PER_NODE) return -2; //finished or empty CUDA task
  if(arg_num >= MAX_TENSOR_OPERANDS) return -3; //[0..MAX_TENSOR_OPERANDS-1]
@@ -3206,6 +3233,31 @@ __host__ static int cuda_task_set_arg(cudaTask_t *cuda_task, unsigned int arg_nu
    cuda_task->tens_args[arg_num].prmn_p=NULL; cuda_task->tens_args[arg_num].tens_p=NULL;
    return TRY_LATER;
   }
+#ifdef USE_CUTENSOR
+//Acquire cuTensor descriptor:
+  n=tens_p->shape.num_dim; for(i=0;i<n;++i) exts[i]=(tens_p->shape.dims)[i];
+  switch(tens_p->data_kind){
+   case R4:
+    err_cutensor=cutensorCreateTensorDescriptor(&((cuda_task->tens_cudesc)[arg_num]),n,exts,NULL,CUDA_R_32F);
+    if(err_cutensor != CUTENSOR_STATUS_SUCCESS) return 5;
+    break;
+   case R8:
+    err_cutensor=cutensorCreateTensorDescriptor(&((cuda_task->tens_cudesc)[arg_num]),n,exts,NULL,CUDA_R_64F);
+    if(err_cutensor != CUTENSOR_STATUS_SUCCESS) return 4;
+    break;
+   case C4:
+    err_cutensor=cutensorCreateTensorDescriptor(&((cuda_task->tens_cudesc)[arg_num]),n,exts,NULL,CUDA_C_32F);
+    if(err_cutensor != CUTENSOR_STATUS_SUCCESS) return 3;
+    break;
+   case C8:
+    err_cutensor=cutensorCreateTensorDescriptor(&((cuda_task->tens_cudesc)[arg_num]),n,exts,NULL,CUDA_C_64F);
+    if(err_cutensor != CUTENSOR_STATUS_SUCCESS) return 2;
+    break;
+   default:
+    return -5;
+  }
+#endif
+//Update number of arguments:
   cuda_task->num_args=MAX(cuda_task->num_args,arg_num+1); //it is user's responsibility to set all preceding arguments
  }else{
   return 1;
@@ -3285,6 +3337,9 @@ __host__ static int cuda_task_finalize(cudaTask_t *cuda_task) //do not call this
  unsigned int bts,coh,s_d_same;
  int i,ret_stat,errc;
  cudaTensArg_t *tens_arg;
+#ifdef USE_CUTENSOR
+ cutensorStatus_t err_cutensor;
+#endif
 
  if(cuda_task == NULL) return -1;
  if(cuda_task->task_error < 0) return 1; //unfinished or empty CUDA task cannot be finalized
@@ -3366,6 +3421,11 @@ __host__ static int cuda_task_finalize(cudaTask_t *cuda_task) //do not call this
     }
     tens_arg->const_mem_entry=0;
    }
+#ifdef USE_CUTENSOR
+// Release cuTensor descriptor:
+   err_cutensor=cutensorDestroyTensorDescriptor((cuda_task->tens_cudesc)[i]);
+   if(err_cutensor != CUTENSOR_STATUS_SUCCESS) ret_stat=NOT_CLEAN;
+#endif
    //printf("\n#DEBUG(NV-TAL::cuda_task_finalize): tensBlck_t argument %d end state:\n",i); tensBlck_print(tens_arg->tens_p); //debug
   }else{
    if(cuda_task->task_error == 0) return -4; //successfully completed CUDA tasks must have all tensor arguments associated
@@ -4558,6 +4618,10 @@ NOTES:
  cublasStatus_t err_cublas;
  cublasOperation_t left_conj,right_conj;
 #endif
+#ifdef USE_CUTENSOR
+ cutensorStatus_t err_cutensor;
+ int cumod_d[MAX_TENSOR_RANK],cumod_l[MAX_TENSOR_RANK],cumod_r[MAX_TENSOR_RANK];
+#endif
 #ifdef USE_CUTT
  cuttHandle cutt_d,cutt_l,cutt_r;
  cuttResult cutt_err;
@@ -5290,6 +5354,11 @@ NOTES:
   if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_contract_dlf): Unable to record the mmbeg event: %s\n",err_msg);
   errc=cuda_task_record(cuda_task,coh_ctrl,63); errc=gpu_activate(cur_gpu); return 63;
  }
+#endif
+#ifdef USE_CUTENSOR
+// Set cuTensor CUDA stream:
+ err_cutensor=cutensorSetStream(cutensor_handle[gpu_num],*cuda_stream);
+ if(err_cutensor != CUTENSOR_STATUS_SUCCESS){errc=cuda_task_record(cuda_task,coh_ctrl,83); errc=gpu_activate(cur_gpu); return 83;}
 #endif
 // Scalar multiplication:
  if(drank == 0 && lrank == 0 && rrank == 0){

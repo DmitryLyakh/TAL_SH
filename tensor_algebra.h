@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2019/02/07
+REVISION: 2019/03/01
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -75,6 +75,10 @@ FOR DEVELOPERS ONLY:
 
 #ifdef USE_CUTT
 #include "cutt.h"
+#endif
+
+#ifdef USE_CUTENSOR
+#include "cutensor.h"
 #endif
 
 #endif /*NO_GPU*/
@@ -336,7 +340,7 @@ typedef struct{
 
 // Tensor block (for the use on NVidia GPU):
 typedef struct{
- int data_kind;              //tensor element size in bytes: float (R4), double (R8), or double complex (C8)
+ int data_kind;              //tensor data kind: float (R4), double (R8), complex float (C4), complex double (C8)
  talsh_tens_shape_t shape;   //tensor shape: pinned Host memory (pointer components use the multi-index slab, miBank)
  talsh_dev_rsc_t * src_rsc;  //source of the data (memory resource where the data resides before the task)
  talsh_dev_rsc_t * dst_rsc;  //destination of the data (memory resource where the data will reside after the task)
@@ -366,6 +370,9 @@ typedef struct{
  unsigned int coherence; //coherence control for this task (see COPY_X, COPY_XX, and COPY_XXX constants)
  unsigned int num_args;  //number of tensor arguments participating in the tensor operation
  cudaTensArg_t tens_args[MAX_TENSOR_OPERANDS]; //tensor arguments participating in the tensor operation
+#ifdef USE_CUTENSOR
+ cutensorTensorDescriptor_t tens_cudesc[MAX_TENSOR_OPERANDS]; //tensor descriptors for cuTensor
+#endif
  void * pref_ptr;        //tensor operation prefactor location
 } cudaTask_t;
 //Note: Adding new CUDA events will require adjustment of NUM_EVENTS_PER_TASK.

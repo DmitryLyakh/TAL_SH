@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2019/02/20
+REVISION: 2019/03/03
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -1406,12 +1406,16 @@ int mi_entry_pinned(int * mi_entry_p)
 /** Returns YEP if the multi-index is in the multi-index bank,
     NOPE othewise. **/
 {
- int l,n;
+ size_t l;
+ int n;
+
 #pragma omp flush
  n=NOPE;
  if(mi_entry_p != NULL){
-  l=(int)(mi_entry_p-&miBank[0][0]);
-  if(l >= 0 && l < MAX_GPU_ARGS*MAX_MLNDS_PER_TENS*MAX_TENSOR_RANK) n=YEP;
+  if((size_t)((const char*)(mi_entry_p)) >= (size_t)((const char*)(&miBank[0][0]))){
+   l=(size_t)(mi_entry_p - &miBank[0][0]); //difference in ints
+   if(l < MAX_GPU_ARGS*MAX_MLNDS_PER_TENS*MAX_TENSOR_RANK) n=YEP;
+  }
  }
  return n;
 }
