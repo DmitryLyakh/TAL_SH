@@ -1,5 +1,5 @@
 !BASIC FORTRAN PARAMETERS (Fortran-2003)
-!REVISION: 2019/02/15
+!REVISION: 2019/03/05
 
 !Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -132,7 +132,7 @@
 !OBJECT LOCK:
         type, public:: object_lock_t
 #ifndef NO_OMP
-         integer(omp_nest_lock_kind), private:: lock_omp
+         integer(omp_nest_lock_kind), private:: lock_omp=-1
          integer, private:: initialized=-1
 #endif
          contains
@@ -148,11 +148,7 @@
         private ObjectLockUnlock
         private ObjectLockClear
         public object_lock_dtor
-#ifndef NO_OMP
-        type(object_lock_t), parameter, public:: object_lock_null=object_lock_t(-1,-1)
-#else
-        type(object_lock_t), parameter, public:: object_lock_null=object_lock_t()
-#endif
+        type(object_lock_t), save, protected:: object_lock_null !empty object lock
 
        contains
 

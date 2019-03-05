@@ -36,13 +36,13 @@ export GPU_FINE_TIMING ?= YES
 #MPI library (only if you use MPI, set whichever you have chosen above):
 # Set this if you have chosen MPICH (or its derivative, e.g. Cray-MPICH):
 export PATH_MPICH ?= /usr/local/mpi/mpich/3.2.1
-#  Only reset these if MPI files are spread in the system directories:
+#  Only reset these if MPI files are spread in system directories:
  export PATH_MPICH_INC ?= $(PATH_MPICH)/include
  export PATH_MPICH_LIB ?= $(PATH_MPICH)/lib
  export PATH_MPICH_BIN ?= $(PATH_MPICH)/bin
-# Set this if you have chosen OPENMPI (or its derivative, e.g. Spectrum MPI):
+# Set this if you have chosen OPENMPI (or its derivative, e.g. IBM Spectrum MPI):
 export PATH_OPENMPI ?= /usr/local/mpi/openmpi/3.1.0
-#  Only reset these if MPI files are spread in the system directories:
+#  Only reset these if MPI files are spread in system directories:
  export PATH_OPENMPI_INC ?= $(PATH_OPENMPI)/include
  export PATH_OPENMPI_LIB ?= $(PATH_OPENMPI)/lib
  export PATH_OPENMPI_BIN ?= $(PATH_OPENMPI)/bin
@@ -50,14 +50,15 @@ export PATH_OPENMPI ?= /usr/local/mpi/openmpi/3.1.0
 #BLAS library (whichever you have chosen above):
 # Set this path if you have chosen ATLAS (default Linux BLAS):
 export PATH_BLAS_ATLAS ?= /usr/lib/x86_64-linux-gnu
-# Set these if you have a vendor provided BLAS that you have specified above:
-#  MKL BLAS (if you have chosen MKL):
-export PATH_BLAS_MKL ?= /opt/intel/mkl/lib/intel64
-export PATH_BLAS_MKL_DEP ?= /opt/intel/compilers_and_libraries/linux/lib/intel64_lin
-export PATH_BLAS_MKL_INC ?= /opt/intel/mkl/include/intel64/lp64
-#  ACML BLAS (if you have chosen ACML):
+# Set this path if you have chosen Intel MKL:
+export PATH_INTEL ?= /opt/intel
+#  Only reset these if Intel MKL libraries are spread in system directories:
+export PATH_BLAS_MKL ?= $(PATH_INTEL)/mkl/lib/intel64
+export PATH_BLAS_MKL_DEP ?= $(PATH_INTEL)/compilers_and_libraries/linux/lib/intel64_lin
+export PATH_BLAS_MKL_INC ?= $(PATH_INTEL)/mkl/include/intel64/lp64
+# Set this path if you have chosen ACML:
 export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
-#  ESSL BLAS (if you have chosen ESSL, also set PATH_IBM_XL_CPP, PATH_IBM_XL_FOR, PATH_IBM_XL_SMP below):
+# Set this path if you have chosen ESSL (also set PATH_IBM_XL_CPP, PATH_IBM_XL_FOR, PATH_IBM_XL_SMP below):
 export PATH_BLAS_ESSL ?= /sw/summit/essl/6.1.0-2/essl/6.1/lib64
 
 #IBM XL (only set these if you use IBM XL and/or ESSL):
@@ -65,9 +66,9 @@ export PATH_IBM_XL_CPP ?= /sw/summit/xl/16.1.1-1/xlC/16.1.1/lib
 export PATH_IBM_XL_FOR ?= /sw/summit/xl/16.1.1-1/xlf/16.1.1/lib
 export PATH_IBM_XL_SMP ?= /sw/summit/xl/16.1.1-1/xlsmp/5.1.1/lib
 
-#CUDA (only set this if you build with CUDA):
+#CUDA (only if you build with CUDA):
 export PATH_CUDA ?= /usr/local/cuda
-# Only reset these if CUDA files are spread in the system directories:
+# Only reset these if CUDA files are spread in system directories:
  export PATH_CUDA_INC ?= $(PATH_CUDA)/include
  export PATH_CUDA_LIB ?= $(PATH_CUDA)/lib64
  export PATH_CUDA_BIN ?= $(PATH_CUDA)/bin
@@ -367,12 +368,22 @@ ifeq ($(WITH_CUTT),YES)
 	ar x $(PATH_CUTT)/lib/libcutt.a
 	mv *.o ./tmp_obj__
 	ar cr lib$(NAME).a $(OBJS) ./tmp_obj__/*.o
+ifeq ($(EXA_OS),LINUX)
+ifeq ($(TOOLKIT),GNU)
 	g++ -shared -o lib$(NAME).so $(OBJS) ./tmp_obj__/*.o
+else
+	ld -shared -o lib$(NAME).so $(OBJS) ./tmp_obj__/*.o
+endif
+endif
 	rm -rf ./tmp_obj__
 else
 	ar cr lib$(NAME).a $(OBJS)
 ifeq ($(EXA_OS),LINUX)
+ifeq ($(TOOLKIT),GNU)
 	g++ -shared -o lib$(NAME).so $(OBJS)
+else
+	ld -shared -o lib$(NAME).so $(OBJS)
+endif
 endif
 endif
 
