@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2019/02/07
+!REVISION: 2019/03/06
 
 !Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -67,9 +67,9 @@
         integer(C_INT), parameter, public:: TALSH_TASK_OUTPUT_READY=2000004
         integer(C_INT), parameter, public:: TALSH_TASK_COMPLETED=2000005
  !Host argument buffer:
-        integer(C_SIZE_T), parameter, private:: HAB_SIZE_DEFAULT=1048576 !default size of the Host argument buffer in bytes
+        integer(C_SIZE_T), parameter, private:: HAB_SIZE_DEFAULT=16777216 !default size of the Host argument buffer in bytes
  !CP-TAL:
-        integer(C_INT), parameter, private:: CPTAL_MAX_TMP_FTENS=48      !max number of simultaneously existing temporary Fortran tensors for CP-TAL
+        integer(C_INT), parameter, private:: CPTAL_MAX_TMP_FTENS=192 !max number of simultaneously existing temporary Fortran tensors for CP-TAL
 !DERIVED TYPES:
  !TAL-SH tensor block:
         type, public, bind(C):: talsh_tens_t

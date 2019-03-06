@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2019/03/03
+REVISION: 2019/03/06
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -42,7 +42,7 @@ FOR DEVELOPERS ONLY:
 
 #define GPU_MEM_PART_USED 90         //percentage of free GPU global memory to be actually allocated for GPU argument buffers
 #define MEM_ALIGN GPU_CACHE_LINE_LEN //memory alignment (in bytes) for argument buffers
-//Host argument buffer structure:
+//Host argument buffer structure (adjust TALSH_NO_HOST_BUFFER in talsh.h as well):
 #define BLCK_BUF_DEPTH_HOST 14       //number of distinct tensor block buffer levels on Host
 #define BLCK_BUF_TOP_HOST 1          //number of argument buffer entries of the largest size (level 0) on Host: multiple of 3
 #define BLCK_BUF_BRANCH_HOST 2       //branching factor for each subsequent buffer level on Host
