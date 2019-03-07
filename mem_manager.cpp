@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2019/03/06
+REVISION: 2019/03/07
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -309,7 +309,8 @@ int arg_buf_deallocate(int gpu_beg, int gpu_end)
 
 #pragma omp flush
  if(bufs_ready == 0) return -1; //buffers are not allocated
- omp_destroy_nest_lock(&mem_lock);
+ omp_set_nest_lock(&mem_lock);
+#pragma omp flush
  err_code=0;
  if(abh_occ != NULL) free(abh_occ); abh_occ=NULL; abh_occ_size=0; max_args_host=0;
  for(i=0;i<MAX_GPUS_PER_NODE;i++){
@@ -350,6 +351,8 @@ int arg_buf_deallocate(int gpu_beg, int gpu_end)
 #endif /*NO_GPU*/
  bufs_ready=0;
 #pragma omp flush
+ omp_unset_nest_lock(&mem_lock);
+ omp_destroy_nest_lock(&mem_lock);
  return err_code;
 }
 
