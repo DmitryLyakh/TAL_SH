@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/02/08
+REVISION: 2019/03/06
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -71,6 +71,22 @@ int Tensor::getRank() const
 int Tensor::getOrder() const
 {
  return this->getRank();
+}
+
+
+/** Returns the tensor volume (number of elements). **/
+std::size_t Tensor::getVolume() const
+{
+ return talshTensorVolume(&(pimpl_->tensor_));
+}
+
+
+/** Returns tensor dimension extents (and tensor order). **/
+const int * Tensor::getDimExtents(unsigned int & num_dims) const
+{
+ num_dims = (pimpl_->tensor_).shape_p->num_dim;
+ if(num_dims == 0) return nullptr;
+ return (pimpl_->tensor_).shape_p->dims;
 }
 
 

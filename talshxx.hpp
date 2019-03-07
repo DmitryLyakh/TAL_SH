@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/02/13
+REVISION: 2019/03/07
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -164,6 +164,21 @@ public:
  int getRank() const;
  /** Returns the tensor order (rank in phys terms). **/
  int getOrder() const;
+
+ /** Returns the tensor volume (number of elements). **/
+ std::size_t getVolume() const;
+
+ /** Returns tensor dimension extents (and tensor order). **/
+ const int * getDimExtents(unsigned int & num_dims) const;
+
+ /** Returns a direct pointer to the tensor data available on Host.
+     If no image is available on Host, returns false.  **/
+ template<typename T>
+ bool getDataAccessHost(T ** data_ptr);
+ /** Returns a direct constant pointer to the tensor data available on Host.
+     If no image is available on Host, returns false.  **/
+ template<typename T>
+ bool getDataAccessHostConst(const T ** data_ptr);
 
  /** Use count increment/decrement. **/
  Tensor & operator++(); //increments tensor use count
@@ -420,6 +435,47 @@ Tensor::Tensor(const std::vector<int> & dims,              //tensor dimension ex
                const T * init_val):                        //optional scalar initialization value (provide nullptr if not needed)
  Tensor(std::vector<std::size_t>(dims.size(),0),dims,ext_mem,init_val)
 {
+}
+
+
+/** Returns a direct pointer to the tensor data available on Host.
+    If no image is available on Host, returns false.  **/
+template<typename T>
+bool Tensor::getDataAccessHost(T ** data_ptr)
+{
+ this->completeWriteTask();
+ int data_kind = TensorData<T>::kind;
+ talsh_tens_t * dtens = this->getTalshTensorPtr();
+ assert(dtens != nullptr);
+ void * body_ptr;
+ int errc = talshTensorGetBodyAccess(dtens,&body_ptr,data_kind,0,DEV_HOST);
+ if(errc == TALSH_SUCCESS){
+  *data_ptr = static_cast<T*>(body_ptr);
+ }else{
+  *data_ptr = nullptr;
+  return false;
+ }
+ return true;
+}
+
+/** Returns a direct constant pointer to the tensor data available on Host.
+    If no image is available on Host, returns false.  **/
+template<typename T>
+bool Tensor::getDataAccessHostConst(const T ** data_ptr)
+{
+ this->completeWriteTask();
+ int data_kind = TensorData<T>::kind;
+ const talsh_tens_t * dtens = this->getTalshTensorPtr();
+ assert(dtens != nullptr);
+ void * body_ptr;
+ int errc = talshTensorGetBodyAccessConst(dtens,&body_ptr,data_kind,0,DEV_HOST);
+ if(errc == TALSH_SUCCESS){
+  *data_ptr = static_cast<const T*>(body_ptr);
+ }else{
+  *data_ptr = nullptr;
+  return false;
+ }
+ return true;
 }
 
 

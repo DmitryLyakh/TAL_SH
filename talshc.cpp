@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/03/03
+REVISION: 2019/03/06
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -1072,6 +1072,36 @@ size_t talshTensorVolume(const talsh_tens_t * tens_block) //in: tensor block
  if(tens_block == NULL) return TALSH_INVALID_ARGS;
  if(talshTensorIsEmpty(tens_block) != NOPE) return 0;
  return tensShape_volume(tens_block->shape_p);
+}
+
+size_t talshTensorSizeAllImages(const talsh_tens_t * tens_block, int * num_images) //in: tensor block
+/** Returns the total size of all tensor images in bytes.
+    0 on return means either an empty tensor block or an error. **/
+{
+ size_t tot_size,vol;
+ int i,errc,ndev,dks,data_kinds[TALSH_MAX_DEV_PRESENT];
+
+ tot_size=0;
+ errc=talshTensorDataKind(tens_block,&ndev,data_kinds);
+ if(errc == TALSH_SUCCESS && ndev > 0){
+  vol=talshTensorVolume(tens_block);
+  if(vol > 0){
+   for(i=0;i<ndev;++i){
+    if(talshValidDataKind(data_kinds[i],&dks) == YEP){
+     tot_size+=vol*((size_t)dks);
+    }else{
+     errc=TALSH_FAILURE;
+     break;
+    }
+   }
+  }
+ }
+ if(errc == TALSH_SUCCESS){
+  *num_images=ndev;
+ }else{
+  tot_size=0; *num_images=0;
+ }
+ return tot_size;
 }
 
 int talshTensorShape(const talsh_tens_t * tens_block, talsh_tens_shape_t * tens_shape)
