@@ -370,6 +370,7 @@ Tensor::Impl::Impl(const std::vector<std::size_t> & signature, //tensor signatur
  const int rank = static_cast<int>(dims.size());
  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),NULL);
  assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
+ std::size_t vol = talshTensorVolume(&tensor_); assert(vol <= ext_data.size());
  errc = talshTensorImportData(&tensor_,TensorData<T>::kind,static_cast<const void*>(ext_data.data()));
  assert(errc == TALSH_SUCCESS);
  write_task_ = nullptr;
