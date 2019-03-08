@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2019/03/06
+!REVISION: 2019/03/08
 
 !Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -289,6 +289,12 @@
           type(talsh_tens_t), intent(in):: talsh_tens
          end function talshTensorImageNorm1_cpu
  !TAL-SH task C/C++ API:
+  !Clean an uninitialized TAL-SH task before the use:
+         integer(C_INT) function talsh_task_clean(talsh_task) bind(c,name='talshTaskClean')
+          import
+          implicit none
+          type(talsh_task_t), intent(inout):: talsh_task
+         end function talsh_task_clean
   !Destruct a TAL-SH task:
          integer(C_INT) function talshTaskDestruct(talsh_task) bind(c,name='talshTaskDestruct')
           import
@@ -480,6 +486,7 @@
         public talsh_tensor_print_body
         public talshTensorImageNorm1_cpu
  !TAL-SH task API:
+        private talsh_task_clean
         public talsh_task_destruct
         public talsh_task_dev_id
         public talsh_task_status
@@ -1202,6 +1209,7 @@
          if(present(talsh_task)) then
           ierr=talshTensorPlace_(tens,dev_id,dvk,dvm,coh,talsh_task)
          else
+          ierr=talsh_task_clean(tsk)
           ierr=talshTensorPlace_(tens,dev_id,dvk,dvm,coh,tsk)
           if(ierr.eq.TALSH_SUCCESS) then
            ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
@@ -1258,6 +1266,7 @@
          if(present(talsh_task)) then
           ierr=talshTensorInit_(dtens,val_real,val_imag,devn,devk,coh_ctrl,talsh_task)
          else
+          ierr=talsh_task_clean(tsk)
           ierr=talshTensorInit_(dtens,val_real,val_imag,devn,devk,coh_ctrl,tsk)
           if(ierr.eq.TALSH_SUCCESS) then
            ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
@@ -1295,6 +1304,7 @@
            if(present(talsh_task)) then
             ierr=talshTensorAdd_(contr_ptrn,dtens,ltens,scale_real,scale_imag,devn,devk,coh_ctrl,talsh_task)
            else
+            ierr=talsh_task_clean(tsk)
             ierr=talshTensorAdd_(contr_ptrn,dtens,ltens,scale_real,scale_imag,devn,devk,coh_ctrl,tsk)
             if(ierr.eq.TALSH_SUCCESS) then
              ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
@@ -1339,6 +1349,7 @@
            if(present(talsh_task)) then
             ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,coh_ctrl,talsh_task)
            else
+            ierr=talsh_task_clean(tsk)
             ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,coh_ctrl,tsk)
             if(ierr.eq.TALSH_SUCCESS) then
              ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR

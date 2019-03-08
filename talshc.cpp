@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/03/07
+REVISION: 2019/03/08
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -1811,14 +1811,14 @@ int talshTaskDestruct(talsh_task_t * talsh_task)
  switch(talsh_task->dev_kind){
   case DEV_HOST:
    if(talsh_task->task_p != NULL){
-    errc=host_task_destroy((host_task_t*)(talsh_task->task_p));
+    errc=host_task_destroy((host_task_t*)(talsh_task->task_p)); talsh_task->task_p=NULL;
     if(errc != 0 && errc != TRY_LATER && errc != NOT_CLEAN) errc=TALSH_FAILURE;
    }
    break;
   case DEV_NVIDIA_GPU:
 #ifndef NO_GPU
    if(talsh_task->task_p != NULL){
-    errc=cuda_task_destroy((cudaTask_t*)(talsh_task->task_p));
+    errc=cuda_task_destroy((cudaTask_t*)(talsh_task->task_p)); talsh_task->task_p=NULL;
     if(errc != 0 && errc != TRY_LATER && errc != NOT_CLEAN) errc=TALSH_FAILURE;
    }
 #else
@@ -2277,7 +2277,7 @@ int talshTensorPlace(talsh_tens_t * tens, int dev_id, int dev_kind, void * dev_m
    if(errc){ //in case of error, CUDA task has already been finalized (with error) without coherence control
     if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=TALSH_FAILURE;
     j=talsh_tensor_c_dissoc(ctens); if(j) errc=TALSH_FAILURE;
-    j=cuda_task_destroy(cuda_task); if(j) errc=TALSH_FAILURE;
+    j=cuda_task_destroy(cuda_task); tsk->task_p=NULL; if(j) errc=TALSH_FAILURE;
     tsk->task_error=115; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
     return errc;
    }else{ //coherence control
@@ -2514,8 +2514,7 @@ int talshTensorInit(talsh_tens_t * dtens, double val_real, double val_imag, int 
    if(errc){
     if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=TALSH_FAILURE;
     j=host_task_record(host_task,coh_ctrl,13);
-    j=host_task_destroy(host_task); if(j) errc=TALSH_FAILURE;
-    tsk->task_p=NULL;
+    j=host_task_destroy(host_task); tsk->task_p=NULL; if(j) errc=TALSH_FAILURE;
     tsk->task_error=117; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
     return errc;
    }else{ //coherence control
@@ -2550,8 +2549,7 @@ int talshTensorInit(talsh_tens_t * dtens, double val_real, double val_imag, int 
    if(errc || dvn < 0){ //in case of error, CUDA task has already been finalized (with error) without coherence control
     if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=TALSH_FAILURE;
     j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
-    j=cuda_task_destroy(cuda_task); if(j) errc=TALSH_FAILURE;
-    tsk->task_p=NULL;
+    j=cuda_task_destroy(cuda_task); tsk->task_p=NULL; if(j) errc=TALSH_FAILURE;
     tsk->task_error=126; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
    }else{ //coherence control (mark images to be discarded as unavailable)
     devid=talshFlatDevId(dvk,dvn);
@@ -2736,8 +2734,7 @@ int talshTensorAdd(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * lten
    if(errc){
     if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=TALSH_FAILURE;
     j=host_task_record(host_task,coh_ctrl,13);
-    j=host_task_destroy(host_task); if(j) errc=TALSH_FAILURE;
-    tsk->task_p=NULL;
+    j=host_task_destroy(host_task); tsk->task_p=NULL; if(j) errc=TALSH_FAILURE;
     tsk->task_error=117; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
     return errc;
    }else{ //coherence control
@@ -2783,8 +2780,7 @@ int talshTensorAdd(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * lten
     if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=TALSH_FAILURE;
     j=talsh_tensor_c_dissoc(lctr); if(j) errc=TALSH_FAILURE;
     j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
-    j=cuda_task_destroy(cuda_task); if(j) errc=TALSH_FAILURE;
-    tsk->task_p=NULL;
+    j=cuda_task_destroy(cuda_task); tsk->task_p=NULL; if(j) errc=TALSH_FAILURE;
     tsk->task_error=126; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
    }else{ //coherence control (mark images to be discarded as unavailable)
     devid=talshFlatDevId(dvk,dvn);
@@ -3000,8 +2996,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
    if(errc){
     if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=TALSH_FAILURE;
     j=host_task_record(host_task,coh_ctrl,13);
-    j=host_task_destroy(host_task); if(j) errc=TALSH_FAILURE;
-    tsk->task_p=NULL;
+    j=host_task_destroy(host_task); tsk->task_p=NULL; if(j) errc=TALSH_FAILURE;
     tsk->task_error=117; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
     return errc;
    }else{ //coherence control
@@ -3060,8 +3055,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
     j=talsh_tensor_c_dissoc(rctr); if(j) errc=TALSH_FAILURE;
     j=talsh_tensor_c_dissoc(lctr); if(j) errc=TALSH_FAILURE;
     j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
-    j=cuda_task_destroy(cuda_task); if(j) errc=TALSH_FAILURE;
-    tsk->task_p=NULL;
+    j=cuda_task_destroy(cuda_task); tsk->task_p=NULL; if(j) errc=TALSH_FAILURE;
     tsk->task_error=126; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
    }else{ //coherence control (mark images to be discarded as unavailable)
     devid=talshFlatDevId(dvk,dvn);
