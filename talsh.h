@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2019/03/06
+REVISION: 2019/03/07
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -196,6 +196,10 @@ extern "C"{
                           double init_val_imag = 0.0);
  int talshTensorConstruct_(talsh_tens_t * tens_block, int data_kind, int tens_rank, const int tens_dims[], int dev_id,
                            void * ext_mem, int in_hab, talsh_tens_init_i init_method, double init_val_real, double init_val_imag);
+//  Import external data for the tensor body:
+ int talshTensorImportData(talsh_tens_t * tens_block,
+                           int data_kind,
+                           const void * ext_data);
 //  Destruct a tensor block:
  int talshTensorDestruct(talsh_tens_t * tens_block);
 //  Destroy a tensor block:

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/03/06
+REVISION: 2019/03/07
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -602,14 +602,14 @@ int talshShutdown()
 
 #pragma omp flush
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
- errc=arg_buf_deallocate(talsh_gpu_beg,talsh_gpu_end);
  talshSetMemAllocPolicyHost(TALSH_MEM_ALLOC_POLICY_HOST,TALSH_MEM_ALLOC_FALLBACK_HOST,&i);
- omp_destroy_nest_lock(&talsh_lock);
+ errc=arg_buf_deallocate(talsh_gpu_beg,talsh_gpu_end);
  talsh_gpu_beg=0; talsh_gpu_end=-1; talsh_on=0;
  talsh_cpu=DEV_OFF;
  for(i=0;i<MAX_GPUS_PER_NODE;i++) talsh_gpu[i]=DEV_OFF;
  for(i=0;i<MAX_MICS_PER_NODE;i++) talsh_mic[i]=DEV_OFF;
  for(i=0;i<MAX_AMDS_PER_NODE;i++) talsh_amd[i]=DEV_OFF;
+ omp_destroy_nest_lock(&talsh_lock);
 #pragma omp flush
  if(errc) return TALSH_FAILURE;
  return TALSH_SUCCESS;
@@ -1007,6 +1007,59 @@ int talshTensorConstruct_(talsh_tens_t * tens_block, int data_kind, int tens_ran
 {
  return talshTensorConstruct(tens_block, data_kind, tens_rank, tens_dims, dev_id,
                              ext_mem, in_hab, init_method, init_val_real, init_val_imag);
+}
+
+int talshTensorImportData(talsh_tens_t * tens_block, //inout: defined tensor block
+                          int data_kind,             //in: imported data kind: {R4,R8,C4,C8}
+                          const void * ext_data)     //in: pointer to the imported external data
+/** Imports tensor body by copying data from <ext_data> into tensor body on Host. **/
+{
+ int errc;
+ size_t l,vol;
+ void * body_ptr;
+
+#pragma omp flush
+ if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
+ errc=TALSH_SUCCESS;
+ if(tens_block == NULL) return TALSH_INVALID_ARGS;
+ if(talshTensorIsEmpty(tens_block) == YEP) return TALSH_OBJECT_IS_EMPTY;
+ errc=talshTensorGetBodyAccess(tens_block,&body_ptr,data_kind,0,DEV_HOST);
+ if(errc == TALSH_SUCCESS){
+  vol=talshTensorVolume(tens_block);
+  if(vol > 0){
+   float * dr4p = (float*)body_ptr;
+   const float * sr4p = (const float*)ext_data;
+   double * dr8p = (double*)body_ptr;
+   const double * sr8p = (const double*)ext_data;
+   talshComplex4 * dc4p = (talshComplex4*)body_ptr;
+   const talshComplex4 * sc4p = (const talshComplex4*)ext_data;
+   talshComplex8 * dc8p = (talshComplex8*)body_ptr;
+   const talshComplex8 * sc8p = (const talshComplex8*)ext_data;
+   switch(data_kind){
+    case R4:
+#pragma omp parallel for shared(vol,dr4p,sr4p) schedule(guided)
+     for(l=0;l<vol;++l) dr4p[l]=sr4p[l];
+     break;
+    case R8:
+#pragma omp parallel for shared(vol,dr8p,sr8p) schedule(guided)
+     for(l=0;l<vol;++l) dr8p[l]=sr8p[l];
+     break;
+    case C4:
+#pragma omp parallel for shared(vol,dc4p,sc4p) schedule(guided)
+     for(l=0;l<vol;++l) dc4p[l]=sc4p[l];
+     break;
+    case C8:
+#pragma omp parallel for shared(vol,dc8p,sc8p) schedule(guided)
+     for(l=0;l<vol;++l) dc8p[l]=sc8p[l];
+     break;
+    default:
+     errc=TALSH_INVALID_ARGS;
+   }
+  }else{
+   errc=TALSH_FAILURE;
+  }
+ }
+ return errc;
 }
 
 int talshTensorDestruct(talsh_tens_t * tens_block) //in: non-NULL pointer to a tensor block (empty tensor block on exit)
