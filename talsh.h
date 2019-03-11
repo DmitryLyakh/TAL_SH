@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2019/03/07
+REVISION: 2019/03/10
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -337,9 +337,11 @@ extern "C"{
                          int dev_id = DEV_DEFAULT,          //in: device id (flat or kind-specific)
                          int dev_kind = DEV_DEFAULT,        //in: device kind (if present, <dev_id> is kind-specific)
                          int copy_ctrl = COPY_MTT,          //in: copy control (COPY_XXX), defaults to COPY_MTT
+                         int accumulative = YEP,            //in: accumulate in (default) VS overwrite destination tensor: [YEP|NOPE]
                          talsh_task_t * talsh_task = NULL); ////inout: TAL-SH task (must be clean)
  int talshTensorContract_(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * ltens, talsh_tens_t * rtens,
-                          double scale_real, double scale_imag, int dev_id, int dev_kind, int copy_ctrl, talsh_task_t * talsh_task);
+                          double scale_real, double scale_imag, int dev_id, int dev_kind,
+                          int copy_ctrl, int accumulative, talsh_task_t * talsh_task);
 // TAL-SH debugging:
 //  1-norm of the tensor body image on Host:
  double talshTensorImageNorm1_cpu(const talsh_tens_t * talsh_tens);

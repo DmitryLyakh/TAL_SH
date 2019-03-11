@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/03/07
+REVISION: 2019/03/10
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -238,7 +238,8 @@ public:
                         Tensor & right,                         //in: right tensor
                         const int device_kind = DEV_HOST,       //in: execution device kind
                         const int device_id = 0,                //in: execution device id
-                        const T factor = TensorData<T>::unity); //in: alpha factor
+                        const T factor = TensorData<T>::unity,  //in: scaling factor (alpha)
+                        bool accumulative = true);              //in: accumulate versus overwrite the destination tensor
 
  /** Performs a matrix multiplication on two tensors and accumulates the result into the current tensor.
      Returns an error code (0:success). **/
@@ -248,7 +249,7 @@ public:
                         Tensor & right,                         //in: right tensor
                         const int device_kind = DEV_HOST,       //in: execution device kind
                         const int device_id = 0,                //in: execution device id
-                        const T factor = TensorData<T>::unity); //in: alpha factor
+                        const T factor = TensorData<T>::unity); //in: scaling factor (alpha)
 
  /** Prints the tensor. **/
  void print() const;
@@ -598,10 +599,12 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
                                Tensor & right,              //in: right tensor
                                const int device_kind,       //in: execution device kind
                                const int device_id,         //in: execution device id
-                               const T factor)              //in: alpha factor
+                               const T factor,              //in: scaling factor (alpha)
+                               bool accumulative)           //in: accumulate in (default) VS overwrite destination tensor
 {
  int errc = TALSH_SUCCESS;
  this->completeWriteTask();
+ int accum = YEP; if(!accumulative) accum=NOPE;
  const char * contr_ptrn = pattern.c_str();
  talsh_tens_t * dtens = this->getTalshTensorPtr();
  talsh_tens_t * ltens = left.getTalshTensorPtr();
@@ -610,13 +613,15 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
   assert(task_handle->isEmpty());
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   //++left; ++right; ++(*this);
-  errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_TTT,task_hl);
+  errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,
+                             COPY_TTT,accum,task_hl);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
   if(errc == TALSH_SUCCESS) pimpl_->write_task_ = task_handle;
  }else{ //synchronous
-  errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_TTT);
+  errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,
+                             COPY_TTT,accum);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);

@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2019/02/13
+!REVISION: 2019/03/11
 
 !Copyright (C) 2013-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -20,7 +20,7 @@
 !You should have received a copy of the GNU Lesser General Public License
 !along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 
-!GNU linking options: -lgomp -lblas -llapack
+!GNU linking: -lblas -gfortran -lgomp
 !ACRONYMS:
 ! - mlndx - multiindex;
 ! - Lm - Level-min segment size (the lowest level segment size for bricked storage);
@@ -3239,8 +3239,8 @@
 	endif
 	return
 	end subroutine tensor_block_copy
-!---------------------------------------------------------------------------------
-	subroutine tensor_block_add(tens0,tens1,ierr,scale_fac,arg_conj,data_kind) !PARALLEL
+!----------------------------------------------------------------------------------------------
+	subroutine tensor_block_add(tens0,tens1,ierr,scale_fac,arg_conj,data_kind,accumulative) !PARALLEL
 !This subroutine adds tensor block <tens1> to tensor block <tens0>:
 !tens0(:)+=tens1(:)*scale_fac
 !INPUT:
@@ -3248,6 +3248,7 @@
 ! - scale_fac - (optional) scaling factor;
 ! - arg_conj - (optional) argument complex conjugation (Bit 0 -> Destination, Bit 1 -> Left);
 ! - data_kind - (optional) requested data kind, one of {'r4','r8','c4','c8'};
+! - accumulative - (optional) whether or not the tensor addition is accumulative in the destination tensor;
 !OUTPUT:
 ! - tens0 - modified tensor block;
 ! - ierr - error code (0:success);
@@ -3256,22 +3257,24 @@
 !   otherwise, the data kinds syncronization will be invoked.
 ! - Not-allocated (still compatible) tensor blocks will be simply ignored.
         implicit none
-        type(tensor_block_t), intent(inout):: tens0
-        type(tensor_block_t), intent(inout):: tens1 !(out) because <tens1> might need data kinds syncronization to become compatible with <tens0>
-        integer, intent(inout):: ierr
-        complex(8), intent(in), optional:: scale_fac
-        integer, intent(in), optional:: arg_conj
-        character(2), intent(in), optional:: data_kind
+        type(tensor_block_t), intent(inout):: tens0    !inout: destination tensor
+        type(tensor_block_t), intent(inout):: tens1    !in: left tensor: (out) because <tens1> might need data kinds syncronization to become compatible with <tens0>
+        integer, intent(inout):: ierr                  !out: error code
+        complex(8), intent(in), optional:: scale_fac   !in: scaling prefactor
+        integer, intent(in), optional:: arg_conj       !in: argument complex conjugation (Bit 0 -> Destination, Bit 1 -> Left);
+        character(2), intent(in), optional:: data_kind !in: requested data kind, one of {'r4','r8','c4','c8'};
+        logical, intent(in), optional:: accumulative   !in: whether or not the tensor addition is accumulative in the destination tensor
         integer:: i,j,k,l,m,n,ks,kf
         integer(LONGINT):: l0,l1,ls
         character(2):: dtk,slk,dlt
-        logical:: tencom,scale_present,dconj,lconj
+        logical:: tencom,scale_present,dconj,lconj,accum
         real(4):: val_r4
         real(8):: val_r8
         complex(4):: val_c4,l_c4
         complex(8):: val_c8,l_c8
 
 	ierr=0
+	accum=.TRUE.; if(present(accumulative)) accum=accumulative
 	ks=tensor_block_layout(tens0,ierr); if(ierr.ne.0) then; ierr=1; return; endif
 	kf=tensor_block_layout(tens1,ierr); if(ierr.ne.0) then; ierr=2; return; endif
 	if(ks.ne.kf) then; ierr=3; return; endif !tensor storage layouts differ
@@ -3292,6 +3295,7 @@
 	tencom=tensor_block_compatible(tens0,tens1,ierr,no_check_data_kinds=.TRUE.); if(ierr.ne.0) then; ierr=4; return; endif
 	if(tencom) then
 	 if(tens0%tensor_shape%num_dim.eq.0) then !scalars
+	  if(.not.accum) tens0%scalar_value=(0d0,0d0)
 	  if(lconj) then; l_c8=conjg(tens1%scalar_value); else; l_c8=tens1%scalar_value; endif
 	  tens0%scalar_value=tens0%scalar_value+l_c8*val_c8
 	 elseif(tens0%tensor_shape%num_dim.gt.0) then !true tensors
@@ -3310,16 +3314,37 @@
 	       dlt='  '
 	      endif
 	      if(size(tens0%data_real4).eq.ls.and.tens1%tensor_block_size.eq.ls) then
-	       if(scale_present) then !scaling present
-	        val_r4=real(cmplx8_to_real8(val_c8),4)
+               if(accum) then !accumulating
+                if(scale_present) then !scaling present
+                 val_r4=real(cmplx8_to_real8(val_c8),4)
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_r4)
-	        do l0=0_LONGINT,ls-1_LONGINT; tens0%data_real4(l0)=tens0%data_real4(l0)+tens1%data_real4(l0)*val_r4; enddo
+                 do l0=0_LONGINT,ls-1_LONGINT
+                  tens0%data_real4(l0)=tens0%data_real4(l0)+tens1%data_real4(l0)*val_r4
+                 enddo
 !$OMP END PARALLEL DO
-	       else !no scaling
+                else !no scaling
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
-	        do l0=0_LONGINT,ls-1_LONGINT; tens0%data_real4(l0)=tens0%data_real4(l0)+tens1%data_real4(l0); enddo
+                 do l0=0_LONGINT,ls-1_LONGINT
+                  tens0%data_real4(l0)=tens0%data_real4(l0)+tens1%data_real4(l0)
+                 enddo
 !$OMP END PARALLEL DO
-	       endif
+                endif
+               else !overwriting
+                if(scale_present) then !scaling present
+                 val_r4=real(cmplx8_to_real8(val_c8),4)
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_r4)
+                 do l0=0_LONGINT,ls-1_LONGINT
+                  tens0%data_real4(l0)=tens1%data_real4(l0)*val_r4
+                 enddo
+!$OMP END PARALLEL DO
+                else !no scaling
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+                 do l0=0_LONGINT,ls-1_LONGINT
+                  tens0%data_real4(l0)=tens1%data_real4(l0)
+                 enddo
+!$OMP END PARALLEL DO
+                endif
+               endif
 	       if(dlt.ne.'  ') then
 	        call tensor_block_sync(tens1,dlt,ierr,'--'); if(ierr.ne.0) then; ierr=8; return; endif
 	       endif
@@ -3341,16 +3366,37 @@
 	       dlt='  '
 	      endif
 	      if(size(tens0%data_real8).eq.ls.and.tens1%tensor_block_size.eq.ls) then
-	       if(scale_present) then !scaling present
-	        val_r8=cmplx8_to_real8(val_c8)
+               if(accum) then !accumulating
+                if(scale_present) then !scaling present
+                 val_r8=cmplx8_to_real8(val_c8)
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_r8)
-	        do l0=0_LONGINT,ls-1_LONGINT; tens0%data_real8(l0)=tens0%data_real8(l0)+tens1%data_real8(l0)*val_r8; enddo
+                 do l0=0_LONGINT,ls-1_LONGINT
+                  tens0%data_real8(l0)=tens0%data_real8(l0)+tens1%data_real8(l0)*val_r8
+                 enddo
 !$OMP END PARALLEL DO
-	       else !no scaling
+                else !no scaling
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
-	        do l0=0_LONGINT,ls-1_LONGINT; tens0%data_real8(l0)=tens0%data_real8(l0)+tens1%data_real8(l0); enddo
+                 do l0=0_LONGINT,ls-1_LONGINT
+                  tens0%data_real8(l0)=tens0%data_real8(l0)+tens1%data_real8(l0)
+                 enddo
 !$OMP END PARALLEL DO
-	       endif
+                endif
+               else !overwriting
+                if(scale_present) then !scaling present
+                 val_r8=cmplx8_to_real8(val_c8)
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_r8)
+                 do l0=0_LONGINT,ls-1_LONGINT
+                  tens0%data_real8(l0)=tens1%data_real8(l0)*val_r8
+                 enddo
+!$OMP END PARALLEL DO
+                else !no scaling
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+                 do l0=0_LONGINT,ls-1_LONGINT
+                  tens0%data_real8(l0)=tens1%data_real8(l0)
+                 enddo
+!$OMP END PARALLEL DO
+                endif
+               endif
 	       if(dlt.ne.'  ') then
 	        call tensor_block_sync(tens1,dlt,ierr,'--'); if(ierr.ne.0) then; ierr=14; return; endif
 	       endif
@@ -3372,33 +3418,71 @@
 	       dlt='  '
 	      endif
 	      if(size(tens0%data_cmplx4).eq.ls.and.tens1%tensor_block_size.eq.ls) then
-	       if(lconj) then
-	        if(scale_present) then !scaling present
-                 val_c4=cmplx(val_c8,kind=4)
+               if(accum) then !accumlating
+                if(lconj) then !left tensor is conjugated
+                 if(scale_present) then !scaling present
+                  val_c4=cmplx(val_c8,kind=4)
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_c4)
-	         do l0=0_LONGINT,ls-1_LONGINT
-	          tens0%data_cmplx4(l0)=tens0%data_cmplx4(l0)+conjg(tens1%data_cmplx4(l0))*val_c4
-	         enddo
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx4(l0)=tens0%data_cmplx4(l0)+conjg(tens1%data_cmplx4(l0))*val_c4
+                  enddo
 !$OMP END PARALLEL DO
-	        else !no scaling
+                 else !no scaling
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
-	         do l0=0_LONGINT,ls-1_LONGINT
-	          tens0%data_cmplx4(l0)=tens0%data_cmplx4(l0)+conjg(tens1%data_cmplx4(l0))
-	         enddo
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx4(l0)=tens0%data_cmplx4(l0)+conjg(tens1%data_cmplx4(l0))
+                  enddo
 !$OMP END PARALLEL DO
-	        endif
-	       else
-	        if(scale_present) then !scaling present
-                 val_c4=cmplx(val_c8,kind=4)
+                 endif
+                else !left tensor is normal
+                 if(scale_present) then !scaling present
+                  val_c4=cmplx(val_c8,kind=4)
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_c4)
-	         do l0=0_LONGINT,ls-1_LONGINT; tens0%data_cmplx4(l0)=tens0%data_cmplx4(l0)+tens1%data_cmplx4(l0)*val_c4; enddo
+                  do l0=0_LONGINT,ls-1_LONGINT;
+                   tens0%data_cmplx4(l0)=tens0%data_cmplx4(l0)+tens1%data_cmplx4(l0)*val_c4
+                  enddo
 !$OMP END PARALLEL DO
-	        else !no scaling
+                 else !no scaling
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
-	         do l0=0_LONGINT,ls-1_LONGINT; tens0%data_cmplx4(l0)=tens0%data_cmplx4(l0)+tens1%data_cmplx4(l0); enddo
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx4(l0)=tens0%data_cmplx4(l0)+tens1%data_cmplx4(l0)
+                  enddo
 !$OMP END PARALLEL DO
-	        endif
-	       endif
+                 endif
+                endif
+               else !overwriting
+                if(lconj) then !left tensor is conjugated
+                 if(scale_present) then !scaling present
+                  val_c4=cmplx(val_c8,kind=4)
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_c4)
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx4(l0)=conjg(tens1%data_cmplx4(l0))*val_c4
+                  enddo
+!$OMP END PARALLEL DO
+                 else !no scaling
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx4(l0)=conjg(tens1%data_cmplx4(l0))
+                  enddo
+!$OMP END PARALLEL DO
+                 endif
+                else !left tensor is normal
+                 if(scale_present) then !scaling present
+                  val_c4=cmplx(val_c8,kind=4)
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_c4)
+                  do l0=0_LONGINT,ls-1_LONGINT;
+                   tens0%data_cmplx4(l0)=tens1%data_cmplx4(l0)*val_c4
+                  enddo
+!$OMP END PARALLEL DO
+                 else !no scaling
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx4(l0)=tens1%data_cmplx4(l0)
+                  enddo
+!$OMP END PARALLEL DO
+                 endif
+                endif
+               endif
 	       if(dlt.ne.'  ') then
 	        call tensor_block_sync(tens1,dlt,ierr,'--'); if(ierr.ne.0) then; ierr=20; return; endif
 	       endif
@@ -3420,31 +3504,67 @@
 	       dlt='  '
 	      endif
 	      if(size(tens0%data_cmplx8).eq.ls.and.tens1%tensor_block_size.eq.ls) then
-	       if(lconj) then
-	        if(scale_present) then !scaling present
+               if(accum) then !accumulating
+                if(lconj) then !left tensor is conjugated
+                 if(scale_present) then !scaling present
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_c8)
-	         do l0=0_LONGINT,ls-1_LONGINT
-	          tens0%data_cmplx8(l0)=tens0%data_cmplx8(l0)+conjg(tens1%data_cmplx8(l0))*val_c8
-	         enddo
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx8(l0)=tens0%data_cmplx8(l0)+conjg(tens1%data_cmplx8(l0))*val_c8
+                  enddo
 !$OMP END PARALLEL DO
-	        else !no scaling
+                 else !no scaling
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
-	         do l0=0_LONGINT,ls-1_LONGINT
-	          tens0%data_cmplx8(l0)=tens0%data_cmplx8(l0)+conjg(tens1%data_cmplx8(l0))
-	         enddo
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx8(l0)=tens0%data_cmplx8(l0)+conjg(tens1%data_cmplx8(l0))
+                  enddo
 !$OMP END PARALLEL DO
-	        endif
-	       else
-	        if(scale_present) then !scaling present
+                 endif
+                else !left tensor is normal
+                 if(scale_present) then !scaling present
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_c8)
-	         do l0=0_LONGINT,ls-1_LONGINT; tens0%data_cmplx8(l0)=tens0%data_cmplx8(l0)+tens1%data_cmplx8(l0)*val_c8; enddo
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx8(l0)=tens0%data_cmplx8(l0)+tens1%data_cmplx8(l0)*val_c8
+                  enddo
 !$OMP END PARALLEL DO
-	        else !no scaling
+                 else !no scaling
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
-	         do l0=0_LONGINT,ls-1_LONGINT; tens0%data_cmplx8(l0)=tens0%data_cmplx8(l0)+tens1%data_cmplx8(l0); enddo
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx8(l0)=tens0%data_cmplx8(l0)+tens1%data_cmplx8(l0)
+                  enddo
 !$OMP END PARALLEL DO
-	        endif
-	       endif
+                 endif
+                endif
+               else !overwriting
+                if(lconj) then !left tensor is conjugated
+                 if(scale_present) then !scaling present
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_c8)
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx8(l0)=conjg(tens1%data_cmplx8(l0))*val_c8
+                  enddo
+!$OMP END PARALLEL DO
+                 else !no scaling
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx8(l0)=conjg(tens1%data_cmplx8(l0))
+                  enddo
+!$OMP END PARALLEL DO
+                 endif
+                else !left tensor is normal
+                 if(scale_present) then !scaling present
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) FIRSTPRIVATE(val_c8)
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx8(l0)=tens1%data_cmplx8(l0)*val_c8
+                  enddo
+!$OMP END PARALLEL DO
+                 else !no scaling
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+                  do l0=0_LONGINT,ls-1_LONGINT
+                   tens0%data_cmplx8(l0)=tens1%data_cmplx8(l0)
+                  enddo
+!$OMP END PARALLEL DO
+                 endif
+                endif
+               endif
 	       if(dlt.ne.'  ') then
 	        call tensor_block_sync(tens1,dlt,ierr,'--'); if(ierr.ne.0) then; ierr=26; return; endif
 	       endif
@@ -3482,8 +3602,8 @@
 	endif
 	return
 	end subroutine tensor_block_add
-!------------------------------------------------------------------------------------------------------------
-	subroutine tensor_block_contract(contr_ptrn,ltens,rtens,dtens,ierr,alpha,arg_conj,data_kind,ord_rest) !PARALLEL
+!-------------------------------------------------------------------------------------------------------------------------
+	subroutine tensor_block_contract(contr_ptrn,ltens,rtens,dtens,ierr,alpha,arg_conj,data_kind,ord_rest,accumulative) !PARALLEL
 !This subroutine contracts two tensor blocks and accumulates the result into another tensor block:
 !dtens(:)+=ltens(:)*rtens(:)
 !Author: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
@@ -3505,6 +3625,7 @@
 ! - arg_conj - argument complex conjugation flags: Bit 0 -> Destination, Bit 1 -> Left, Bit 2 -> Right tensor argument;
 ! - data_kind - (optional) requested data kind, one of {'r4','r8','c4','c8'};
 ! - ord_rest(1:left_rank+right_rank) - (optional) index ordering restrictions (for contracted indices only);
+! - accumulative - (optional) whether or not the tensor contraction is accumulative;
 !OUTPUT:
 ! - dtens - modified destination tensor (tensor block);
 ! - ierr - error code (0: success);
@@ -3516,10 +3637,11 @@
         type(tensor_block_t), intent(inout), target:: ltens,rtens !inout: left and right tensors: (out) because of <tensor_block_layout> because of <tensor_block_shape_ok>
         type(tensor_block_t), intent(inout), target:: dtens       !inout: destination tensor
         integer, intent(inout):: ierr                             !out: error code
-        complex(8), intent(in), optional:: alpha                  !in: BLAS alpha
+        complex(8), intent(in), optional:: alpha                  !in: scaling prefactor
         integer, intent(in), optional:: arg_conj                  !in: argument complex conjugation (Bit 0 -> Destination, Bit 1 -> Left, Bit 2 -> Right)
-        character(2), intent(in), optional:: data_kind
-        integer, intent(in), optional:: ord_rest(1:*)
+        character(2), intent(in), optional:: data_kind            !in: preferred data kind
+        integer, intent(in), optional:: ord_rest(1:*)             !in: index ordering restrictions (for contracted indices only)
+        logical, intent(in), optional:: accumulative              !in: whether or not the tensor contraction is accumulative (into destination tensor)
 !----------------------------------------------------
         integer, parameter:: PARTIAL_CONTRACTION=1
         integer, parameter:: FULL_CONTRACTION=2
@@ -3538,8 +3660,8 @@
         real(4):: d_r4
         real(8):: d_r8,start_gemm,finish_gemm
         complex(4):: d_c4,l_c4,r_c4
-        complex(8):: d_c8,l_c8,r_c8,alf
-        logical:: contr_ok,ltransp,rtransp,dtransp,transp,lconj,rconj,dconj
+        complex(8):: d_c8,l_c8,r_c8,alf,beta
+        logical:: contr_ok,ltransp,rtransp,dtransp,transp,lconj,rconj,dconj,accum
 
         ierr=0
         nthr=omp_get_max_threads()
@@ -3708,6 +3830,11 @@
          if(l0.ne.lld.or.l1.ne.lcd.or.l2.ne.lrd) then; ierr=17; goto 999; endif
          if(rtrm.eq.'C') then; l2=lrd; else; l2=lcd; endif !leading dimension for the right matrix
  !Multiply two matrices (dtp += ltp * rtp):
+         beta=(1d0,0d0); accum=.TRUE.
+         if(present(accumulative)) then
+          accum=accumulative
+          if(.not.accum) then; dtp%scalar_value=(0d0,0d0); beta=(0d0,0d0); endif
+         endif
          if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
 	 start_gemm=thread_wtime() !debug
 	 select case(contr_case)
@@ -3715,53 +3842,55 @@
 	  select case(dtk)
 	  case('r4','R4')
 #ifdef NO_BLAS
-	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real4,rtp%data_real4,dtp%data_real4,ierr,real(alf,4))
+	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real4,rtp%data_real4,dtp%data_real4,ierr,real(alf,4),real(beta,4))
 	   if(ierr.ne.0) then; ierr=18; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
 	    call sgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),real(alf,4),ltp%data_real4,int(lcd,4),rtp%data_real4,int(l2,4),&
-	              &1.0,dtp%data_real4,int(lld,4))
+	              &real(beta,4),dtp%data_real4,int(lld,4))
 	   else
-	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real4,rtp%data_real4,dtp%data_real4,ierr,real(alf,4))
+	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real4,rtp%data_real4,dtp%data_real4,ierr,real(alf,4),real(beta,4))
 	    if(ierr.ne.0) then; ierr=19; goto 999; endif
 	   endif
 #endif
 	  case('r8','R8')
 #ifdef NO_BLAS
-	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real8,rtp%data_real8,dtp%data_real8,ierr,real(alf,8))
+	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real8,rtp%data_real8,dtp%data_real8,ierr,real(alf,8),real(beta,8))
 	   if(ierr.ne.0) then; ierr=20; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
 	    call dgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),real(alf,8),ltp%data_real8,int(lcd,4),rtp%data_real8,int(l2,4),&
-	              &1d0,dtp%data_real8,int(lld,4))
+	              &real(beta,8),dtp%data_real8,int(lld,4))
 	   else
-	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real8,rtp%data_real8,dtp%data_real8,ierr,real(alf,8))
+	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real8,rtp%data_real8,dtp%data_real8,ierr,real(alf,8),real(beta,8))
 	    if(ierr.ne.0) then; ierr=21; goto 999; endif
 	   endif
 #endif
 	  case('c4','C4')
 #ifdef NO_BLAS
-	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx4,rtp%data_cmplx4,dtp%data_cmplx4,ierr,cmplx(alf,kind=4))
+	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx4,rtp%data_cmplx4,dtp%data_cmplx4,ierr,&
+                                          &cmplx(alf,kind=4),cmplx(beta,kind=4))
 	   if(ierr.ne.0) then; ierr=22; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
 	    call cgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),cmplx(alf,kind=4),ltp%data_cmplx4,int(lcd,4),&
-                      &rtp%data_cmplx4,int(l2,4),(1.0,0.0),dtp%data_cmplx4,int(lld,4))
+                      &rtp%data_cmplx4,int(l2,4),cmplx(beta,kind=4),dtp%data_cmplx4,int(lld,4))
 	   else
-	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx4,rtp%data_cmplx4,dtp%data_cmplx4,ierr,cmplx(alf,kind=4))
+	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx4,rtp%data_cmplx4,dtp%data_cmplx4,ierr,&
+                                           &cmplx(alf,kind=4),cmplx(beta,kind=4))
 	    if(ierr.ne.0) then; ierr=23; goto 999; endif
 	   endif
 #endif
 	  case('c8','C8')
 #ifdef NO_BLAS
-	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx8,rtp%data_cmplx8,dtp%data_cmplx8,ierr,alf)
+	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx8,rtp%data_cmplx8,dtp%data_cmplx8,ierr,alf,beta)
 	   if(ierr.ne.0) then; ierr=24; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
 	    call zgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),alf,ltp%data_cmplx8,int(lcd,4),rtp%data_cmplx8,int(l2,4),&
-	              &(1d0,0d0),dtp%data_cmplx8,int(lld,4))
+	              &beta,dtp%data_cmplx8,int(lld,4))
 	   else
-	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx8,rtp%data_cmplx8,dtp%data_cmplx8,ierr,alf)
+	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx8,rtp%data_cmplx8,dtp%data_cmplx8,ierr,alf,beta)
 	    if(ierr.ne.0) then; ierr=25; goto 999; endif
 	   endif
 #endif
@@ -3770,22 +3899,22 @@
 	  select case(dtk)
 	  case('r4','R4')
 	   d_r4=0.0
-	   call tensor_block_fcontract_dlf(lcd,ltp%data_real4,rtp%data_real4,d_r4,ierr,real(alf,4))
+	   call tensor_block_fcontract_dlf(lcd,ltp%data_real4,rtp%data_real4,d_r4,ierr,real(alf,4),real(beta,4))
 	   if(ierr.ne.0) then; ierr=26; goto 999; endif
 	   dtp%scalar_value=dtp%scalar_value+cmplx(real(d_r4,8),0d0,kind=8)
 	  case('r8','R8')
 	   d_r8=0d0
-	   call tensor_block_fcontract_dlf(lcd,ltp%data_real8,rtp%data_real8,d_r8,ierr,real(alf,8))
+	   call tensor_block_fcontract_dlf(lcd,ltp%data_real8,rtp%data_real8,d_r8,ierr,real(alf,8),real(beta,8))
 	   if(ierr.ne.0) then; ierr=27; goto 999; endif
 	   dtp%scalar_value=dtp%scalar_value+cmplx(d_r8,0d0,kind=8)
 	  case('c4','C4')
 	   d_c4=(0.0,0.0)
-	   call tensor_block_fcontract_dlf(lcd,ltp%data_cmplx4,rtp%data_cmplx4,d_c4,ierr,cmplx(alf,kind=4))
+	   call tensor_block_fcontract_dlf(lcd,ltp%data_cmplx4,rtp%data_cmplx4,d_c4,ierr,cmplx(alf,kind=4),cmplx(beta,kind=4))
 	   if(ierr.ne.0) then; ierr=28; goto 999; endif
 	   dtp%scalar_value=dtp%scalar_value+cmplx(d_c4,kind=8)
 	  case('c8','C8')
 	   d_c8=(0d0,0d0)
-	   call tensor_block_fcontract_dlf(lcd,ltp%data_cmplx8,rtp%data_cmplx8,d_c8,ierr,alf)
+	   call tensor_block_fcontract_dlf(lcd,ltp%data_cmplx8,rtp%data_cmplx8,d_c8,ierr,alf,beta)
 	   if(ierr.ne.0) then; ierr=29; goto 999; endif
 	   dtp%scalar_value=dtp%scalar_value+d_c8
 	  end select
@@ -3793,12 +3922,12 @@
 	  if(ltb.ne.scalar_tensor.and.rtb.eq.scalar_tensor) then
 	   if(lconj) then; k=1*2+0; else; k=0; endif !bit 0 -> D; bit 1 -> L
 	   if(rconj) then; d_c8=conjg(rtp%scalar_value); else; d_c8=rtp%scalar_value; endif
-	   call tensor_block_add(dtp,ltp,ierr,scale_fac=d_c8*alf,arg_conj=k,data_kind=dtk)
+	   call tensor_block_add(dtp,ltp,ierr,scale_fac=d_c8*alf,arg_conj=k,data_kind=dtk,accumulative=accum)
 	   if(ierr.ne.0) then; ierr=30; goto 999; endif
 	  elseif(ltb.eq.scalar_tensor.and.rtb.ne.scalar_tensor) then
 	   if(rconj) then; k=1*2+0; else; k=0; endif !bit 0 -> D; bit 1 -> L
 	   if(lconj) then; d_c8=conjg(ltp%scalar_value); else; d_c8=ltp%scalar_value; endif
-	   call tensor_block_add(dtp,rtp,ierr,scale_fac=d_c8*alf,arg_conj=k,data_kind=dtk)
+	   call tensor_block_add(dtp,rtp,ierr,scale_fac=d_c8*alf,arg_conj=k,data_kind=dtk,accumulative=accum)
 	   if(ierr.ne.0) then; ierr=31; goto 999; endif
 	  else
 	   ierr=32; goto 999
@@ -7476,11 +7605,11 @@
 !        thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_copy_scatter_dlf_c8
-!--------------------------------------------------------------------------------
+!-------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_fcontract_dlf_r4
 #endif
-	subroutine tensor_block_fcontract_dlf_r4(dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
+	subroutine tensor_block_fcontract_dlf_r4(dc,ltens,rtens,dtens,ierr,alpha,beta) !PARALLEL
 !This subroutine fully reduces two vectors derived from the corresponding tensors by index permutations:
 !dtens+=ltens(0:dc-1)*rtens(0:dc-1)*alpha, where dtens is a scalar.
 	implicit none
@@ -7492,8 +7621,9 @@
 	real(real_kind), intent(inout):: dtens !scalar
 	integer, intent(inout):: ierr !error code
 	real(real_kind), intent(in), optional:: alpha !BLAS alpha
+	real(real_kind), intent(in), optional:: beta  !BLAS beta (defaults to 1)
 	integer i,j,k,l,m,n
-	real(real_kind) val,alf
+	real(real_kind) val,alf,bet
 	integer(LONGINT) l0
 	real(8) time_beg,tm
 #ifndef NO_PHI
@@ -7505,25 +7635,28 @@
 !	time_beg=thread_wtime() !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_r4): dc: ",i9)') dc !debug
 	if(present(alpha)) then; alf=alpha; else; alf=1.0; endif
+	if(present(beta)) then; bet=beta; else; bet=1.0; endif
 	if(dc.gt.0_LONGINT) then
 	 val=0.0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val)
-	 do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(l0)*rtens(l0)*alf; enddo
+	 do l0=0_LONGINT,dc-1_LONGINT
+          val=val+ltens(l0)*rtens(l0)
+         enddo
 !$OMP END PARALLEL DO
-	 dtens=dtens+val
+	 dtens=dtens*bet+val*alf
 	else
 	 ierr=1
 	endif
 !       tm=thread_wtime(time_beg) !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_r4): time/speed/error = ",2(F10.4,1x),i3)') &
-!        tm,dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
+!        tm,2d0*dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_fcontract_dlf_r4
-!--------------------------------------------------------------------------------
+!-------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_fcontract_dlf_r8
 #endif
-	subroutine tensor_block_fcontract_dlf_r8(dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
+	subroutine tensor_block_fcontract_dlf_r8(dc,ltens,rtens,dtens,ierr,alpha,beta) !PARALLEL
 !This subroutine fully reduces two vectors derived from the corresponding tensors by index permutations:
 !dtens+=ltens(0:dc-1)*rtens(0:dc-1)*alpha, where dtens is a scalar.
 	implicit none
@@ -7535,8 +7668,9 @@
 	real(real_kind), intent(inout):: dtens !scalar
 	integer, intent(inout):: ierr !error code
 	real(real_kind), intent(in), optional:: alpha !BLAS alpha
+	real(real_kind), intent(in), optional:: beta  !BLAS beta (defaults to 1)
 	integer i,j,k,l,m,n
-	real(real_kind) val,alf
+	real(real_kind) val,alf,bet
 	integer(LONGINT) l0
 	real(8) time_beg,tm
 #ifndef NO_PHI
@@ -7548,25 +7682,28 @@
 !	time_beg=thread_wtime() !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_r8): dc: ",i9)') dc !debug
 	if(present(alpha)) then; alf=alpha; else; alf=1d0; endif
+	if(present(beta)) then; bet=beta; else; bet=1d0; endif
 	if(dc.gt.0_LONGINT) then
 	 val=0d0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val)
-	 do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(l0)*rtens(l0)*alf; enddo
+	 do l0=0_LONGINT,dc-1_LONGINT
+          val=val+ltens(l0)*rtens(l0)
+         enddo
 !$OMP END PARALLEL DO
-	 dtens=dtens+val
+	 dtens=dtens*bet+val*alf
 	else
 	 ierr=1
 	endif
 !       tm=thread_wtime(time_beg) !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_r8): time/speed/error = ",2(F10.4,1x),i3)') &
-!        tm,dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
+!        tm,2d0*dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_fcontract_dlf_r8
-!--------------------------------------------------------------------------------
+!-------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_fcontract_dlf_c4
 #endif
-	subroutine tensor_block_fcontract_dlf_c4(dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
+	subroutine tensor_block_fcontract_dlf_c4(dc,ltens,rtens,dtens,ierr,alpha,beta) !PARALLEL
 !This subroutine fully reduces two vectors derived from the corresponding tensors by index permutations:
 !dtens+=ltens(0:dc-1)*rtens(0:dc-1)*alpha, where dtens is a scalar.
 	implicit none
@@ -7577,9 +7714,10 @@
 	complex(real_kind), intent(in):: ltens(0:*),rtens(0:*) !true tensors
 	complex(real_kind), intent(inout):: dtens !scalar
 	integer, intent(inout):: ierr !error code
-	complex(real_kind), intent(in), optional:: alpha
+	complex(real_kind), intent(in), optional:: alpha !BLAS alpha
+	complex(real_kind), intent(in), optional:: beta  !BLAS beta (defaults to 1)
 	integer i,j,k,l,m,n
-	complex(real_kind) val,alf
+	complex(real_kind) val,alf,bet
 	integer(LONGINT) l0
 	real(8) time_beg,tm
 #ifndef NO_PHI
@@ -7590,26 +7728,29 @@
 	ierr=0
 !	time_beg=thread_wtime() !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_c4): dc: ",i9)') dc !debug
-	if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
+	if(present(alpha)) then; alf=alpha; else; alf=(1.0,0.0); endif
+	if(present(beta)) then; bet=beta; else; bet=(1.0,0.0); endif
 	if(dc.gt.0_LONGINT) then
 	 val=(0.0,0.0)
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val)
-	 do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(l0)*rtens(l0)*alf; enddo
+	 do l0=0_LONGINT,dc-1_LONGINT
+          val=val+ltens(l0)*rtens(l0)
+         enddo
 !$OMP END PARALLEL DO
-	 dtens=dtens+val
+	 dtens=dtens*bet+val*alf
 	else
 	 ierr=1
 	endif
 !       tm=thread_wtime(time_beg) !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_c4): time/speed/error = ",2(F10.4,1x),i3)') &
-!        tm,dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
+!        tm,2d0*dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_fcontract_dlf_c4
-!--------------------------------------------------------------------------------
+!-------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_fcontract_dlf_c8
 #endif
-	subroutine tensor_block_fcontract_dlf_c8(dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
+	subroutine tensor_block_fcontract_dlf_c8(dc,ltens,rtens,dtens,ierr,alpha,beta) !PARALLEL
 !This subroutine fully reduces two vectors derived from the corresponding tensors by index permutations:
 !dtens+=ltens(0:dc-1)*rtens(0:dc-1)*alpha, where dtens is a scalar.
 	implicit none
@@ -7620,9 +7761,10 @@
 	complex(real_kind), intent(in):: ltens(0:*),rtens(0:*) !true tensors
 	complex(real_kind), intent(inout):: dtens !scalar
 	integer, intent(inout):: ierr !error code
-	complex(real_kind), intent(in), optional:: alpha
+	complex(real_kind), intent(in), optional:: alpha !BLAS alpha
+	complex(real_kind), intent(in), optional:: beta  !BLAS beta (defaults to 1)
 	integer i,j,k,l,m,n
-	complex(real_kind) val,alf
+	complex(real_kind) val,alf,bet
 	integer(LONGINT) l0
 	real(8) time_beg,tm
 #ifndef NO_PHI
@@ -7634,25 +7776,28 @@
 !	time_beg=thread_wtime() !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_c8): dc: ",i9)') dc !debug
 	if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
+	if(present(beta)) then; bet=beta; else; bet=(1d0,0d0); endif
 	if(dc.gt.0_LONGINT) then
 	 val=(0d0,0d0)
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val)
-	 do l0=0_LONGINT,dc-1_LONGINT; val=val+ltens(l0)*rtens(l0)*alf; enddo
+	 do l0=0_LONGINT,dc-1_LONGINT
+          val=val+ltens(l0)*rtens(l0)
+         enddo
 !$OMP END PARALLEL DO
-	 dtens=dtens+val
+	 dtens=dtens*bet+val*alf
 	else
 	 ierr=1
 	endif
 !       tm=thread_wtime(time_beg) !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_c8): time/speed/error = ",2(F10.4,1x),i3)') &
-!        tm,dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
+!        tm,2d0*dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_fcontract_dlf_c8
-!--------------------------------------------------------------------------------------
+!-------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_pcontract_dlf_r4
 #endif
-	subroutine tensor_block_pcontract_dlf_r4(dl,dr,dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
+	subroutine tensor_block_pcontract_dlf_r4(dl,dr,dc,ltens,rtens,dtens,ierr,alpha,beta) !PARALLEL
 !This subroutine multiplies two matrices derived from the corresponding tensors by index permutations:
 !dtens(0:dl-1,0:dr-1)+=ltens(0:dc-1,0:dl-1)*rtens(0:dc-1,0:dr-1)*alpha
 !The result is a matrix as well (cannot be a scalar, see tensor_block_fcontract).
@@ -7678,9 +7823,10 @@
 	real(real_kind), intent(inout):: dtens(0:*) !output argument
 	integer, intent(inout):: ierr !error code
 	real(real_kind), intent(in), optional:: alpha !BLAS alpha
+	real(real_kind), intent(in), optional:: beta  !BLAS beta (defaults to 1)
 	integer i,j,k,l,m,n,nthr
 	integer(LONGINT) ll,lr,ld,l0,l1,l2,b0,b1,b2,e0r,e0,e1,e2,ls,lf,cl,cr,cc,chunk
-	real(real_kind) vec(0:7),redm(0:red_mat_size-1,0:red_mat_size-1),val,alf !`thread private (redm)?
+	real(real_kind) vec(0:7),redm(0:red_mat_size-1,0:red_mat_size-1),val,alf
 	real(8) time_beg,tm
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind,red_mat_size,arg_cache_size,min_distr_seg_size,cdim_stretch,core_slope,ker1,ker2,ker3
@@ -7692,6 +7838,15 @@
 	ierr=0
 !	time_beg=thread_wtime() !debug
 	if(present(alpha)) then; alf=alpha; else; alf=1.0; endif
+	if(present(beta)) then !rescale output tensor if requested
+	 if(beta.ne.1.0) then
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+	  do l0=0_LONGINT,dr*dl-1_LONGINT
+	   dtens(l0)=dtens(l0)*beta
+	  enddo
+!$OMP END PARALLEL DO
+	 endif
+	endif
 	if(dl.gt.0_LONGINT.and.dr.gt.0_LONGINT.and.dc.gt.0_LONGINT) then
 #ifndef NO_OMP
 	 nthr=omp_get_max_threads()
@@ -7938,11 +8093,11 @@
 !        tm,2d0*dble(dr*dl*dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_pcontract_dlf_r4
-!--------------------------------------------------------------------------------------
+!-------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_pcontract_dlf_r8
 #endif
-	subroutine tensor_block_pcontract_dlf_r8(dl,dr,dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
+	subroutine tensor_block_pcontract_dlf_r8(dl,dr,dc,ltens,rtens,dtens,ierr,alpha,beta) !PARALLEL
 !This subroutine multiplies two matrices derived from the corresponding tensors by index permutations:
 !dtens(0:dl-1,0:dr-1)+=ltens(0:dc-1,0:dl-1)*rtens(0:dc-1,0:dr-1)*alpha
 !The result is a matrix as well (cannot be a scalar, see tensor_block_fcontract).
@@ -7968,6 +8123,7 @@
 	real(real_kind), intent(inout):: dtens(0:*) !output argument
 	integer, intent(inout):: ierr !error code
 	real(real_kind), intent(in), optional:: alpha !BLAS alpha
+	real(real_kind), intent(in), optional:: beta  !BLAS beta (defaults to 1)
 	integer i,j,k,l,m,n,nthr
 	integer(LONGINT) ll,lr,ld,l0,l1,l2,b0,b1,b2,e0r,e0,e1,e2,ls,lf,cl,cr,cc,chunk
 	real(real_kind) vec(0:7),redm(0:red_mat_size-1,0:red_mat_size-1),val,alf !`thread private (redm)?
@@ -7982,6 +8138,15 @@
 	ierr=0
 !	time_beg=thread_wtime() !debug
 	if(present(alpha)) then; alf=alpha; else; alf=1d0; endif
+	if(present(beta)) then !rescale output tensor if requested
+	 if(beta.ne.1d0) then
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+	  do l0=0_LONGINT,dr*dl-1_LONGINT
+	   dtens(l0)=dtens(l0)*beta
+	  enddo
+!$OMP END PARALLEL DO
+	 endif
+	endif
 	if(dl.gt.0_LONGINT.and.dr.gt.0_LONGINT.and.dc.gt.0_LONGINT) then
 #ifndef NO_OMP
 	 nthr=omp_get_max_threads()
@@ -8228,11 +8393,11 @@
 !        tm,2d0*dble(dr*dl*dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_pcontract_dlf_r8
-!--------------------------------------------------------------------------------------
+!-------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_pcontract_dlf_c4
 #endif
-	subroutine tensor_block_pcontract_dlf_c4(dl,dr,dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
+	subroutine tensor_block_pcontract_dlf_c4(dl,dr,dc,ltens,rtens,dtens,ierr,alpha,beta) !PARALLEL
 !This subroutine multiplies two matrices derived from the corresponding tensors by index permutations:
 !dtens(0:dl-1,0:dr-1)+=ltens(0:dc-1,0:dl-1)*rtens(0:dc-1,0:dr-1)*alpha
 !The result is a matrix as well (cannot be a scalar, see tensor_block_fcontract).
@@ -8257,7 +8422,8 @@
 	complex(real_kind), intent(in):: ltens(0:*),rtens(0:*) !input arguments
 	complex(real_kind), intent(inout):: dtens(0:*) !output argument
 	integer, intent(inout):: ierr !error code
-	complex(real_kind), intent(in), optional:: alpha
+	complex(real_kind), intent(in), optional:: alpha !BLAS alpha
+	complex(real_kind), intent(in), optional:: beta  !BLAS beta (defaults to 1)
 	integer i,j,k,l,m,n,nthr
 	integer(LONGINT) ll,lr,ld,l0,l1,l2,b0,b1,b2,e0r,e0,e1,e2,ls,lf,cl,cr,cc,chunk
 	complex(real_kind) vec(0:7),redm(0:red_mat_size-1,0:red_mat_size-1),val,alf !`thread private (redm)?
@@ -8272,6 +8438,15 @@
 	ierr=0
 !	time_beg=thread_wtime() !debug
 	if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
+	if(present(beta)) then !rescale output tensor if requested
+	 if(beta.ne.(1.0,0.0)) then
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+	  do l0=0_LONGINT,dr*dl-1_LONGINT
+	   dtens(l0)=dtens(l0)*beta
+	  enddo
+!$OMP END PARALLEL DO
+	 endif
+	endif
 	if(dl.gt.0_LONGINT.and.dr.gt.0_LONGINT.and.dc.gt.0_LONGINT) then
 #ifndef NO_OMP
 	 nthr=omp_get_max_threads()
@@ -8518,11 +8693,11 @@
 !        tm,8d0*dble(dr*dl*dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_pcontract_dlf_c4
-!--------------------------------------------------------------------------------------
+!-------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_pcontract_dlf_c8
 #endif
-	subroutine tensor_block_pcontract_dlf_c8(dl,dr,dc,ltens,rtens,dtens,ierr,alpha) !PARALLEL
+	subroutine tensor_block_pcontract_dlf_c8(dl,dr,dc,ltens,rtens,dtens,ierr,alpha,beta) !PARALLEL
 !This subroutine multiplies two matrices derived from the corresponding tensors by index permutations:
 !dtens(0:dl-1,0:dr-1)+=ltens(0:dc-1,0:dl-1)*rtens(0:dc-1,0:dr-1)*alpha
 !The result is a matrix as well (cannot be a scalar, see tensor_block_fcontract).
@@ -8547,7 +8722,8 @@
 	complex(real_kind), intent(in):: ltens(0:*),rtens(0:*) !input arguments
 	complex(real_kind), intent(inout):: dtens(0:*) !output argument
 	integer, intent(inout):: ierr !error code
-	complex(real_kind), intent(in), optional:: alpha
+	complex(real_kind), intent(in), optional:: alpha !BLAS alpha
+	complex(real_kind), intent(in), optional:: beta  !BLAS beta (defaults to 1)
 	integer i,j,k,l,m,n,nthr
 	integer(LONGINT) ll,lr,ld,l0,l1,l2,b0,b1,b2,e0r,e0,e1,e2,ls,lf,cl,cr,cc,chunk
 	complex(real_kind) vec(0:7),redm(0:red_mat_size-1,0:red_mat_size-1),val,alf !`thread private (redm)?
@@ -8562,6 +8738,15 @@
 	ierr=0
 !	time_beg=thread_wtime() !debug
 	if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
+	if(present(beta)) then !rescale output tensor if requested
+	 if(beta.ne.(1d0,0d0)) then
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
+	  do l0=0_LONGINT,dr*dl-1_LONGINT
+	   dtens(l0)=dtens(l0)*beta
+	  enddo
+!$OMP END PARALLEL DO
+	 endif
+	endif
 	if(dl.gt.0_LONGINT.and.dr.gt.0_LONGINT.and.dc.gt.0_LONGINT) then
 #ifndef NO_OMP
 	 nthr=omp_get_max_threads()

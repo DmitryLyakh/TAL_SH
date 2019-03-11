@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2019/03/08
+!REVISION: 2019/03/11
 
 !Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -413,7 +413,7 @@
          end function talshTensorAdd_
   !Tensor contraction:
          integer(C_INT) function talshTensorContract_(cptrn,dtens,ltens,rtens,scale_real,scale_imag,dev_id,dev_kind,&
-                                                     &copy_ctrl,talsh_task) bind(c,name='talshTensorContract_')
+                                                     &copy_ctrl,accumulative,talsh_task) bind(c,name='talshTensorContract_')
           import
           implicit none
           character(C_CHAR), intent(in):: cptrn(*)
@@ -425,6 +425,7 @@
           integer(C_INT), value, intent(in):: dev_id
           integer(C_INT), value, intent(in):: dev_kind
           integer(C_INT), value, intent(in):: copy_ctrl
+          integer(C_INT), value, intent(in):: accumulative
           type(talsh_task_t), intent(inout):: talsh_task
          end function talshTensorContract_
  !Internal TAL-SH C/C++ API:
@@ -486,7 +487,7 @@
         public talsh_tensor_print_body
         public talshTensorImageNorm1_cpu
  !TAL-SH task API:
-        private talsh_task_clean
+       !private talsh_task_clean
         public talsh_task_destruct
         public talsh_task_dev_id
         public talsh_task_status
@@ -1196,7 +1197,7 @@
          type(talsh_tens_t), intent(inout):: tens           !inout: tensor block
          integer(C_INT), intent(in):: dev_id                !in: device id (flat or kind-specific)
          integer(C_INT), intent(in), optional:: dev_kind    !in: device kind (if present, <dev_id> is kind-specific)
-         type(C_PTR), value, intent(in), optional:: dev_mem !in: externally provided target device memory pointer
+         type(C_PTR), intent(in), optional:: dev_mem        !in: externally provided target device memory pointer
          integer(C_INT), intent(in), optional:: copy_ctrl   !in: copy control (COPY_X), defaults to COPY_M
          type(talsh_task_t), intent(inout), optional:: talsh_task !inout: TAL-SH task handle
          integer(C_INT):: dvk,coh,sts
@@ -1319,8 +1320,9 @@
          endif
          return
         end function talsh_tensor_add
-!----------------------------------------------------------------------------------------------------------------------
-        function talsh_tensor_contract(cptrn,dtens,ltens,rtens,scale,dev_id,dev_kind,copy_ctrl,talsh_task) result(ierr)
+!------------------------------------------------------------------------------------
+        function talsh_tensor_contract(cptrn,dtens,ltens,rtens,scale,dev_id,dev_kind,&
+                                      &copy_ctrl,accumulative,talsh_task) result(ierr)
          implicit none
          integer(C_INT):: ierr                            !out: error code (0:success)
          character(*), intent(in):: cptrn                 !in: symbolic contraction pattern, e.g. "D(a,b,c,d)+=L(c,i,j,a)*R(b,j,d,i)"
@@ -1331,15 +1333,17 @@
          integer(C_INT), intent(in), optional:: dev_id    !in: device id (flat or kind-specific)
          integer(C_INT), intent(in), optional:: dev_kind  !in: device kind (if present, <dev_id> is kind-specific)
          integer(C_INT), intent(in), optional:: copy_ctrl !in: copy control (COPY_XXX), defaults to COPY_MTT
+         logical, intent(in), optional:: accumulative     !in: accumulate (default) VS overwrite destination
          type(talsh_task_t), intent(inout), optional:: talsh_task !inout: TAL-SH task (must be clean)
          character(C_CHAR):: contr_ptrn(1:1024) !contraction pattern as a C-string
-         integer(C_INT):: coh_ctrl,devn,devk,sts
+         integer(C_INT):: coh_ctrl,devn,devk,sts,accum
          integer:: l
          real(C_DOUBLE):: scale_real,scale_imag
          type(talsh_task_t):: tsk
 
          ierr=TALSH_SUCCESS; l=len_trim(cptrn)
          if(l.gt.0) then
+          accum=YEP; if(present(accumulative)) then; if(.not.accumulative) accum=NOPE; endif
           if(present(copy_ctrl)) then; coh_ctrl=copy_ctrl; else; coh_ctrl=COPY_MTT; endif
           if(present(scale)) then; scale_real=dble(scale); scale_imag=dimag(scale); else; scale_real=1d0; scale_imag=0d0; endif
           if(present(dev_id)) then; devn=dev_id; else; devn=DEV_DEFAULT; endif
@@ -1347,10 +1351,10 @@
           call string2array(cptrn(1:l),contr_ptrn,l,ierr); l=l+1; contr_ptrn(l:l)=achar(0) !C-string
           if(ierr.eq.0) then
            if(present(talsh_task)) then
-            ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,coh_ctrl,talsh_task)
+            ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,coh_ctrl,accum,talsh_task)
            else
             ierr=talsh_task_clean(tsk)
-            ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,coh_ctrl,tsk)
+            ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,coh_ctrl,accum,tsk)
             if(ierr.eq.TALSH_SUCCESS) then
              ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
             endif
@@ -1436,8 +1440,9 @@
          endif
          return
         end function cpu_tensor_block_add
-!----------------------------------------------------------------------------------------------------------------------------
-        integer(C_INT) function cpu_tensor_block_contract(contr_ptrn,ltens_p,rtens_p,dtens_p,scale_real,scale_imag,arg_conj)&
+!-----------------------------------------------------------------------------------------------------
+        integer(C_INT) function cpu_tensor_block_contract(contr_ptrn,ltens_p,rtens_p,dtens_p,&
+                                                         &scale_real,scale_imag,arg_conj,accumulative)&
                                                          &bind(c,name='cpu_tensor_block_contract')
          implicit none
          integer(C_INT), intent(in):: contr_ptrn(*) !in: digital tensor contraction pattern
@@ -1447,6 +1452,7 @@
          real(C_DOUBLE), value:: scale_real         !in: scaling prefactor (real part)
          real(C_DOUBLE), value:: scale_imag         !in: scaling prefactor (imaginary part)
          integer(C_INT), value:: arg_conj           !in: argument complex conjugation bits (0:D,1:L,2:R)
+         integer(C_INT), value:: accumulative       !in: whether or not tensor contraction is accumulative [YEP|NOPE]
          type(tensor_block_t), pointer:: dtp,ltp,rtp
          integer:: conj_bits,ierr
 
@@ -1454,7 +1460,8 @@
          if(c_associated(dtens_p).and.c_associated(ltens_p).and.c_associated(rtens_p)) then
           call c_f_pointer(dtens_p,dtp); call c_f_pointer(ltens_p,ltp); call c_f_pointer(rtens_p,rtp)
           if(associated(dtp).and.associated(ltp).and.associated(rtp)) then
-           call tensor_block_contract(contr_ptrn,ltp,rtp,dtp,ierr,alpha=cmplx(scale_real,scale_imag,8),arg_conj=conj_bits)
+           call tensor_block_contract(contr_ptrn,ltp,rtp,dtp,ierr,alpha=cmplx(scale_real,scale_imag,8),&
+                                     &arg_conj=conj_bits,accumulative=(accumulative.ne.NOPE))
            cpu_tensor_block_contract=ierr
           else
            cpu_tensor_block_contract=-2
