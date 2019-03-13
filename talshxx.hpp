@@ -516,7 +516,7 @@ bool Tensor::getDataAccessHostConst(const T ** data_ptr)
  int data_kind = TensorData<T>::kind;
  const talsh_tens_t * dtens = this->getTalshTensorPtr();
  assert(dtens != nullptr);
- void * body_ptr;
+ const void * body_ptr;
  int errc = talshTensorGetBodyAccessConst(dtens,&body_ptr,data_kind,0,DEV_HOST);
  if(errc == TALSH_SUCCESS){
   *data_ptr = static_cast<const T*>(body_ptr);

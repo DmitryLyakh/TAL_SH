@@ -184,6 +184,11 @@ void test_talsh_cxx(int * ierr)
 {
  const int VDIM=40; //virtual dimension size
  const int ODIM=20; //occupied dimension size
+#ifndef NO_GPU
+ int device = DEV_NVIDIA_GPU;
+#else
+ int device = DEV_HOST;
+#endif
 
  *ierr=0;
  //Initialize:
@@ -191,7 +196,7 @@ void test_talsh_cxx(int * ierr)
  //Tensor contraction (brackets are needed to push talsh::shutdown() out of scope):
  {
   //Create destination tensor:
-  talsh::Tensor dtens({1,2,3,4},{VDIM,VDIM,ODIM,ODIM},0.0);
+  talsh::Tensor dtens({1,2,3,4},{VDIM,VDIM,ODIM,ODIM},1.0); //this initial value will be overwritten by 1st contraction (beta=0)
   dtens.print(); //debug
   //Create left tensor:
   talsh::Tensor ltens({5,6,7,8},{ODIM,VDIM,ODIM,VDIM},0.01);
@@ -199,10 +204,30 @@ void test_talsh_cxx(int * ierr)
   talsh::Tensor rtens({9,10,11,12},{VDIM,VDIM,VDIM,VDIM},0.001);
   //Perform tensor contraction:
   talsh::TensorTask task_hl;
-  *ierr = dtens.contractAccumulate(&task_hl,std::string("D(a,b,c,d)+=L(d,i,c,j)*R(j,b,i,a)"),ltens,rtens,DEV_HOST,0,0.5);
+  *ierr = dtens.contractAccumulate(&task_hl,std::string("D(a,b,c,d)+=L(d,i,c,j)*R(j,b,i,a)"),ltens,rtens,device,0,0.5,false);
   bool done = dtens.sync();
-  std::cout << "Tensor contraction completion status = " << done << "; Error " << *ierr << std::endl;
+  std::cout << "First tensor contraction completion status = " << done << "; Error " << *ierr << std::endl;
+  //Print destination tensor info:
   dtens.print(); //debug
+  if(*ierr == TALSH_SUCCESS){
+   const double * data_ptr;
+   dtens.getDataAccessHostConst(&data_ptr);
+   std::cout << "Destination tensor first element value = " << data_ptr[0] <<
+                " (reference = " << 0.01*0.001*VDIM*VDIM*0.5 << ")" << std::endl;
+   data_ptr=nullptr;
+   //Perform tensor contraction again:
+   task_hl.clean();
+   *ierr = dtens.contractAccumulate(&task_hl,std::string("D(a,b,c,d)+=L(d,i,c,j)*R(j,b,i,a)"),ltens,rtens,device,0,0.5,true);
+   bool done = dtens.sync();
+   std::cout << "Second tensor contraction completion status = " << done << "; Error " << *ierr << std::endl;
+   if(*ierr == TALSH_SUCCESS){
+    //Print destination tensor info:
+    dtens.getDataAccessHostConst(&data_ptr);
+    std::cout << "Destination tensor first element value = " << data_ptr[0] <<
+                " (reference = " << 0.01*0.001*VDIM*VDIM << ")" << std::endl;
+    data_ptr=nullptr;
+   }
+  }
  }
  //Matrix multiplication (brackets are needed to push talsh::shutdown() out of scope):
  if(*ierr == 0){

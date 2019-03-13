@@ -24,10 +24,10 @@
         logical, parameter:: TEST_NVTAL=.FALSE.
         logical, parameter:: TEST_C_TALSH=.TRUE.
         logical, parameter:: TEST_CXX_TALSH=.TRUE.
-        logical, parameter:: TEST_F_TALSH=.TRUE.
-        logical, parameter:: TEST_QC_TALSH=.TRUE.
-        logical, parameter:: TEST_NWCHEM=.TRUE.
-        logical, parameter:: TEST_COMPLEX=.TRUE.
+        logical, parameter:: TEST_F_TALSH=.FALSE.
+        logical, parameter:: TEST_QC_TALSH=.FALSE.
+        logical, parameter:: TEST_NWCHEM=.FALSE.
+        logical, parameter:: TEST_COMPLEX=.FALSE.
         logical, parameter:: BENCH_TALSH_RND=.FALSE.
         logical, parameter:: BENCH_TALSH_CUSTOM=.FALSE.
 
