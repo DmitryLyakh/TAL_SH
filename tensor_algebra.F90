@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h" when appropriate!
-!REVISION: 2019/01/08
+!REVISION: 2019/03/21
 
 !Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -24,6 +24,7 @@
         use dil_basic !contains ISO_C_BINDING: basic parameters
         implicit none
         public
+
 !TENSOR ALGEBRA LIMITS (keep consistent with tensor_algebra.h):
         integer(C_INT), parameter, public:: MAX_TENSOR_RANK=32    !max allowed tensor rank (max number of indices in a tensor)
         integer(C_INT), parameter, public:: MAX_TENSOR_OPERANDS=4 !max number of tensor operands in a tensor operation
@@ -66,7 +67,8 @@
 !DIR$ ATTRIBUTES ALIGN:128:: BLAS_ON,BLAS_OFF,EFF_TRN_OFF,EFF_TRN_ON,DEVICE_UNABLE,NO_COPY_BACK,COPY_BACK
 !DIR$ ATTRIBUTES ALIGN:128:: EVERYTHING,SOURCE,DESTINATION,TEMPORARY,DEV_OFF,DEV_ON,DEV_ON_BLAS
 #endif
-!Coherence (copy) control parameters (Senior bits: Destination -> Left -> Right: Junior bits):
+
+!COHERENCE (copy) control parameters (Senior bits: Destination -> Left -> Right: Junior bits):
         integer(C_INT), parameter, public:: COPY_D=0
         integer(C_INT), parameter, public:: COPY_M=1
         integer(C_INT), parameter, public:: COPY_T=2
@@ -199,7 +201,7 @@
         end type talsh_tens_data_t
 
 !EXTERNAL INTERFACES (keep consistent with tensor_algebra.h when appropriate):
- !User-defined tensor block initialization/update class (state present):
+ !User-defined tensor block initialization/update class (stateful):
         type, abstract, public:: talsh_tens_definer_t
          contains
           procedure(talsh_tens_def_i), deferred, public:: define_body
@@ -496,8 +498,8 @@
          subroutine prof_push(annotation,color) bind(c,name='prof_push')
           import
           implicit none
-          character(C_CHAR), intent(in):: annotation(*)
-          integer(C_INT), value:: color
+          character(C_CHAR), intent(in):: annotation(*) !C-string (ends with \0)
+          integer(C_INT), intent(in), value:: color
          end subroutine prof_push
   !Out:
          subroutine prof_pop() bind(c,name='prof_pop')

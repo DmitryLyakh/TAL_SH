@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2019/03/11
+!REVISION: 2019/03/21
 
 !Copyright (C) 2013-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -235,10 +235,10 @@
         public tensor_shape_rnd            !returns a random tensor-shape-specification-string (TSSS)
         public tensor_shape_rank           !returns the number of dimensions in a tensor-shape-specification-string (TSSS)
         public tensor_shape_str_create     !creates a tensor shape specification string
-        public get_contr_pattern           !converts a mnemonic contraction pattern into the digital form used by tensor_block_contract
-        public get_contr_pattern_sym       !converts a digital contraction pattern into a symbolic form
+        public get_contr_pattern_dig       !converts a symbolic tensor contraction pattern into the digital form (used by tensor_block_contract)
+        public get_contr_pattern_sym       !converts a digital tensor contraction pattern into a symbolic form
         public get_contr_permutations      !given a digital contraction pattern, returns all tensor permutations necessary for the subsequent matrix multiplication
-        public contr_pattern_rnd           !returns a random tensor contraction pattern
+        public contr_pattern_rnd           !returns a random digital tensor contraction pattern
         public coherence_control_var       !returns a coherence control variable based on a mnemonic input
         public tensor_block_shape_create   !generates the tensor shape based on either the tensor shape specification string (TSSS) or numeric arguments
         public tensor_block_shape_create_sym !generates the tensor shape based on the tensor shape specification string (TSSS)
@@ -4509,123 +4509,222 @@
         endif
         return
         end subroutine tensor_shape_str_create
-!------------------------------------------------------------------------
-	subroutine get_contr_pattern(cptrn,contr_ptrn,cpl,ierr,conj_bits) !SERIAL
-!This subroutine converts a mnemonic contraction pattern into the digital form.
+!---------------------------------------------------------------------------------------------------------
+	subroutine get_contr_pattern_dig(cptrn,drank,lrank,rrank,contr_ptrn,ierr,conj_bits,covar,num_ptrn) !SERIAL
+!This subroutine converts a symbolic tensor contraction pattern into the digital form.
 !INPUT:
-! - cptrn - mnemonic contraction pattern (e.g., "D(ia1,ib2)+=L(ib2,k2,c3)*R(c3,ia1,k2)" );
+! - cptrn - symbolic tensor contraction pattern (e.g., "D(ia1,ib2)+=L(ib2,k2+,c3)*R+(c3+,ia1,k2)" ):
+!           (a) Either binary (two input tensors) or unary (one input tensor) tensor operation;
+!           (b) Each participating tensor argument may appear complex conjugated by having "+" right
+!               after its name prior to the left parenthesis;
+!           (c) Each tensor index is alphanumeric;
+!           (d) Indices are separated either by a comma or by "|";
+!           (e) By default each tensor index is a covariant index, unless it terminates with "+",
+!               in which case it becomes a contravariant index;
+!           (f) Same index cannot appear in the same tensor argument more than once (no traces);
+!           (g) Uncontracted indices may appear in either a single or both input tensor arguments;
+!           (h) Each index appearing on the r.h.s. only must appear twice, exactly once in each
+!               input tensor argument;
 !OUTPUT:
-! - contr_ptrn(1:cpl) - digital contraction pattern (see, tensor_block_contract);
+! - contr_ptrn(1:lrank+rrank) - digital tensor contraction pattern: digital_pattern(1:lrank+rrank):
+!                               (a) lrank: Rank of the left tensor argument;
+!                               (b) rrank: Rank of the right tensor argument;
+!                               (c) Positions [1:lrank] correspond to dimensions of the left tensor argument;
+!                               (d) Positions [lrank+1:lrank+rrank] correspond to dimensions of the right tensor argument;
+!                               (e) Value X at each position:
+!                                   X>0: This dimension is uncontracted and is paired with dimension X of the
+!                                        destination tensor argument;
+!                                   X<0: This dimension is contracted and is paired with dimension -X of the
+!                                        other input tensor argument;
 ! - ierr - error code (0:success);
-! - conj_bits - (optional) conjugation bits: bit 0 for D, bit 1 for L, and bit 2 for R;
-!NOTES:
-! - Index labels may only contain English letters and/or numbers.
-!   Indices are separated by commas. Parentheses are mandatory.
-! - ASCII is assumed.
+! - conj_bits - (optional) complex conjugation bits:
+!                          bit 0 for D tensor;
+!                          bit 1 for L tensor;
+!                          bit 2 for R tensor;
+! - covar(1:lrank+rrank) - (optional) index covariance: covariance(1:lrank+rrank):
+!                                     Value 0: Covariant index (default);
+!                                     Value 1: Contravariant index;
+! - num_ptrn(1:drank+lrank+rrank) - (optional) number-based tensor contraction pattern: num_ptrn(1:drank+lrank+rrank):
+!                                              (a) Positions [1:drank] correspond to dimensions of the destination tensor;
+!                                              (b) Positions [drank+1:drank+lrank] correspond to dimensions of the left tensor;
+!                                              (c) Positions [drank+lrank+1:drank+lrank+rrank] correspond to dimensions of the
+!                                                  right tensor;
+!                                              (d) Non-negative integer in each position is a unique identifier of the
+!                                                  corresponding symbolic index.
 	implicit none
-	character(*), intent(in):: cptrn
-	integer, intent(out):: contr_ptrn(1:*),cpl
-	integer, intent(inout):: ierr
-	integer, intent(out), optional:: conj_bits
+	character(*), intent(in):: cptrn                 !symbolic tensor contraction pattern
+	integer, intent(out):: drank,lrank,rrank         !ranks of the destination, left and right tensors (rrank = -1: No right tensor)
+	integer, intent(inout):: contr_ptrn(1:*)         !digital tensor contraction pattern
+	integer, intent(out):: ierr                      !error code (0:success)
+	integer, intent(out), optional:: conj_bits       !tensor complex conjugation bits (Bit0:D, Bit1:L, Bit2:R)
+	integer, intent(inout), optional:: covar(1:*)    !index covariance bits (parallel to contr_ptrn)
+	integer, intent(inout), optional:: num_ptrn(1:*) !number-based tensor contraction pattern
 	character(1), parameter:: dn1(0:9)=(/'0','1','2','3','4','5','6','7','8','9'/)
-	character(2), parameter:: dn2(0:49)=(/'00','01','02','03','04','05','06','07','08','09',&
+	character(2), parameter:: dn2(0:99)=(/'00','01','02','03','04','05','06','07','08','09',&
 	                                     &'10','11','12','13','14','15','16','17','18','19',&
 	                                     &'20','21','22','23','24','25','26','27','28','29',&
 	                                     &'30','31','32','33','34','35','36','37','38','39',&
-	                                     &'40','41','42','43','44','45','46','47','48','49'/)
-	integer i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,ks,kf,adims(0:2),tag_len,conj
-	character(2048) str !increase the length if needed (I doubt)
+	                                     &'40','41','42','43','44','45','46','47','48','49',&
+	                                     &'50','51','52','53','54','55','56','57','58','59',&
+	                                     &'60','61','62','63','64','65','66','67','68','69',&
+	                                     &'70','71','72','73','74','75','76','77','78','79',&
+	                                     &'80','81','82','83','84','85','86','87','88','89',&
+	                                     &'90','91','92','93','94','95','96','97','98','99'/)
+	integer:: i,j,k,l,m,n,k0,k1,k2,k3,k4,k5,ks,kf,cv,ni,adims(0:2),tag_len,conj
+	character(4096):: str !increase the length if needed (proportional to the number of indices)
 
-	ierr=0; l=len_trim(cptrn); cpl=0; conj=0
+	ierr=0; l=len_trim(cptrn)
+	drank=-1; lrank=-1; rrank=-1; conj=0
 	if(l.gt.0) then
-!	 write(CONS_OUT,*)'DEBUG(tensor_algebra::get_contr_pattern): '//cptrn(1:l) !debug
-!Extract the index labels:
-	 tag_len=len('{000}')
+!	 write(CONS_OUT,*)'DEBUG(tensor_algebra::get_contr_pattern_dig): Input: '//cptrn(1:l) !debug
+!Extract index labels:
+	 tag_len=len('{000}') !first digit is the tensor argument number {0,1,2}, last two digits is the index number
 	 adims(:)=0; n=-1; m=0; ks=0; i=1
 	 aloop: do while(i.le.l)
-	  do while(cptrn(i:i).ne.'('); i=i+1; if(i.gt.l) exit aloop; enddo
+	  do while(cptrn(i:i).ne.'('); i=i+1; if(i.gt.l) exit aloop; enddo !find opening parenthesis (next tensor)
 	  if(i.gt.2) then
-	   if(cptrn(i-1:i-1).eq.'+'.and.alphanumeric(cptrn(i-2:i-2))) conj=conj+(2**(n+1)) !tensor complex conjugation mark
+	   if(cptrn(i-1:i-1).eq.'+'.and.alphanumeric(cptrn(i-2:i-2))) conj=conj+(2**(n+1)) !tensor complex conjugation flag
 	  endif
-	  ks=i; i=i+1; n=n+1; k=1 !find '(': beginning of an argument #n
-	  if(n.gt.2) then; ierr=1; return; endif
-	  str(m+1:m+tag_len)='{'//dn1(n)//dn2(k)//'}'; m=m+tag_len
+	  ks=i; i=i+1; n=n+1; k=1 !found '(': beginning of tensor argument #n
+	  if(n.gt.2) then; ierr=1; return; endif !trap: no more than two input arguments
+	  str(m+1:m+tag_len)='{'//dn1(n)//dn2(k)//'}'; m=m+tag_len !add first index tag
 	  do while(i.le.l)
-	   if(cptrn(i:i).eq.',') then
-	    j=i-1-abs(ks); if(.not.index_label_ok(cptrn(abs(ks)+1:i-1))) then; ierr=2; return; endif
-	    str(m+1:m+j)=cptrn(abs(ks)+1:i-1); m=m+j; ks=-i
-	    k=k+1; str(m+1:m+tag_len)='{'//dn1(n)//dn2(k)//'}'; m=m+tag_len
-	   elseif(cptrn(i:i).eq.')') then
-	    j=i-1-abs(ks)
-	    if(j.le.0) then
-	     if(ks.lt.0) then; ierr=3; return; endif
+	   if(cptrn(i:i).eq.','.or.cptrn(i:i).eq.'|') then !index separator (next index)
+	    j=i-1-abs(ks) !index length
+	    if(.not.index_label_ok(cptrn(abs(ks)+1:i-1),cv)) then; ierr=2; return; endif !trap: index must be alphanumeric
+	    str(m+1:m+j-cv)=cptrn(abs(ks)+1:i-1-cv); m=m+j-cv !append index label without possible "+" suffix
+	    if(present(covar)) then !mark contravariance
+	     if(n.eq.1) then; covar(k)=cv; elseif(n.eq.2) then; covar(adims(1)+k)=cv; endif
+	    endif
+	    ks=-i !negative sign flags a non-empty set of indices in this tensor argument
+	    k=k+1; str(m+1:m+tag_len)='{'//dn1(n)//dn2(k)//'}'; m=m+tag_len !add tag for the next index
+	   elseif(cptrn(i:i).eq.')') then !closing parenthesis (last index)
+	    j=i-1-abs(ks) !index length
+	    if(j.le.0) then !no index: The only case is the scalar tensor "T()"
+	     if(ks.lt.0) then; ierr=3; return; endif !trap: closing parenthesis immediately follows a separator
 	    else
-	     if(.not.index_label_ok(cptrn(abs(ks)+1:i-1))) then; ierr=4; return; endif
-	     str(m+1:m+j)=cptrn(abs(ks)+1:i-1); m=m+j
-	     k=k+1; str(m+1:m+tag_len)='{'//dn1(n)//dn2(k)//'}'; m=m+tag_len
+	     if(.not.index_label_ok(cptrn(abs(ks)+1:i-1),cv)) then; ierr=4; return; endif !trap: index must be alphanumeric
+	     str(m+1:m+j-cv)=cptrn(abs(ks)+1:i-1-cv); m=m+j-cv !append index label without possible "+" suffix
+	     if(present(covar)) then !mark contravariance
+	      if(n.eq.1) then; covar(k)=cv; elseif(n.eq.2) then; covar(adims(1)+k)=cv; endif
+	     endif
+	     k=k+1; str(m+1:m+tag_len)='{'//dn1(n)//dn2(k)//'}'; m=m+tag_len !add tag for the next index
 	    endif
 	    ks=0; i=i+1; exit
 	   endif
 	   i=i+1
 	  enddo
-	  m=m-tag_len; if(ks.ne.0) then; ierr=5; return; endif !no closing parenthesis
-	  adims(n)=k-1 !number of indices in argument #k
+	  if(ks.ne.0) then; ierr=5; return; endif !trap: no closing parenthesis
+	  m=m-tag_len !get rid of the next index tag
+	  adims(n)=k-1 !number of indices in argument #n
 	 enddo aloop
+	 if(ks.ne.0) then; ierr=6; return; endif !trap: no closing parenthesis
 	 str(m+1:m+1)='{' !special setting
-	 if(ks.ne.0) then; ierr=6; return; endif !no closing parenthesis
-	 if(n.eq.2) then !contraction (three arguments)
- !Analyze the index labels:
-	  cpl=adims(1)+adims(2)
-!	  write(CONS_OUT,*)'DEBUG(tensor_algebra::get_contr_pattern): str: '//str(1:m+1) !debug
-	  i=0
+!Analyze index labels:
+	 if(n.eq.2) then !tensor contraction (two input arguments)
+	  drank=adims(0); lrank=adims(1); rrank=adims(2)
+!	  write(CONS_OUT,*)'DEBUG(tensor_algebra::get_contr_pattern_dig): binary str: '//str(1:m+1) !debug
+	  if(present(num_ptrn)) then
+	   if(drank.gt.0) num_ptrn(1:drank)=(/(ni,ni=1,drank)/)
+	  endif
+	  ni=drank; i=0
 	  do
 	   j=index(str(i+1:m),'}')+i; if(j.gt.i) then; i=j; else; exit; endif
 	   j=i+1; do while(j.le.m-tag_len); if(str(j:j).eq.'{') exit; j=j+1; enddo
-	   if(str(j:j).ne.'{'.or.j.gt.m-tag_len) then; ierr=7; return; endif
-	   k0=index(str(j+tag_len-1:m+1),str(i:j))+(j+tag_len-2)
-	   if(k0.gt.j+tag_len-2) then
-!	    write(CONS_OUT,*)'DEBUG(tensor_algebra::get_contr_pattern): index match: '//str(i+1:j-1) !debug
-	    k5=1; k1=icharnum(k5,str(i-tag_len+2:i-tag_len+2))
-	    k5=2; k2=icharnum(k5,str(i-tag_len+3:i-tag_len+4))
-	    k5=1; k3=icharnum(k5,str(k0-tag_len+2:k0-tag_len+2))
-	    k5=2; k4=icharnum(k5,str(k0-tag_len+3:k0-tag_len+4))
-	    if(k1.eq.0.and.k3.eq.1) then !open index
-	     contr_ptrn(k4)=k2
-	    elseif(k1.eq.0.and.k3.eq.2) then !open index
-	     contr_ptrn(adims(1)+k4)=k2
-	    elseif(k1.eq.1.and.k3.eq.2) then !free index
-	     contr_ptrn(k2)=-k4; contr_ptrn(adims(1)+k4)=-k2
+	   if(str(j:j).ne.'{'.or.j.gt.m-tag_len) then; ierr=7; return; endif !trap
+	   k5=1; k1=icharnum(k5,str(i-tag_len+2:i-tag_len+2)) !argument number to which first index occurence belongs
+	   k5=2; k2=icharnum(k5,str(i-tag_len+3:i-tag_len+4)) !position of the first index occurence in that argument
+	   do kf=1,2 !test index occurence in both input arguments
+	    k0=index(str(j+tag_len-1:m+1),str(i:j))+(j+tag_len-2) !looking for the next occurence of the index
+	    if(k0.gt.j+tag_len-2) then
+!	     write(CONS_OUT,*)'DEBUG(tensor_algebra::get_contr_pattern_dig): index match ',kf,': '//str(i+1:j-1) !debug
+	     k5=1; k3=icharnum(k5,str(k0-tag_len+2:k0-tag_len+2)) !argument number to which second index occurence belongs
+	     k5=2; k4=icharnum(k5,str(k0-tag_len+3:k0-tag_len+4)) !position of the second index occurence in that argument
+	     if(k1.eq.0.and.k3.eq.1) then !uncontracted index
+	      if(kf.ne.1) then; ierr=8; return; endif
+	      contr_ptrn(k4)=k2
+	      if(present(num_ptrn)) num_ptrn(drank+k4)=k2
+	     elseif(k1.eq.0.and.k3.eq.2) then !uncontracted index
+	      contr_ptrn(adims(1)+k4)=k2
+	      if(present(num_ptrn)) num_ptrn(drank+lrank+k4)=k2
+	     elseif(k1.eq.1.and.k3.eq.2) then !contracted index
+	      if(kf.ne.1) then; ierr=9; return; endif
+	      contr_ptrn(k2)=-k4; contr_ptrn(adims(1)+k4)=-k2
+	      ni=ni+1
+	      if(present(num_ptrn)) then
+	       num_ptrn(drank+k2)=ni; num_ptrn(drank+lrank+k4)=ni
+	      endif
+	     else
+	      ierr=10; return !trap
+	     endif
+	     str(k0:k0+(j-i-1))=' ' !erase second index occurence including the preceding "}" (deactivate index completely)
+	    !do while(str(k0:k0).ne.'{'); str(k0:k0)=' '; k0=k0+1; enddo !erase second index occurence including the preceding "}"
 	    else
-	     ierr=8; return
+	     if(kf.eq.1) then; ierr=11; return; endif !second occurence of the index not found
 	    endif
-	    str(i+1:j-1)=' '; do while(str(k0:k0).ne.'{'); str(k0:k0)=' '; k0=k0+1; enddo
-	   else
-	    ierr=9; return
-	   endif
+	   enddo
+	   str(i+1:j-1)=' ' !erase first index occurence
 	  enddo
-	 elseif(n.eq.1) then !permutation (two arguments)
-	  !`Add
-	  ierr=10
+	 elseif(n.eq.1) then !tensor addition/copy (one input argument)
+	  drank=adims(0); lrank=adims(1)
+!	  write(CONS_OUT,*)'DEBUG(tensor_algebra::get_contr_pattern_dig): unary str: '//str(1:m+1) !debug
+	  if(present(num_ptrn)) then
+	   if(drank.gt.0) num_ptrn(1:drank)=(/(ni,ni=1,drank)/)
+	  endif
+	  ni=drank; i=0
+	  do
+	   j=index(str(i+1:m),'}')+i; if(j.gt.i) then; i=j; else; exit; endif
+	   j=i+1; do while(j.le.m-tag_len); if(str(j:j).eq.'{') exit; j=j+1; enddo
+	   if(str(j:j).ne.'{'.or.j.gt.m-tag_len) then; ierr=12; return; endif !trap
+	   k5=1; k1=icharnum(k5,str(i-tag_len+2:i-tag_len+2)) !argument number to which first index occurence belongs
+	   k5=2; k2=icharnum(k5,str(i-tag_len+3:i-tag_len+4)) !position of the first index occurence in that argument
+	   k0=index(str(j+tag_len-1:m+1),str(i:j))+(j+tag_len-2) !looking for the next occurence of the index
+	   if(k0.gt.j+tag_len-2) then
+!	    write(CONS_OUT,*)'DEBUG(tensor_algebra::get_contr_pattern_dig): index match: '//str(i+1:j-1) !debug
+	    k5=1; k3=icharnum(k5,str(k0-tag_len+2:k0-tag_len+2)) !argument number to which second index occurence belongs
+	    k5=2; k4=icharnum(k5,str(k0-tag_len+3:k0-tag_len+4)) !position of the second index occurence in that argument
+	    if(k1.eq.0.and.k3.eq.1) then !uncontracted index
+	     contr_ptrn(k4)=k2
+	     if(present(num_ptrn)) num_ptrn(drank+k4)=k2
+	    else
+	     ierr=13; return !trap
+	    endif
+	    str(k0:k0+(j-i-1))=' ' !erase second index occurence including the preceding "}" (deactivate index completely)
+	   !do while(str(k0:k0).ne.'{'); str(k0:k0)=' '; k0=k0+1; enddo !erase second index occurence including the preceding "}"
+	   else
+	    ierr=14; return !second occurence of the index not found
+	   endif
+	   str(i+1:j-1)=' ' !erase first index occurence
+	  enddo
+	 else !invalid number of tensor arguments
+	  ierr=15
 	 endif
 	else !empty string
-	 ierr=11
+	 ierr=16
 	endif
 	if(present(conj_bits)) conj_bits=conj
-!	write(CONS_OUT,*)'DEBUG(tensor_algebra::get_contr_pattern): cpl,contr_ptrn: ',cpl,contr_ptrn(1:cpl) !debug
+!	write(CONS_OUT,*)'DEBUG(tensor_algebra::get_contr_pattern_dig): contr_ptrn: ',contr_ptrn(1:lrank+rrank) !debug
 	return
 
 	contains
 
-	 logical function index_label_ok(lb)
+	 logical function index_label_ok(lb,contr)
 	  character(*), intent(in):: lb
-	  integer j0,j1,j2
-	  j0=len(lb); index_label_ok=.TRUE.
+	  integer, intent(out):: contr !0:covariant, 1:contravariant
+	  integer:: j0,j1,j2
+
+	  j0=len(lb); contr=0; index_label_ok=.TRUE.
 	  if(j0.gt.0) then
 	   do j1=1,j0
 	    j2=iachar(lb(j1:j1))
 	    if(.not.((j2.ge.iachar('a').and.j2.le.iachar('z')).or.&
-	            &(j2.ge.iachar('A').and.j2.le.iachar('Z')).or.(j2.ge.iachar('0').and.j2.le.iachar('9')))) then
-	     index_label_ok=.FALSE.; return
+	            &(j2.ge.iachar('A').and.j2.le.iachar('Z')).or.&
+	            &(j2.ge.iachar('0').and.j2.le.iachar('9')))) then
+	     if(j1.lt.j0.or.j1.eq.1.or.lb(j1:j1).ne.'+') then
+	      index_label_ok=.FALSE.; return
+	     else
+	      contr=1
+	     endif
 	    endif
 	   enddo
 !	   j2=iachar(lb(1:1)); if(j2.ge.iachar('0').and.j2.le.iachar('9')) index_label_ok=.FALSE. !the 1st character cannot be a number
@@ -4635,7 +4734,7 @@
 	  return
 	 end function index_label_ok
 
-	end subroutine get_contr_pattern
+	end subroutine get_contr_pattern_dig
 !-----------------------------------------------------------------------------------------------------
         subroutine get_contr_pattern_sym(rank_left,rank_right,conj_bits,cptrn_dig,cptrn_sym,cpl,ierr)&
         &bind(c,name='get_contr_pattern_sym') !SERIAL
@@ -4644,8 +4743,8 @@
         integer(C_INT), intent(in):: rank_left                         !in: rank of the left tensor
         integer(C_INT), intent(in):: rank_right                        !in: rank of the right tensor
         integer(C_INT), intent(in):: conj_bits                         !in: argument conjugation bits: {0:D,1:L,2:R}
-        integer(C_INT), intent(in):: cptrn_dig(1:rank_left+rank_right) !in: digital contraction pattern
-        character(C_CHAR), intent(inout):: cptrn_sym(1:*)              !out: symbolic contraction pattern
+        integer(C_INT), intent(in):: cptrn_dig(1:rank_left+rank_right) !in: digital tensor contraction pattern
+        character(C_CHAR), intent(inout):: cptrn_sym(1:*)              !out: symbolic tensor contraction pattern
         integer(C_INT), intent(out):: cpl                              !out: length of <cptrn_sym>
         integer(C_INT), intent(out):: ierr                             !out: error code
         integer(C_INT):: i,m,nu
@@ -4856,7 +4955,7 @@
 ! - shape0 - shape string for the tensor-result: '(..,..,..)';
 ! - shape1 - shape string for the left tensor argument: '(..,..,..)';
 ! - shape2 - shape string for the right tensor argument: '(..,..,..)';
-! - cptrn(1:lrank+rrank) - contraction pattern.
+! - cptrn(1:lrank+rrank) - digital tensor contraction pattern.
         implicit none
         integer, intent(in):: max_tens_arg_rank
         integer(8), intent(in):: max_tens_arg_size

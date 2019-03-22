@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/03/10
+REVISION: 2019/03/22
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -545,7 +545,11 @@ int Tensor::setValue(TensorTask * task_handle, //out: task handle associated wit
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::setValue): talshTensorInit error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
-  if(errc == TALSH_SUCCESS) pimpl_->write_task_ = task_handle;
+  if(errc == TALSH_SUCCESS){
+   pimpl_->write_task_ = task_handle;
+  }else{
+   task_handle->clean();
+  }
  }else{ //synchronous
   errc = talshTensorInit(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_T);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
@@ -579,7 +583,11 @@ int Tensor::accumulate(TensorTask * task_handle,    //out: task handle associate
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::accumulate): talshTensorAdd error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
-  if(errc == TALSH_SUCCESS) pimpl_->write_task_ = task_handle;
+  if(errc == TALSH_SUCCESS){
+   pimpl_->write_task_ = task_handle;
+  }else{
+   task_handle->clean();
+  }
  }else{ //synchronous
   errc = talshTensorAdd(contr_ptrn,dtens,ltens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_TT);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
@@ -618,7 +626,11 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
-  if(errc == TALSH_SUCCESS) pimpl_->write_task_ = task_handle;
+  if(errc == TALSH_SUCCESS){
+   pimpl_->write_task_ = task_handle;
+  }else{
+   task_handle->clean();
+  }
  }else{ //synchronous
   errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,
                              COPY_TTT,accum);

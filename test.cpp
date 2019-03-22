@@ -255,8 +255,8 @@ void test_talsh_qc(int * ierr)
 {
  using ComplexType = std::complex<float>;
 
- constexpr int NUM_CONTRACTIONS_CPU = 2; //number of tensor contractions to be executed by TAL-SH on multicore CPU
- constexpr int NUM_CONTRACTIONS_GPU = 4; //number of tensor contractions to be executed by TAL-SH on multiple GPU
+ constexpr int NUM_CONTRACTIONS_CPU = 2;  //number of tensor contractions to be executed by TAL-SH on multicore CPU
+ constexpr int NUM_CONTRACTIONS_GPU = 40; //number of tensor contractions to be executed by TAL-SH on multiple GPU
  constexpr int NUM_CONTRACTIONS = NUM_CONTRACTIONS_CPU + NUM_CONTRACTIONS_GPU; //number of tensor contractions to be executed by TAL-SH
 
  *ierr=0;
@@ -437,7 +437,7 @@ void test_talsh_qc(int * ierr)
   //QC application executes tensor contractions on GPU via TAL-SH asynchronous pipeline:
   std::cout << "  QC application started GPU execution pipeline" << std::endl;
   unsigned int remains = contractions_gpu.size();
-  std::cout << "   Left " << remains << " tensor contractions" << std::endl;
+  std::cout << "   " << remains << " tensor contractions remains" << std::endl;
   auto its = contractions_gpu.begin();
   while(remains > 0){
    while(its != contractions_gpu.end()){
@@ -447,15 +447,20 @@ void test_talsh_qc(int * ierr)
     int errc = its->execute(DEV_HOST,0);
 #endif
     assert(errc == TALSH_SUCCESS || errc == TRY_LATER);
-    if(errc == TRY_LATER) break;
+    if(errc == TALSH_SUCCESS){
+     std::cout << "    Scheduled tensor contraction " << std::distance(contractions_gpu.begin(),its) << std::endl;
+    }else if(errc == TRY_LATER){
+     break;
+    }
     ++its;
    }
    for(auto itc = contractions_gpu.begin(); itc != its; ++itc){
     int sts;
     if(itc->ready(&sts,DEV_HOST,0)){
      if(sts == TALSH_TASK_COMPLETED){
+      std::cout << "    Completed tensor contraction " << std::distance(contractions_gpu.begin(),itc) << std::endl;
       --remains;
-      std::cout << "   Left " << remains << " tensor contractions" << std::endl;
+      std::cout << "   " << remains << " tensor contractions remains" << std::endl;
      }
     }
    }

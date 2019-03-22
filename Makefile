@@ -1,6 +1,9 @@
 NAME = talsh
 
-#ADJUST THE FOLLOWING ACCORDINGLY:
+#ADJUST THE FOLLOWING ENVIRONMENT VARIABLES ACCORDINGLY (choices are given)
+#until you see "YOU ARE DONE!". The comments will guide you through (read them).
+#Alternatively, you can export all relevant environment variables such that this
+#Makefile will pick their values, so you will not need to update anything here.
 
 #Cross-compiling wrappers (only for Cray): [WRAP|NOWRAP]:
 export WRAP ?= NOWRAP
@@ -326,9 +329,9 @@ CPPFLAGS = $(CFLAGS) -std=c++11
 endif
 
 #FORTRAN FLAGS:
-FFLAGS_INTEL_DEV = -c -std08 -g -O0 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel $(LA_INC)
-FFLAGS_INTEL_OPT = -c -std08 -O3 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel $(LA_INC)
-FFLAGS_INTEL_PRF = -c -std08 -g -O3 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel $(LA_INC)
+FFLAGS_INTEL_DEV = -c -g -O0 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel $(LA_INC)
+FFLAGS_INTEL_OPT = -c -O3 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel $(LA_INC)
+FFLAGS_INTEL_PRF = -c -g -O3 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel $(LA_INC)
 FFLAGS_CRAY_DEV = -c -g $(LA_INC)
 FFLAGS_CRAY_OPT = -c -O3 $(LA_INC)
 FFLAGS_CRAY_PRF = -c -g -O3 $(LA_INC)
@@ -369,20 +372,20 @@ ifeq ($(WITH_CUTT),YES)
 	mv *.o ./tmp_obj__
 	ar cr lib$(NAME).a $(OBJS) ./tmp_obj__/*.o
 ifeq ($(EXA_OS),LINUX)
-ifeq ($(TOOLKIT),GNU)
-	g++ -shared -o lib$(NAME).so $(OBJS) ./tmp_obj__/*.o
+ifeq ($(TOOLKIT),IBM)
+	$(CPPCOMP) -qmkshrobj -o lib$(NAME).so $(OBJS) ./tmp_obj__/*.o
 else
-	ld -shared -o lib$(NAME).so $(OBJS) ./tmp_obj__/*.o
+	$(CPPCOMP) -shared -o lib$(NAME).so $(OBJS) ./tmp_obj__/*.o
 endif
 endif
 	rm -rf ./tmp_obj__
 else
 	ar cr lib$(NAME).a $(OBJS)
 ifeq ($(EXA_OS),LINUX)
-ifeq ($(TOOLKIT),GNU)
-	g++ -shared -o lib$(NAME).so $(OBJS)
+ifeq ($(TOOLKIT),IBM)
+	$(CPPCOMP) -qmkshrobj -o lib$(NAME).so $(OBJS)
 else
-	ld -shared -o lib$(NAME).so $(OBJS)
+	$(CPPCOMP) -shared -o lib$(NAME).so $(OBJS)
 endif
 endif
 endif

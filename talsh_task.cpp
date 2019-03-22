@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/02/19
+REVISION: 2019/03/22
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -53,7 +53,7 @@ bool TensorTask::isEmpty()
 
 void TensorTask::clean()
 {
- assert(this->wait());
+ if(talshTaskStatus(&talsh_task_) != TALSH_TASK_ERROR) assert(this->wait());
  int errc = talshTaskDestruct(&talsh_task_);
  num_tensors_=0;
  assert(errc == TALSH_SUCCESS);
