@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/03/28
+REVISION: 2019/03/29
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -236,8 +236,9 @@ static int host_task_destroy(host_task_t * host_task)
 static void host_task_print(const host_task_t * host_task)
 /** Prints Host task info. **/
 {
+#pragma omp flush
  if(host_task != NULL){
-  printf("\n#MESSAGE: Printing Host task info:\n");
+  printf("#MESSAGE: Printing Host task info:\n");
   printf(" Host task status       : %d\n",host_task->task_error);
   printf(" Host task device id    : %d\n",host_task->host_id);
   printf(" Host task coherence_var: %u\n",host_task->coherence);
@@ -1424,7 +1425,7 @@ void talshTensorPrintInfo(const talsh_tens_t * tens_block)
     printf(" [%d,%d|%d|%d]",dvk,dvn,tens_block->data_kind[i],tens_block->avail[i]);
    }
   }else{
-   printf(" Tensor block shape is absent!\n");
+   printf(" Tensor block shape is absent!");
   }
   printf("\n#END OF MESSAGE\n");
  }else{
@@ -1449,13 +1450,13 @@ void talshTensorPrintBody(const talsh_tens_t * tens_block, double thresh)
  const talshComplex8 * bpc8;
 
 #pragma omp flush
- printf("\n#MSG: Printing tensor body:");
+ printf("#MESSAGE: Printing tensor body:");
  if(tens_block != NULL){
   if(talshTensorIsEmpty(tens_block) == NOPE){
    errc=talshTensorPresence(tens_block,&n,devs,dtks,DEV_HOST);
    if(errc == TALSH_SUCCESS && n > 0){
     errc=talshTensorGetBodyAccessConst(tens_block,&body_p,dtks[0],0,DEV_HOST);
-    printf("ERROR CODE = %d",errc); //debug
+    printf(" Error code = %d",errc); //debug
     if(errc == TALSH_SUCCESS){
      vol=talshTensorVolume(tens_block);
      errc=tensShape_clean(&tshape);
@@ -1517,7 +1518,7 @@ void talshTensorPrintBody(const talsh_tens_t * tens_block, double thresh)
         }
         break;
       }
-      printf("\n#END MSG\n");
+      printf("\n#END OF MESSAGE\n");
      }else{
       printf("\n#WARNING(talshc:talshTensorPrintBody): Failed to obtain tensor shape!\n");
      }
@@ -2154,7 +2155,7 @@ void talshTaskPrint(const talsh_task_t * talsh_task)
 /** Prints TAL-SH task info. **/
 {
 #pragma omp flush
- printf("\n#MESSAGE: Printing TAL-SH task info:\n");
+ printf("#MESSAGE: Printing TAL-SH task info:\n");
  printf(" Device kind %d: Error %d\n",talsh_task->dev_kind,talsh_task->task_error);
  if(talsh_task != NULL){
   switch(talsh_task->dev_kind){
@@ -2176,7 +2177,7 @@ void talshTaskPrint(const talsh_task_t * talsh_task)
     break;
   }
  }
- printf("#END MESSAGE\n");
+ printf("#END OF MESSAGE\n");
  return;
 }
 

@@ -191,9 +191,10 @@ void test_talsh_cxx(int * ierr)
 #endif
 
  *ierr=0;
- //Initialize:
+ //Initialize TAL-SH:
  talsh::initialize();
- //Tensor contraction (brackets are needed to push talsh::shutdown() out of scope):
+
+ //Test tensor contraction (brackets are needed to push talsh::shutdown() out of scope):
  {
   //Create destination tensor:
   talsh::Tensor dtens({1,2,3,4},{VDIM,VDIM,ODIM,ODIM},1.0); //this initial value will be overwritten by 1st contraction (beta=0)
@@ -229,7 +230,8 @@ void test_talsh_cxx(int * ierr)
    }
   }
  }
- //Matrix multiplication (brackets are needed to push talsh::shutdown() out of scope):
+
+ //Test matrix multiplication:
  if(*ierr == 0){
   //Create destination tensor:
   talsh::Tensor dtens({1,2,3,4},{VDIM,VDIM,ODIM,ODIM},0.0);
@@ -245,7 +247,49 @@ void test_talsh_cxx(int * ierr)
   std::cout << "Matrix multiplication completion status = " << done << "; Error " << *ierr << std::endl;
   dtens.print(); //debug
  }
- //Shutdown:
+
+ //Test tensor slicing/insertion:
+ if(*ierr == 0){
+  //Create left tensor:
+  talsh::Tensor ltens({0,0,0},{3,4,5},0.0);
+  //Initialize left tensor:
+  unsigned int nd;
+  auto ldims = ltens.getDimExtents(nd);
+  double * lp;
+  ltens.getDataAccessHost(&lp);
+  for(int k = 0; k < ldims[2]; ++k){
+   for(int j = 0; j < ldims[1]; ++j){
+    for(int i = 0; i < ldims[0]; ++i){
+     auto l = i + j*ldims[0] + k*ldims[1]*ldims[0];
+     lp[l] = static_cast<double>(l);
+    }
+   }
+  }
+  //Create destination tensor:
+  talsh::Tensor dtens({1,2,3},{2,2,2},0.0);
+  //Extract a slice from left tensor:
+  talsh::TensorTask task_hl;
+  *ierr = ltens.extractSlice(&task_hl,dtens,std::vector<int>{1,2,3},DEV_HOST,0);
+  bool done = ltens.sync();
+  std::cout << "Slice extraction completion status = " << done << "; Error " << *ierr << std::endl;
+  if(*ierr == 0){
+   //dtens.print(0.0); //debug
+   //Reset slice to zero:
+   task_hl.clean();
+   *ierr = dtens.setValue(&task_hl,DEV_HOST,0,-13.0);
+   bool done = dtens.sync();
+   std::cout << "Slice value reset completion status = " << done << "; Error " << *ierr << std::endl;
+   if(*ierr == 0){
+    task_hl.clean();
+    *ierr = ltens.insertSlice(&task_hl,dtens,std::vector<int>{1,2,3},DEV_HOST,0);
+    bool done = ltens.sync();
+    std::cout << "Slice insertion completion status = " << done << "; Error " << *ierr << std::endl;
+    //if(*ierr == 0) ltens.print(0.0); //debug
+   }
+  }
+ }
+
+ //Shutdown TAL-SH:
  talsh::shutdown();
  return;
 }

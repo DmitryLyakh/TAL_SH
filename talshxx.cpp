@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/03/28
+REVISION: 2019/03/29
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -84,9 +84,18 @@ std::size_t Tensor::getVolume() const
 /** Returns tensor dimension extents (and tensor order). **/
 const int * Tensor::getDimExtents(unsigned int & num_dims) const
 {
- num_dims = (pimpl_->tensor_).shape_p->num_dim;
+ num_dims = static_cast<unsigned int>((pimpl_->tensor_).shape_p->num_dim);
  if(num_dims == 0) return nullptr;
  return (pimpl_->tensor_).shape_p->dims;
+}
+
+
+/** Returns the extent of a specific tensor dimension. **/
+int Tensor::getDimExtent(unsigned int dim) const
+{
+ int n = (pimpl_->tensor_).shape_p->num_dim;
+ assert(dim < n);
+ return ((pimpl_->tensor_).shape_p->dims)[dim];
 }
 
 
@@ -156,7 +165,7 @@ bool Tensor::ready(int * status, const int device_kind, const int device_id, voi
 }
 
 
-/** Prints the tensor. **/
+/** Prints the tensor info. **/
 void Tensor::print() const
 {
  std::cout << "TAL-SH Tensor {";
@@ -165,6 +174,20 @@ void Tensor::print() const
  if(rank > 0) std::cout << (pimpl_->signature_).at(rank-1);
  std::cout << "} [use=" << pimpl_->used_ << "]:" << std::endl;
  talshTensorPrintInfo(&(pimpl_->tensor_));
+ return;
+}
+
+
+/** Prints the tensor info and body. **/
+void Tensor::print(double thresh) const
+{
+ std::cout << "TAL-SH Tensor {";
+ std::size_t rank = (pimpl_->signature_).size();
+ for(std::size_t i = 0; i < rank - 1; ++i) std::cout << (pimpl_->signature_).at(i) << ",";
+ if(rank > 0) std::cout << (pimpl_->signature_).at(rank-1);
+ std::cout << "} [use=" << pimpl_->used_ << "]:" << std::endl;
+ talshTensorPrintInfo(&(pimpl_->tensor_));
+ talshTensorPrintBody(&(pimpl_->tensor_),thresh);
  return;
 }
 

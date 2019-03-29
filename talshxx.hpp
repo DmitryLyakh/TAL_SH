@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/03/28
+REVISION: 2019/03/29
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -182,6 +182,9 @@ public:
  /** Returns tensor dimension extents (and tensor order). **/
  const int * getDimExtents(unsigned int & num_dims) const;
 
+ /** Returns the extent of a specific tensor dimension. **/
+ int getDimExtent(unsigned int dim) const;
+
  /** Returns a direct pointer to the tensor data available on Host.
      If no image is available on Host, returns false.  **/
  template<typename T>
@@ -265,8 +268,10 @@ public:
                         const int device_id = 0,                //in: execution device id
                         const T factor = TensorData<T>::unity); //in: scaling factor (alpha)
 
- /** Prints the tensor. **/
+ /** Prints the tensor info. **/
  void print() const;
+ /** Prints the tensor info and elements greater or equal to "thresh". **/
+ void print(double thresh) const;
 
 private:
 
