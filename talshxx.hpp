@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/03/22
+REVISION: 2019/03/28
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -216,6 +216,20 @@ public:
               const int device_kind = DEV_HOST,            //in: execution device kind
               const int device_id = 0,                     //in: execution device id
               const T scalar_value = TensorData<T>::zero); //in: scalar value
+
+ /** Extracts a slice from a given position in the current tensor. **/
+ int extractSlice(TensorTask * task_handle,                //out: task handle associated with this operation or nullptr (synchronous)
+                  Tensor & slice,                          //inout: extracted tensor slice
+                  const std::vector<int> & offsets,        //in: base offsets of the slice (0-based)
+                  const int device_kind = DEV_HOST,        //in: execution device kind
+                  const int device_id = 0);                //in: execution device id
+
+ /** Inserts a slice into a given position in the current tensor. **/
+ int insertSlice(TensorTask * task_handle,                //out: task handle associated with this operation or nullptr (synchronous)
+                 Tensor & slice,                          //inout: inserted tensor slice
+                 const std::vector<int> & offsets,        //in: base offsets of the slice (0-based)
+                 const int device_kind = DEV_HOST,        //in: execution device kind
+                 const int device_id = 0);                //in: execution device id
 
  /** Performs accumulation of a tensor into the current tensor:
      this += left * factor

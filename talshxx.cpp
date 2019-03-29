@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/03/06
+REVISION: 2019/03/28
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -197,6 +197,72 @@ bool Tensor::testWriteTask(int * status)
   if(res && *status == TALSH_TASK_COMPLETED) pimpl_->write_task_ = nullptr;
  }
  return res;
+}
+
+
+int Tensor::extractSlice(TensorTask * task_handle,         //out: task handle associated with this operation or nullptr (synchronous)
+                         Tensor & slice,                   //inout: extracted tensor slice
+                         const std::vector<int> & offsets, //in: base offsets of the slice (0-based)
+                         const int device_kind,            //in: execution device kind
+                         const int device_id)              //in: execution device id
+{
+ int errc = TALSH_SUCCESS;
+ this->completeWriteTask();
+ talsh_tens_t * ltens = this->getTalshTensorPtr();
+ talsh_tens_t * dtens = slice.getTalshTensorPtr();
+ if(task_handle != nullptr){ //asynchronous
+  assert(task_handle->isEmpty());
+  talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
+  //++left; ++right; ++(*this);
+  errc = talshTensorSlice(dtens,ltens,offsets.data(),device_id,device_kind,COPY_TT,task_hl);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::extractSlice): talshTensorSlice error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+  if(errc == TALSH_SUCCESS){
+   pimpl_->write_task_ = task_handle;
+  }else{
+   task_handle->clean();
+  }
+ }else{ //synchronous
+  errc = talshTensorSlice(dtens,ltens,offsets.data(),device_id,device_kind,COPY_TT);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::extractSlice): talshTensorSlice error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+ }
+ return errc;
+}
+
+
+int Tensor::insertSlice(TensorTask * task_handle,         //out: task handle associated with this operation or nullptr (synchronous)
+                        Tensor & slice,                   //inout: inserted tensor slice
+                        const std::vector<int> & offsets, //in: base offsets of the slice (0-based)
+                        const int device_kind,            //in: execution device kind
+                        const int device_id)              //in: execution device id
+{
+ int errc = TALSH_SUCCESS;
+ this->completeWriteTask();
+ talsh_tens_t * dtens = this->getTalshTensorPtr();
+ talsh_tens_t * ltens = slice.getTalshTensorPtr();
+ if(task_handle != nullptr){ //asynchronous
+  assert(task_handle->isEmpty());
+  talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
+  //++left; ++right; ++(*this);
+  errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_TT,task_hl);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::insertSlice): talshTensorInsert error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+  if(errc == TALSH_SUCCESS){
+   pimpl_->write_task_ = task_handle;
+  }else{
+   task_handle->clean();
+  }
+ }else{ //synchronous
+  errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_TT);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::insertSlice): talshTensorInsert error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+ }
+ return errc;
 }
 
 

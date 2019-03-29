@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2019/03/21
+!REVISION: 2019/03/28
 
 !Copyright (C) 2013-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -3083,7 +3083,7 @@
 !This subroutine makes a copy of a tensor block with an optional index permutation.
 !INPUT:
 ! - tens_in - input tensor;
-! - transp(0:*) - (optional) O2N index permutation;
+! - transp(0:*) - (optional) signed O2N index permutation;
 ! - arg_conj - (optional) argument complex conjugation (Bit 0 -> Destination, Bit 1 -> Left);
 !OUTPUT:
 ! - tens_out - output tensor;
