@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2019/03/28
+REVISION: 2019/04/08
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -49,6 +49,8 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #define TALSH_NOT_ALLOWED 1000007
 #define TALSH_LIMIT_EXCEEDED 1000008
 #define TALSH_NOT_FOUND 1000009
+#define TALSH_OBJECT_BROKEN 1000010
+#define TALSH_INVALID_REQUEST 1000011
 
 //TAL-SH TASK STATUS:
 #define TALSH_TASK_ERROR 1999999
@@ -60,6 +62,7 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #define TALSH_TASK_COMPLETED 2000005
 
 //TAL-SH TENSOR OPERATION KINDS:
+#define TALSH_TENSOR_NOOP -1
 #define TALSH_TENSOR_INIT 68
 #define TALSH_TENSOR_NORM1 69
 #define TALSH_TENSOR_NORM2 70
@@ -78,8 +81,21 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #define TALSH_TENSOR_HADAMARD 83
 #define TALSH_TENSOR_KHATRIRAO 84
 
+//TAL-SH TENSOR OPERATION STAGES:
+#define TALSH_OP_UNDEFINED -1
+#define TALSH_OP_EMPTY 0
+#define TALSH_OP_PARTIAL 1
+#define TALSH_OP_DEFINED 2
+#define TALSH_OP_RESOURCED 3
+#define TALSH_OP_LOADED 4
+#define TALSH_OP_SCHEDULED 5
+#define TALSH_OP_COMPLETED 6
+#define TALSH_OP_STORED 7
+#define TALSH_OP_RETIRED 8
+
+
 //TAL-SH DATA TYPES:
-// Interoperable dense tensor block:
+// Dense tensor with multiple images (interoperable):
 typedef struct{
  talsh_tens_shape_t * shape_p; //shape of the tensor block
  talsh_dev_rsc_t * dev_rsc;    //list of device resources occupied by the tensor block body on each device
@@ -102,7 +118,7 @@ typedef struct{
  int source_image;      //specific body image of that tensor block participating in the operation
 } talshTensArg_t;
 
-// Interoperable TAL-SH task handle:
+// TAL-SH task (interoperable):
 typedef struct{
  void * task_p;    //pointer to the corresponding device-kind-specific task object
  int task_error;   //-1:undefined(task in progress or empty); 0:successfully completed; >0: error code
@@ -116,17 +132,19 @@ typedef struct{
  double exec_time; //execution time in seconds (information)
 } talsh_task_t;
 
-// Basic tensor operation specification:
+// Basic tensor operation:
 typedef struct{
  int opkind;                                         //operation kind
- int num_args;                                       //number of tensor operands: [0..MAX_TENSOR_OPERANDS]
- talsh_tens_slice_t tens_slice[MAX_TENSOR_OPERANDS]; //tensor operands (tensor slice views)
- char * symb_pattern;                                //symbolic index pattern specification (non-owning pointer)
- talshComplex8 alpha;                                //alpha prefactor
- talsh_tens_t tens_arg[MAX_TENSOR_OPERANDS];         //tensor operands (actual TAL-SH tensors)
+ int data_kind;                                      //operational data kind: {R4,R8,C4,C8}
+ unsigned int num_args;                              //number of tensor operands: [0..MAX_TENSOR_OPERANDS]
+ talsh_tens_slice_t tens_slice[MAX_TENSOR_OPERANDS]; //formal tensor operands (tensor slice views)
+ const char * symb_pattern;                          //symbolic index pattern specification (non-owning pointer to a C-string)
+ talshComplex8 alpha;                                //alpha prefactor (scalar factor)
+ talsh_tens_t tens_arg[MAX_TENSOR_OPERANDS];         //actual tensor operands (actual TAL-SH tensors)
  talsh_task_t task_handle;                           //task handle
  int exec_dev_id;                                    //execution device id (flat device id)
-} tens_operation_t;
+ int stage;                                          //tensor operation stage
+} talsh_tens_op_t;
 
 
 //EXPORTED FUNCTIONS:
@@ -168,10 +186,18 @@ extern "C"{
 //  Find the least busy device:
  int talshDeviceBusyLeast(int dev_kind = DEV_NULL);
  int talshDeviceBusyLeast_(int dev_kind);
-//  Query device memory size:
+//  Query device memory size (bytes):
  size_t talshDeviceMemorySize(int dev_num,
                               int dev_kind = DEV_NULL);
  size_t talshDeviceMemorySize_(int dev_num, int dev_kind);
+//  Query device argument buffer size (bytes):
+ size_t talshDeviceBufferSize(int dev_num,
+                              int dev_kind = DEV_NULL);
+ size_t talshDeviceBufferSize_(int dev_num, int dev_kind);
+//  Query device max tensor size (bytes):
+ size_t talshDeviceTensorSize(int dev_num,
+                              int dev_kind = DEV_NULL);
+ size_t talshDeviceTensorSize_(int dev_num, int dev_kind);
 //  Print TAL-SH statistics for specific devices:
  int talshStats(int dev_id = -1,
                 int dev_kind = DEV_NULL);
@@ -211,6 +237,8 @@ extern "C"{
 //  Get the size of all tensor images in bytes:
  size_t talshTensorSizeAllImages(const talsh_tens_t * tens_block,
                                  int * num_images);
+//  Get tensor dimension extents:
+ const int * talshTensorDimExtents(const talsh_tens_t * tens_block, int * rank);
 //  Get the shape of the tensor block:
  int talshTensorShape(const talsh_tens_t * tens_block,
                       talsh_tens_shape_t * tens_shape);
@@ -249,6 +277,24 @@ extern "C"{
  void talshTensorPrintInfo(const talsh_tens_t * tens_block);
 //  Print tensor elements larger by absolute value than some threshold:
  void talshTensorPrintBody(const talsh_tens_t * tens_block, double thresh);
+// TAL-SH tensor slice API:
+//  Create an empty TAL-SH tensor slice:
+ int talshTensorSliceCreate(talsh_tens_slice_t ** slice);
+//  Clean an undefined TAL-SH tensor slice:
+ int talshTensorSliceClean(talsh_tens_slice_t * slice);
+//  Construct a TAL-SH tensor slice:
+ int talshTensorSliceConstruct(talsh_tens_slice_t * slice,
+                               const talsh_tens_t * tensor,
+                               const size_t * offsets,
+                               const int * dims,
+                               const int * divs = NULL,
+                               const int * grps = NULL);
+//  Get the volume of the TAL-SH tensor slice:
+ size_t talshTensorSliceVolume(const talsh_tens_slice_t * slice);
+//  Destruct a TAL-SH tensor slice:
+ int talshTensorSliceDestruct(talsh_tens_slice_t * slice);
+//  Destroy a TAL-SH tensor slice:
+ int talshTensorSliceDestroy(talsh_tens_slice_t * slice);
 // TAL-SH task API:
 //  Create a clean (defined-empty) TAL-SH task:
  int talshTaskCreate(talsh_task_t ** talsh_task);
@@ -288,6 +334,66 @@ extern "C"{
 //  Print TAL-SH task info:
  void talshTaskPrint(const talsh_task_t * talsh_task);
 // TAL-SH tensor operations API:
+//  Create an empty tensor operation:
+ int talshTensorOpCreate(talsh_tens_op_t ** tens_op);
+//  Clean an undefined tensor operation:
+ int talshTensorOpClean(talsh_tens_op_t * tens_op);
+//  Set a tensor operation argument (tensor slice):
+ int talshTensorOpSetArgument(talsh_tens_op_t * tens_op,
+                              const talsh_tens_t * tensor,
+                              const size_t * offsets,
+                              const int * dims);
+//  Specify the kind of the tensor operation:
+ int talshTensorOpSpecify(talsh_tens_op_t * tens_op,
+                          int operation_kind,
+                          int data_kind,
+                          const char * symbolic_pattern = NULL,
+                          double prefactor_real = 1.0,
+                          double prefactor_imag = 0.0);
+//  Preset execution device:
+ int talshTensorOpSetExecDevice(talsh_tens_op_t * tens_op,
+                                int dev_id,
+                                int dev_kind = DEV_DEFAULT);
+//  Activate tensor operation for subsequent processing (resources acquired):
+ int talshTensorOpActivate(talsh_tens_op_t * tens_op);
+//  Load input (extract input tensor slices):
+ int talshTensorOpLoadInput(talsh_tens_op_t * tens_op);
+//  Schedule tensor operation for execution of a given device:
+ int talshTensorOpExecute(talsh_tens_op_t * tens_op,
+                          int dev_id = DEV_DEFAULT,
+                          int dev_kind = DEV_DEFAULT);
+//  Test for tensor operation completion:
+ int talshTensorOpTest(talsh_tens_op_t * tens_op,
+                       int * completed,
+                       int wait = NOPE);
+//  Store output (insert/accumulate output tensor slice):
+ int talshTensorOpStoreOutput(talsh_tens_op_t * tens_op);
+//  Deactivate tensor operation (resources released):
+ int talshTensorOpDeactivate(talsh_tens_op_t * tens_op);
+//  Destruct tensor operation (back to an empty state):
+ int talshTensorOpDestruct(talsh_tens_op_t * tens_op);
+//  Destroy tensor operation:
+ int talshTensorOpDestroy(talsh_tens_op_t * tens_op);
+//  Progress tensor operation execution:
+ int talshTensorOpProgress(talsh_tens_op_t * tens_op, int * done);
+//  Get tensor argument volume:
+ size_t talshTensorOpGetArgVolume(const talsh_tens_op_t * tens_op,
+                                  unsigned int arg_num);
+//  Get tensor argument size in bytes:
+ size_t talshTensorOpGetArgSize(const talsh_tens_op_t * tens_op,
+                                unsigned int arg_num);
+//  Tensor operation byte count (memory requirements):
+ double talshTensorOpGetByteCount(const talsh_tens_op_t * tens_op,
+                                  unsigned int element_size = 1);
+//  Tensor operation floating point count (compute requirements):
+ double talshTensorOpGetFlopCount(const talsh_tens_op_t * tens_op);
+//  Tensor operation arithmetic intensity:
+ double talshTensorOpGetIntensity(const talsh_tens_op_t * tens_op);
+//  Tensor operation decomposition into two sub-operations:
+ int talshTensorOpDecompose2(const talsh_tens_op_t * tens_op, //in: parent tensor operation (defined on entrance)
+                             talsh_tens_op_t * child_op1,     //inout: children tensor operation 1 (empty on entrance)
+                             talsh_tens_op_t * child_op2);    //inout: children tensor operation 2 (empty on entrance)
+
 //  Place a tensor block on a specific device:
  int talshTensorPlace(talsh_tens_t * tens,               //inout: tensor block
                       int dev_id,                        //in: device id (flat or kind-specific)
@@ -368,10 +474,21 @@ extern "C"{
                          int dev_kind = DEV_DEFAULT,        //in: device kind (if present, <dev_id> is kind-specific)
                          int copy_ctrl = COPY_MTT,          //in: copy control (COPY_XXX), defaults to COPY_MTT
                          int accumulative = YEP,            //in: accumulate in (default) VS overwrite destination tensor: [YEP|NOPE]
-                         talsh_task_t * talsh_task = NULL); ////inout: TAL-SH task (must be clean)
+                         talsh_task_t * talsh_task = NULL); //inout: TAL-SH task (must be clean)
  int talshTensorContract_(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * ltens, talsh_tens_t * rtens,
                           double scale_real, double scale_imag, int dev_id, int dev_kind,
                           int copy_ctrl, int accumulative, talsh_task_t * talsh_task);
+//  Tensor contraction (extra large):
+ int talshTensorContractXL(const char * cptrn,          //in: C-string: symbolic contraction pattern, e.g. "D(a,b,c,d)+=L(c,i,j,a)*R(b,j,d,i)"
+                           talsh_tens_t * dtens,        //inout: destination tensor block
+                           talsh_tens_t * ltens,        //inout: left source tensor block
+                           talsh_tens_t * rtens,        //inout: right source tensor block
+                           double scale_real = 1.0,     //in: scaling value (real part), defaults to 1
+                           double scale_imag = 0.0,     //in: scaling value (imaginary part), defaults to 0
+                           int dev_id = DEV_DEFAULT,    //in: device id (flat or kind-specific)
+                           int dev_kind = DEV_DEFAULT); //in: device kind (if present, <dev_id> is kind-specific)
+ int talshTensorContractXL_(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * ltens, talsh_tens_t * rtens,
+                            double scale_real, double scale_imag, int dev_id, int dev_kind);
 // TAL-SH debugging:
 //  1-norm of the tensor body image on Host:
  double talshTensorImageNorm1_cpu(const talsh_tens_t * talsh_tens);

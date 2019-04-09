@@ -24,10 +24,11 @@
         logical, parameter:: TEST_NVTAL=.FALSE.
         logical, parameter:: TEST_C_TALSH=.TRUE.
         logical, parameter:: TEST_CXX_TALSH=.TRUE.
-        logical, parameter:: TEST_F_TALSH=.TRUE.
-        logical, parameter:: TEST_QC_TALSH=.TRUE.
-        logical, parameter:: TEST_NWCHEM=.TRUE.
-        logical, parameter:: TEST_COMPLEX=.TRUE.
+        logical, parameter:: TEST_XL_TALSH=.TRUE.
+        logical, parameter:: TEST_F_TALSH=.FALSE.
+        logical, parameter:: TEST_QC_TALSH=.FALSE.
+        logical, parameter:: TEST_NWCHEM=.FALSE.
+        logical, parameter:: TEST_COMPLEX=.FALSE.
         logical, parameter:: BENCH_TALSH_RND=.FALSE.
         logical, parameter:: BENCH_TALSH_CUSTOM=.FALSE.
 
@@ -42,6 +43,11 @@
           import
           integer(C_INT), intent(out):: ierr
          end subroutine test_talsh_cxx
+
+         subroutine test_talsh_xl(ierr) bind(c)
+          import
+          integer(C_INT), intent(out):: ierr
+         end subroutine test_talsh_xl
 
          subroutine test_talsh_qc(ierr) bind(c)
           import
@@ -85,6 +91,14 @@
         if(TEST_CXX_TALSH) then
          write(*,'("Testing TAL-SH C++11 API ...")')
          call test_talsh_cxx(ierr)
+         write(*,'("Done: Status ",i5)') ierr
+         if(ierr.ne.0) stop
+         write(*,*)''
+        endif
+!Test TAL-SH C/C++ XL API interface:
+        if(TEST_XL_TALSH) then
+         write(*,'("Testing TAL-SH C/C++ XL API ...")')
+         call test_talsh_xl(ierr)
          write(*,'("Done: Status ",i5)') ierr
          if(ierr.ne.0) stop
          write(*,*)''

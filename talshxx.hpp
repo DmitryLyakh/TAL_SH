@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/03/29
+REVISION: 2019/04/08
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -235,7 +235,7 @@ public:
                  const int device_id = 0);                //in: execution device id
 
  /** Performs accumulation of a tensor into the current tensor:
-     this += left * factor
+     this += left * scalar_factor
      Returns an error code (0:success). **/
  template <typename T>
  int accumulate(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)
@@ -243,10 +243,10 @@ public:
                 Tensor & left,                          //in: left tensor
                 const int device_kind = DEV_HOST,       //in: execution device kind
                 const int device_id = 0,                //in: execution device id
-                const T factor = TensorData<T>::unity); //in: alpha factor
+                const T factor = TensorData<T>::unity); //in: scalar factor
 
  /** Performs a tensor contraction of two tensors and accumulates the result into the current tensor:
-     this += left * right * factor
+     this += left * right * scalar_factor
      Returns an error code (0:success). **/
  template <typename T>
  int contractAccumulate(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)
@@ -255,8 +255,22 @@ public:
                         Tensor & right,                         //in: right tensor
                         const int device_kind = DEV_HOST,       //in: execution device kind
                         const int device_id = 0,                //in: execution device id
-                        const T factor = TensorData<T>::unity,  //in: scaling factor (alpha)
+                        const T factor = TensorData<T>::unity,  //in: scalar factor (alpha)
                         bool accumulative = true);              //in: accumulate versus overwrite the destination tensor
+
+ /** Performs an extra large tensor contraction of two tensors and accumulates the result into the current tensor:
+     this += left * right * scalar_factor
+     Regardless of the chosen execution device, this operation is blocking and the result will be available on Host.
+     Returns an error code (0:success). **/
+ template <typename T>
+ int contractAccumulateXL(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)
+                          const std::string & pattern,            //in: contraction pattern string
+                          Tensor & left,                          //in: left tensor
+                          Tensor & right,                         //in: right tensor
+                          const int device_kind = DEV_HOST,       //in: execution device kind
+                          const int device_id = 0,                //in: execution device id
+                          const T factor = TensorData<T>::unity,  //in: scalar factor (alpha)
+                          bool accumulative = true);              //in: accumulate versus overwrite the destination tensor
 
  /** Performs a matrix multiplication on two tensors and accumulates the result into the current tensor.
      Returns an error code (0:success). **/
@@ -266,7 +280,7 @@ public:
                         Tensor & right,                         //in: right tensor
                         const int device_kind = DEV_HOST,       //in: execution device kind
                         const int device_id = 0,                //in: execution device id
-                        const T factor = TensorData<T>::unity); //in: scaling factor (alpha)
+                        const T factor = TensorData<T>::unity); //in: scalar factor (alpha)
 
  /** Prints the tensor info. **/
  void print() const;
@@ -345,6 +359,14 @@ int unpinHostMemory(T * host_ptr)
 {
  return host_mem_unregister((void*)host_ptr);
 }
+
+// Max allocatable tensor size (bytes) in the device buffer per specified device:
+std::size_t getDeviceMaxTensorSize(const int device_kind = DEV_HOST, //in: device kind
+                                   const int device_id = 0);         //in: device id
+
+// Max device memory buffer size (bytes) per specified device:
+std::size_t getDeviceMaxBufferSize(const int device_kind = DEV_HOST, //in: device kind
+                                   const int device_id = 0);         //in: device id
 
 
 //Template definitions:
@@ -580,14 +602,14 @@ int Tensor::setValue(TensorTask * task_handle, //out: task handle associated wit
 
 
 /** Performs accumulation of a tensor into the current tensor:
-    this += left * factor **/
+    this += left * scalar_factor **/
 template <typename T>
 int Tensor::accumulate(TensorTask * task_handle,    //out: task handle associated with this operation or nullptr (synchronous)
                        const std::string & pattern, //in: accumulation pattern string
                        Tensor & left,               //in: left tensor
                        const int device_kind,       //in: execution device kind
                        const int device_id,         //in: execution device id
-                       const T factor)              //in: alpha factor
+                       const T factor)              //in: scalar factor
 {
  int errc = TALSH_SUCCESS;
  this->completeWriteTask();
@@ -618,7 +640,7 @@ int Tensor::accumulate(TensorTask * task_handle,    //out: task handle associate
 
 
 /** Performs a tensor contraction of two tensors and accumulates the result into the current tensor:
-    this += left * right * factor **/
+    this += left * right * scalar_factor **/
 template <typename T>
 int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle associated with this operation or nullptr (synchronous)
                                const std::string & pattern, //in: contraction pattern string
@@ -626,7 +648,7 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
                                Tensor & right,              //in: right tensor
                                const int device_kind,       //in: execution device kind
                                const int device_id,         //in: execution device id
-                               const T factor,              //in: scaling factor (alpha)
+                               const T factor,              //in: scalar factor (alpha)
                                bool accumulative)           //in: accumulate in (default) VS overwrite destination tensor
 {
  int errc = TALSH_SUCCESS;
@@ -661,6 +683,42 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
 }
 
 
+/** Performs an extra large tensor contraction of two tensors and accumulates the result into the current tensor:
+    this += left * right * scalar_factor **/
+template <typename T>
+int Tensor::contractAccumulateXL(TensorTask * task_handle,    //out: task handle associated with this operation or nullptr (synchronous)
+                                 const std::string & pattern, //in: contraction pattern string
+                                 Tensor & left,               //in: left tensor
+                                 Tensor & right,              //in: right tensor
+                                 const int device_kind,       //in: execution device kind
+                                 const int device_id,         //in: execution device id
+                                 const T factor,              //in: scalar factor (alpha)
+                                 bool accumulative)           //in: accumulate in (default) VS overwrite destination tensor
+{
+ int errc = TALSH_SUCCESS;
+ this->completeWriteTask();
+ int accum = YEP; if(!accumulative) accum=NOPE;
+ const char * contr_ptrn = pattern.c_str();
+ talsh_tens_t * dtens = this->getTalshTensorPtr();
+ talsh_tens_t * ltens = left.getTalshTensorPtr();
+ talsh_tens_t * rtens = right.getTalshTensorPtr();
+ if(task_handle != nullptr){ //asynchronous
+  assert(task_handle->isEmpty());
+  //++left; ++right; ++(*this);
+  errc = talshTensorContractXL(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::contractAccumulateXL): talshTensorContractXL error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+ }else{ //synchronous
+  errc = talshTensorContractXL(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::contractAccumulateXL): talshTensorContractXL error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+ }
+ return errc;
+}
+
+
 /** Performs a matrix multiplication on two tensors and accumulates the result into the current tensor. **/
 template <typename T>
 int Tensor::multiplyAccumulate(TensorTask * task_handle, //out: task handle associated with this operation or nullptr (synchronous)
@@ -668,7 +726,7 @@ int Tensor::multiplyAccumulate(TensorTask * task_handle, //out: task handle asso
                                Tensor & right,           //in: right tensor
                                const int device_kind,    //in: execution device kind
                                const int device_id,      //in: execution device id
-                               const T factor)           //in: alpha factor
+                               const T factor)           //in: scalar factor
 {
  int errc = TALSH_SUCCESS;
  char cptrn[MAX_CONTRACTION_PATTERN_LEN];

@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h" when appropriate!
-!REVISION: 2019/03/21
+!REVISION: 2019/04/01
 
 !Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -181,24 +181,32 @@
 #endif
 
 !INTEROPERABLE TYPES (keep consistent with tensor_algebra.h):
+ !TAL-SH tensor signature:
+        type, public, bind(C):: talsh_tens_signature_t
+         integer(C_INT):: num_dim=-1      !tensor rank (number of dimensions): >=0; -1:empty
+         type(C_PTR):: offsets=C_NULL_PTR !tensor signature (C_SIZE_T integer per tensor dimension)
+        end type talsh_tens_signature_t
  !TAL-SH tensor shape:
         type, public, bind(C):: talsh_tens_shape_t
          integer(C_INT):: num_dim=-1   !tensor rank (number of dimensions): >=0; -1:empty
-         type(C_PTR):: dims=C_NULL_PTR !tensor dimension extents
-         type(C_PTR):: divs=C_NULL_PTR !tensor dimension dividers
-         type(C_PTR):: grps=C_NULL_PTR !tensor dimension groups
+         type(C_PTR):: dims=C_NULL_PTR !tensor dimension extents (C_INT integer)
+         type(C_PTR):: divs=C_NULL_PTR !tensor dimension dividers (C_INT integer)
+         type(C_PTR):: grps=C_NULL_PTR !tensor dimension groups (C_INT integer)
         end type talsh_tens_shape_t
- !TAL-SH tensor signature:
-        type, public, bind(C):: talsh_tens_signature_t
-         integer(C_INT):: num_dim=-1        !tensor rank (number of dimensions): >=0; -1:empty
-         type(C_PTR):: signature=C_NULL_PTR !tensor signature (long integer per tensor dimension)
-        end type talsh_tens_signature_t
  !TAL-SH tensor data:
         type, public, bind(C):: talsh_tens_data_t
          type(C_PTR):: base=C_NULL_PTR      !pointer to the tensor data (body)
          integer(C_SIZE_T):: volume=0       !data volume (number of elements)
          integer(C_INT):: data_kind=NO_TYPE !data kind of each tensor element
         end type talsh_tens_data_t
+ !TAL-SH dense tensor block:
+        type, public, bind(C):: talsh_tens_dense_t
+         integer(C_INT):: num_dim=-1
+         integer(C_INT):: data_kind=NO_TYPE
+         type(C_PTR):: body=C_NULL_PTR
+         integer(C_SIZE_T):: bases(MAX_TENSOR_RANK)
+         integer(C_SIZE_T):: dims(MAX_TENSOR_RANK)
+        end type talsh_tens_dense_t
 
 !EXTERNAL INTERFACES (keep consistent with tensor_algebra.h when appropriate):
  !User-defined tensor block initialization/update class (stateful):
@@ -275,6 +283,18 @@
           implicit none
           integer(C_INT), value, intent(in):: gpu_num
          end function arg_buf_clean_gpu
+#endif
+  !Get the max allocatable size (bytes) in the Host argument buffer:
+         integer(C_SIZE_T) function get_blck_max_size_host() bind(c,name='get_blck_max_size_host')
+          import
+         end function get_blck_max_size_host
+#ifndef NO_GPU
+  !Get the max allocatable size (bytes) in the GPU argument buffer:
+         integer(C_SIZE_T) function get_blck_max_size_gpu(gpu_num) bind(c,name='get_blck_max_size_gpu')
+          import
+          implicit none
+          integer(C_INT), value, intent(in):: gpu_num
+         end function get_blck_max_size_gpu
 #endif
   !Get the buffer block sizes for each level of the Host argument buffer:
          integer(C_INT) function get_blck_buf_sizes_host(blck_sizes) bind(c,name='get_blck_buf_sizes_host')
