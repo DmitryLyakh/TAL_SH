@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/04/08
+REVISION: 2019/04/09
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -2987,6 +2987,23 @@ int talshTensorOpDecompose2(         //out: error code
  return errc;
 }
 
+void talshTensorOpPrint(const talsh_tens_op_t * tens_op)
+{
+#pragma omp flush
+ printf("OP: %d:",tens_op->opkind);
+ for(int i = 0; i < tens_op->num_args; ++i){
+  const talsh_tens_slice_t * slice = &(tens_op->tens_slice[i]);
+  const int n = talshTensorRank(slice->tensor);
+  printf(" Tensor%d[",i);
+  for(int j = 0; j < n; ++j) printf("%lu,",slice->bases.offsets[j]);
+  printf("](");
+  for(int j = 0; j < n; ++j) printf("%d,",slice->shape.dims[j]);
+  printf(")");
+ }
+ printf("\n");
+ return;
+}
+
 int talshTensorPlace(talsh_tens_t * tens,
                      int dev_id,
                      int dev_kind,
@@ -4674,6 +4691,7 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
          tm = time_sys_sec();
          for(int opn = 0; opn < inlen; ++opn){
           errc = talshTensorOpSetExecDevice(inq[opn],dev_id,dev_kind); if(errc != TALSH_SUCCESS) break;
+          talshTensorOpPrint(inq[opn]); //debug
          }
          // Execute all tensor operations:
          if(errc == TALSH_SUCCESS){

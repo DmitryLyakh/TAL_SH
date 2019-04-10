@@ -190,12 +190,18 @@ void test_talsh_cxx(int * ierr)
 #else
  int device = DEV_HOST;
 #endif
+ std::size_t host_buf_size = static_cast<std::size_t>(1024*1024*1024)*2;
 
  *ierr=0;
  //Initialize TAL-SH:
- talsh::initialize();
- //Check max tensor size:
- std::cout << "Max tensor size on accelerator = " << talsh::getDeviceMaxTensorSize(device,0) << std::endl;
+ talsh::initialize(&host_buf_size);
+ //Check max buffer/tensor size:
+ if(device != DEV_HOST){
+  std::cout << " Max buffer size on Host             = " << talsh::getDeviceMaxBufferSize(DEV_HOST,0) << std::endl;
+  std::cout << " Max tensor size on Host             = " << talsh::getDeviceMaxTensorSize(DEV_HOST,0) << std::endl;
+ }
+ std::cout << " Max buffer size on execution device = " << talsh::getDeviceMaxBufferSize(device,0) << std::endl;
+ std::cout << " Max tensor size on execution device = " << talsh::getDeviceMaxTensorSize(device,0) << std::endl;
 
  //Test tensor contraction (brackets are needed to push talsh::shutdown() out of scope):
  {

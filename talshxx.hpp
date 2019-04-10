@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/04/08
+REVISION: 2019/04/09
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -380,8 +380,8 @@ Tensor::Impl::Impl(const std::initializer_list<std::size_t> signature, //tensor 
  static_assert(TensorData<T>::supported,"Tensor data type is not supported!");
  int errc = talshTensorClean(&tensor_); assert(errc == TALSH_SUCCESS);
  const int rank = static_cast<int>(dims.size());
- errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),NULL,-1,NULL,
-                             realPart(init_val),imagPart(init_val));
+ errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),NULL,0,
+                             NULL,realPart(init_val),imagPart(init_val));
  assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
  write_task_ = nullptr;
 }
@@ -395,8 +395,8 @@ Tensor::Impl::Impl(const std::vector<std::size_t> & signature, //tensor signatur
  static_assert(TensorData<T>::supported,"Tensor data type is not supported!");
  int errc = talshTensorClean(&tensor_); assert(errc == TALSH_SUCCESS);
  const int rank = static_cast<int>(dims.size());
- errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),NULL,-1,NULL,
-                             realPart(init_val),imagPart(init_val));
+ errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),NULL,0,
+                             NULL,realPart(init_val),imagPart(init_val));
  assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
  write_task_ = nullptr;
 }
@@ -410,7 +410,7 @@ Tensor::Impl::Impl(const std::vector<std::size_t> & signature, //tensor signatur
  static_assert(TensorData<T>::supported,"Tensor data type is not supported!");
  int errc = talshTensorClean(&tensor_); assert(errc == TALSH_SUCCESS);
  const int rank = static_cast<int>(dims.size());
- errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),NULL);
+ errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),NULL,0);
  assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
  std::size_t vol = talshTensorVolume(&tensor_); assert(vol <= ext_data.size());
  errc = talshTensorImportData(&tensor_,TensorData<T>::kind,static_cast<const void*>(ext_data.data()));
@@ -433,8 +433,8 @@ Tensor::Impl::Impl(const std::initializer_list<std::size_t> signature, //tensor 
   errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem);
  }else{
   std::cout << "FATAL: Initialization of tensors with external memory storage is not implemented in TAL-SH yet!" << std::endl; assert(false);
-  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem,-1,NULL,
-                              realPart(*init_val),imagPart(*init_val));
+  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem,-1,
+                              NULL,realPart(*init_val),imagPart(*init_val));
  }
  assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
  write_task_ = nullptr;
@@ -455,8 +455,8 @@ Tensor::Impl::Impl(const std::vector<std::size_t> & signature, //tensor signatur
   errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem);
  }else{
   std::cout << "FATAL: Initialization of tensors with external memory storage is not implemented in TAL-SH yet!" << std::endl; assert(false);
-  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem,-1,NULL,
-                              realPart(*init_val),imagPart(*init_val));
+  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem,-1,
+                              NULL,realPart(*init_val),imagPart(*init_val));
  }
  assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
  write_task_ = nullptr;
@@ -582,7 +582,7 @@ int Tensor::setValue(TensorTask * task_handle, //out: task handle associated wit
  if(task_handle != nullptr){ //asynchronous
   assert(task_handle->isEmpty());
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
-  errc = talshTensorInit(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_T,task_hl);
+  errc = talshTensorInit(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_M,task_hl);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::setValue): talshTensorInit error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -592,7 +592,7 @@ int Tensor::setValue(TensorTask * task_handle, //out: task handle associated wit
    task_handle->clean();
   }
  }else{ //synchronous
-  errc = talshTensorInit(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_T);
+  errc = talshTensorInit(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_M);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::setValue): talshTensorInit error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -620,7 +620,7 @@ int Tensor::accumulate(TensorTask * task_handle,    //out: task handle associate
   assert(task_handle->isEmpty());
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   //++left; ++right; ++(*this);
-  errc = talshTensorAdd(contr_ptrn,dtens,ltens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_TT,task_hl);
+  errc = talshTensorAdd(contr_ptrn,dtens,ltens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MT,task_hl);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::accumulate): talshTensorAdd error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -630,7 +630,7 @@ int Tensor::accumulate(TensorTask * task_handle,    //out: task handle associate
    task_handle->clean();
   }
  }else{ //synchronous
-  errc = talshTensorAdd(contr_ptrn,dtens,ltens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_TT);
+  errc = talshTensorAdd(contr_ptrn,dtens,ltens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MT);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::accumulate): talshTensorAdd error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -653,7 +653,7 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
 {
  int errc = TALSH_SUCCESS;
  this->completeWriteTask();
- int accum = YEP; if(!accumulative) accum=NOPE;
+ int accum = YEP; if(!accumulative) accum = NOPE;
  const char * contr_ptrn = pattern.c_str();
  talsh_tens_t * dtens = this->getTalshTensorPtr();
  talsh_tens_t * ltens = left.getTalshTensorPtr();
@@ -663,7 +663,7 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   //++left; ++right; ++(*this);
   errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,
-                             COPY_TTT,accum,task_hl);
+                             COPY_MTT,accum,task_hl);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -674,7 +674,7 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
   }
  }else{ //synchronous
   errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,
-                             COPY_TTT,accum);
+                             COPY_MTT,accum);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -697,7 +697,7 @@ int Tensor::contractAccumulateXL(TensorTask * task_handle,    //out: task handle
 {
  int errc = TALSH_SUCCESS;
  this->completeWriteTask();
- int accum = YEP; if(!accumulative) accum=NOPE;
+ int accum = YEP; if(!accumulative) accum = NOPE;
  const char * contr_ptrn = pattern.c_str();
  talsh_tens_t * dtens = this->getTalshTensorPtr();
  talsh_tens_t * ltens = left.getTalshTensorPtr();

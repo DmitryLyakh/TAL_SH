@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2019/04/08
+REVISION: 2019/04/09
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -393,6 +393,8 @@ extern "C"{
  int talshTensorOpDecompose2(const talsh_tens_op_t * tens_op, //in: parent tensor operation (defined on entrance)
                              talsh_tens_op_t * child_op1,     //inout: children tensor operation 1 (empty on entrance)
                              talsh_tens_op_t * child_op2);    //inout: children tensor operation 2 (empty on entrance)
+//  Print tensor operation:
+ void talshTensorOpPrint(const talsh_tens_op_t * tens_op);
 
 //  Place a tensor block on a specific device:
  int talshTensorPlace(talsh_tens_t * tens,               //inout: tensor block
