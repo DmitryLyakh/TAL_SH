@@ -227,9 +227,11 @@ int Tensor::extractSlice(TensorTask * task_handle,         //out: task handle as
                          Tensor & slice,                   //inout: extracted tensor slice
                          const std::vector<int> & offsets, //in: base offsets of the slice (0-based)
                          const int device_kind,            //in: execution device kind
-                         const int device_id)              //in: execution device id
+                         const int device_id,              //in: execution device id
+                         bool accumulative)                //in: accumulative VS overwrite (defaults to overwrite)
 {
  int errc = TALSH_SUCCESS;
+ int accum = NOPE; if(accumulative) accum = YEP;
  this->completeWriteTask();
  talsh_tens_t * ltens = this->getTalshTensorPtr();
  talsh_tens_t * dtens = slice.getTalshTensorPtr();
@@ -237,7 +239,7 @@ int Tensor::extractSlice(TensorTask * task_handle,         //out: task handle as
   assert(task_handle->isEmpty());
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   //++left; ++right; ++(*this);
-  errc = talshTensorSlice(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,NOPE,task_hl);
+  errc = talshTensorSlice(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,accum,task_hl);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::extractSlice): talshTensorSlice error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -247,7 +249,7 @@ int Tensor::extractSlice(TensorTask * task_handle,         //out: task handle as
    task_handle->clean();
   }
  }else{ //synchronous
-  errc = talshTensorSlice(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT);
+  errc = talshTensorSlice(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,accum);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::extractSlice): talshTensorSlice error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -260,9 +262,11 @@ int Tensor::insertSlice(TensorTask * task_handle,         //out: task handle ass
                         Tensor & slice,                   //inout: inserted tensor slice
                         const std::vector<int> & offsets, //in: base offsets of the slice (0-based)
                         const int device_kind,            //in: execution device kind
-                        const int device_id)              //in: execution device id
+                        const int device_id,              //in: execution device id
+                        bool accumulative)                //in: accumulative VS overwrite (defaults to overwrite)
 {
  int errc = TALSH_SUCCESS;
+ int accum = NOPE; if(accumulative) accum = YEP;
  this->completeWriteTask();
  talsh_tens_t * dtens = this->getTalshTensorPtr();
  talsh_tens_t * ltens = slice.getTalshTensorPtr();
@@ -270,7 +274,7 @@ int Tensor::insertSlice(TensorTask * task_handle,         //out: task handle ass
   assert(task_handle->isEmpty());
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   //++left; ++right; ++(*this);
-  errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,NOPE,task_hl);
+  errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,accum,task_hl);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::insertSlice): talshTensorInsert error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -280,7 +284,7 @@ int Tensor::insertSlice(TensorTask * task_handle,         //out: task handle ass
    task_handle->clean();
   }
  }else{ //synchronous
-  errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT);
+  errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,accum);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::insertSlice): talshTensorInsert error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);

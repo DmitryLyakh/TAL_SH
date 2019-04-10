@@ -2304,9 +2304,14 @@
 	integer i,j,k,l,m,n,ks,kf,tlt,slt
 	integer(LONGINT) ls
 	character(2) dtk
+	complex(8) beta
 	logical res
 
 	ierr=0
+	beta=(0d0,0d0)
+	if(present(accumulative)) then
+	 if(accumulative) beta=(1d0,0d0)
+	endif
 	if(tens%tensor_shape%num_dim.eq.slice%tensor_shape%num_dim) then
 	 n=tens%tensor_shape%num_dim
 	 if(n.gt.0) then !true tensor
@@ -2375,16 +2380,20 @@
 	     select case(dtk)
 	     case('r4','R4')
 	      call tensor_block_slice_dlf(n,tens%data_real4,tens%tensor_shape%dim_extent,&
-	            &slice%data_real4,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=21; return; endif
+	            &slice%data_real4,slice%tensor_shape%dim_extent,ext_beg,ierr,beta=real(beta,4))
+	      if(ierr.ne.0) then; ierr=21; return; endif
 	     case('r8','R8')
 	      call tensor_block_slice_dlf(n,tens%data_real8,tens%tensor_shape%dim_extent,&
-	            &slice%data_real8,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=22; return; endif
+	            &slice%data_real8,slice%tensor_shape%dim_extent,ext_beg,ierr,beta=real(beta,8))
+	      if(ierr.ne.0) then; ierr=22; return; endif
 	     case('c4','C4')
 	      call tensor_block_slice_dlf(n,tens%data_cmplx4,tens%tensor_shape%dim_extent,&
-	            &slice%data_cmplx4,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=23; return; endif
+	            &slice%data_cmplx4,slice%tensor_shape%dim_extent,ext_beg,ierr,beta=cmplx(real(beta),aimag(beta),4))
+	      if(ierr.ne.0) then; ierr=23; return; endif
 	     case('c8','C8')
 	      call tensor_block_slice_dlf(n,tens%data_cmplx8,tens%tensor_shape%dim_extent,&
-	            &slice%data_cmplx8,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=24; return; endif
+	            &slice%data_cmplx8,slice%tensor_shape%dim_extent,ext_beg,ierr,beta=beta)
+	      if(ierr.ne.0) then; ierr=24; return; endif
 	     end select
 	    case(bricked_dense,bricked_ordered)
 	     !`Future
@@ -2403,7 +2412,7 @@
 	   endif
 	  endif
 	 elseif(n.eq.0) then !scalar
-	  slice%scalar_value=tens%scalar_value
+	  slice%scalar_value=slice%scalar_value*beta+tens%scalar_value
 	 else !empty tensors
 	  ierr=28
 	 endif
@@ -2439,8 +2448,13 @@
 	integer i,j,k,l,m,n,ks,kf,tlt,slt
 	integer(LONGINT) ls
 	character(2) dtk,stk
+	complex(8) beta
 
 	ierr=0
+	beta=(0d0,0d0)
+	if(present(accumulative)) then
+	 if(accumulative) beta=(1d0,0d0)
+	endif
 	if(tens%tensor_shape%num_dim.eq.slice%tensor_shape%num_dim) then
 	 n=tens%tensor_shape%num_dim
 	 if(n.gt.0) then !true tensor
@@ -2521,16 +2535,20 @@
 	     select case(dtk)
 	     case('r4','R4')
 	      call tensor_block_insert_dlf(n,tens%data_real4,tens%tensor_shape%dim_extent,&
-	            &slice%data_real4,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=25; return; endif
+	            &slice%data_real4,slice%tensor_shape%dim_extent,ext_beg,ierr,beta=real(beta,4))
+	      if(ierr.ne.0) then; ierr=25; return; endif
 	     case('r8','R8')
 	      call tensor_block_insert_dlf(n,tens%data_real8,tens%tensor_shape%dim_extent,&
-	            &slice%data_real8,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=26; return; endif
+	            &slice%data_real8,slice%tensor_shape%dim_extent,ext_beg,ierr,beta=real(beta,8))
+	      if(ierr.ne.0) then; ierr=26; return; endif
 	     case('c4','C4')
 	      call tensor_block_insert_dlf(n,tens%data_cmplx4,tens%tensor_shape%dim_extent,&
-	            &slice%data_cmplx4,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=27; return; endif
+	            &slice%data_cmplx4,slice%tensor_shape%dim_extent,ext_beg,ierr,beta=cmplx(real(beta),aimag(beta),4))
+	      if(ierr.ne.0) then; ierr=27; return; endif
 	     case('c8','C8')
 	      call tensor_block_insert_dlf(n,tens%data_cmplx8,tens%tensor_shape%dim_extent,&
-	            &slice%data_cmplx8,slice%tensor_shape%dim_extent,ext_beg,ierr); if(ierr.ne.0) then; ierr=28; return; endif
+	            &slice%data_cmplx8,slice%tensor_shape%dim_extent,ext_beg,ierr,beta=beta)
+	      if(ierr.ne.0) then; ierr=28; return; endif
 	     end select
 	    case(bricked_dense,bricked_ordered)
 	     !`Future
@@ -2549,7 +2567,7 @@
 	   endif
 	  endif
 	 elseif(n.eq.0) then !scalar
-	  tens%scalar_value=slice%scalar_value
+	  tens%scalar_value=tens%scalar_value*beta+slice%scalar_value
 	 else !empty tensors
 	  ierr=32
 	 endif
@@ -5809,11 +5827,11 @@
          if(present(ierr)) ierr=errc
          return
         end subroutine array_free_c8
-!-----------------------------------------------------------------------------------------------
+!----------------------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_slice_dlf_r4
 #endif
-	subroutine tensor_block_slice_dlf_r4(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr) !PARALLEL
+	subroutine tensor_block_slice_dlf_r4(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr,alpha,beta) !PARALLEL
 !This subroutine extracts a slice from a tensor block.
 !INPUT:
 ! - dim_num - number of tensor dimensions;
@@ -5834,8 +5852,11 @@
 	real(real_kind), intent(in):: tens(0:*)
 	real(real_kind), intent(out):: slice(0:*)
 	integer, intent(inout):: ierr
+	real(real_kind), intent(in), optional:: alpha
+	real(real_kind), intent(in), optional:: beta
 	integer i,j,k,l,m,n,ks,kf,im(1:dim_num)
 	integer(LONGINT):: lts,lss,l_in,l_out,lb,le,ll,bases_in(1:dim_num),bases_out(1:dim_num),segs(0:MAX_THREADS) !`Is segs(:) threadsafe?
+	real(real_kind) alf,bet
 	real(8) time_beg
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
@@ -5844,6 +5865,8 @@
 
 	ierr=0
 !	time_beg=thread_wtime() !debug
+	alf=1.0; if(present(alpha)) alf=alpha
+	bet=0.0; if(present(beta)) bet=beta
 	if(dim_num.gt.0) then
 	 lts=1_LONGINT; do i=1,dim_num; bases_in(i)=lts; lts=lts*tens_ext(i); enddo   !tensor block indexing bases
 	 lss=1_LONGINT; do i=1,dim_num; bases_out(i)=lss; lss=lss*slice_ext(i); enddo !slice indexing bases
@@ -5863,7 +5886,9 @@
 	 lb=int(im(1),LONGINT); le=int(slice_ext(1)-1,LONGINT); l_out=segs(n)-lb
 	 sloop: do while(l_out+lb.lt.segs(n+1))
 	  le=min(le,segs(n+1)-1_LONGINT-l_out) !to avoid different threads doing the same work
-	  do ll=lb,le; slice(l_out+ll)=tens(l_in+ll); enddo
+	  do ll=lb,le
+	   slice(l_out+ll)=slice(l_out+ll)*bet+tens(l_in+ll)*alf
+	  enddo
 	  l_out=l_out+le+1_LONGINT; lb=0_LONGINT
 	  do i=2,dim_num
 	   if(im(i)+1.lt.slice_ext(i)) then
@@ -5881,11 +5906,11 @@
 !        thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_slice_dlf_r4
-!-----------------------------------------------------------------------------------------------
+!----------------------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_slice_dlf_r8
 #endif
-	subroutine tensor_block_slice_dlf_r8(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr) !PARALLEL
+	subroutine tensor_block_slice_dlf_r8(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr,alpha,beta) !PARALLEL
 !This subroutine extracts a slice from a tensor block.
 !INPUT:
 ! - dim_num - number of tensor dimensions;
@@ -5906,8 +5931,11 @@
 	real(real_kind), intent(in):: tens(0:*)
 	real(real_kind), intent(out):: slice(0:*)
 	integer, intent(inout):: ierr
+	real(real_kind), intent(in), optional:: alpha
+	real(real_kind), intent(in), optional:: beta
 	integer i,j,k,l,m,n,ks,kf,im(1:dim_num)
 	integer(LONGINT):: lts,lss,l_in,l_out,lb,le,ll,bases_in(1:dim_num),bases_out(1:dim_num),segs(0:MAX_THREADS) !`Is segs(:) threadsafe?
+	real(real_kind) alf,bet
 	real(8) time_beg
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
@@ -5916,6 +5944,8 @@
 
 	ierr=0
 !	time_beg=thread_wtime() !debug
+	alf=1d0; if(present(alpha)) alf=alpha
+	bet=0d0; if(present(beta)) bet=beta
 	if(dim_num.gt.0) then
 	 lts=1_LONGINT; do i=1,dim_num; bases_in(i)=lts; lts=lts*tens_ext(i); enddo   !tensor block indexing bases
 	 lss=1_LONGINT; do i=1,dim_num; bases_out(i)=lss; lss=lss*slice_ext(i); enddo !slice indexing bases
@@ -5935,7 +5965,9 @@
 	 lb=int(im(1),LONGINT); le=int(slice_ext(1)-1,LONGINT); l_out=segs(n)-lb
 	 sloop: do while(l_out+lb.lt.segs(n+1))
 	  le=min(le,segs(n+1)-1_LONGINT-l_out) !to avoid different threads doing the same work
-	  do ll=lb,le; slice(l_out+ll)=tens(l_in+ll); enddo
+	  do ll=lb,le
+	   slice(l_out+ll)=slice(l_out+ll)*bet+tens(l_in+ll)*alf
+	  enddo
 	  l_out=l_out+le+1_LONGINT; lb=0_LONGINT
 	  do i=2,dim_num
 	   if(im(i)+1.lt.slice_ext(i)) then
@@ -5953,11 +5985,11 @@
 !        thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_slice_dlf_r8
-!-----------------------------------------------------------------------------------------------
+!----------------------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_slice_dlf_c4
 #endif
-	subroutine tensor_block_slice_dlf_c4(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr) !PARALLEL
+	subroutine tensor_block_slice_dlf_c4(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr,alpha,beta) !PARALLEL
 !This subroutine extracts a slice from a tensor block.
 !INPUT:
 ! - dim_num - number of tensor dimensions;
@@ -5978,8 +6010,11 @@
 	complex(real_kind), intent(in):: tens(0:*)
 	complex(real_kind), intent(out):: slice(0:*)
 	integer, intent(inout):: ierr
+	complex(real_kind), intent(in), optional:: alpha
+	complex(real_kind), intent(in), optional:: beta
 	integer i,j,k,l,m,n,ks,kf,im(1:dim_num)
 	integer(LONGINT):: lts,lss,l_in,l_out,lb,le,ll,bases_in(1:dim_num),bases_out(1:dim_num),segs(0:MAX_THREADS) !`Is segs(:) threadsafe?
+	complex(real_kind) alf,bet
 	real(8) time_beg
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
@@ -5988,6 +6023,8 @@
 
 	ierr=0
 !	time_beg=thread_wtime() !debug
+	alf=(1.0,0.0); if(present(alpha)) alf=alpha
+	bet=(0.0,0.0); if(present(beta)) bet=beta
 	if(dim_num.gt.0) then
 	 lts=1_LONGINT; do i=1,dim_num; bases_in(i)=lts; lts=lts*tens_ext(i); enddo   !tensor block indexing bases
 	 lss=1_LONGINT; do i=1,dim_num; bases_out(i)=lss; lss=lss*slice_ext(i); enddo !slice indexing bases
@@ -6007,7 +6044,9 @@
 	 lb=int(im(1),LONGINT); le=int(slice_ext(1)-1,LONGINT); l_out=segs(n)-lb
 	 sloop: do while(l_out+lb.lt.segs(n+1))
 	  le=min(le,segs(n+1)-1_LONGINT-l_out) !to avoid different threads doing the same work
-	  do ll=lb,le; slice(l_out+ll)=tens(l_in+ll); enddo
+	  do ll=lb,le
+	   slice(l_out+ll)=slice(l_out+ll)*bet+tens(l_in+ll)*alf
+	  enddo
 	  l_out=l_out+le+1_LONGINT; lb=0_LONGINT
 	  do i=2,dim_num
 	   if(im(i)+1.lt.slice_ext(i)) then
@@ -6025,11 +6064,11 @@
 !        thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_slice_dlf_c4
-!-----------------------------------------------------------------------------------------------
+!----------------------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_slice_dlf_c8
 #endif
-	subroutine tensor_block_slice_dlf_c8(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr) !PARALLEL
+	subroutine tensor_block_slice_dlf_c8(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr,alpha,beta) !PARALLEL
 !This subroutine extracts a slice from a tensor block.
 !INPUT:
 ! - dim_num - number of tensor dimensions;
@@ -6050,8 +6089,11 @@
 	complex(real_kind), intent(in):: tens(0:*)
 	complex(real_kind), intent(out):: slice(0:*)
 	integer, intent(inout):: ierr
+	complex(real_kind), intent(in), optional:: alpha
+	complex(real_kind), intent(in), optional:: beta
 	integer i,j,k,l,m,n,ks,kf,im(1:dim_num)
 	integer(LONGINT):: lts,lss,l_in,l_out,lb,le,ll,bases_in(1:dim_num),bases_out(1:dim_num),segs(0:MAX_THREADS) !`Is segs(:) threadsafe?
+	complex(real_kind) alf,bet
 	real(8) time_beg
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
@@ -6060,6 +6102,8 @@
 
 	ierr=0
 !	time_beg=thread_wtime() !debug
+	alf=(1d0,0d0); if(present(alpha)) alf=alpha
+	bet=(0d0,0d0); if(present(beta)) bet=beta
 	if(dim_num.gt.0) then
 	 lts=1_LONGINT; do i=1,dim_num; bases_in(i)=lts; lts=lts*tens_ext(i); enddo   !tensor block indexing bases
 	 lss=1_LONGINT; do i=1,dim_num; bases_out(i)=lss; lss=lss*slice_ext(i); enddo !slice indexing bases
@@ -6079,7 +6123,9 @@
 	 lb=int(im(1),LONGINT); le=int(slice_ext(1)-1,LONGINT); l_out=segs(n)-lb
 	 sloop: do while(l_out+lb.lt.segs(n+1))
 	  le=min(le,segs(n+1)-1_LONGINT-l_out) !to avoid different threads doing the same work
-	  do ll=lb,le; slice(l_out+ll)=tens(l_in+ll); enddo
+	  do ll=lb,le
+	   slice(l_out+ll)=slice(l_out+ll)*bet+tens(l_in+ll)*alf
+	  enddo
 	  l_out=l_out+le+1_LONGINT; lb=0_LONGINT
 	  do i=2,dim_num
 	   if(im(i)+1.lt.slice_ext(i)) then
@@ -6097,11 +6143,11 @@
 !        thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_slice_dlf_c8
-!------------------------------------------------------------------------------------------------
+!-----------------------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_insert_dlf_r4
 #endif
-	subroutine tensor_block_insert_dlf_r4(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr) !PARALLEL
+	subroutine tensor_block_insert_dlf_r4(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr,alpha,beta) !PARALLEL
 !This subroutine inserts a slice into a tensor block.
 !INPUT:
 ! - dim_num - number of tensor dimensions;
@@ -6122,8 +6168,11 @@
 	real(real_kind), intent(in):: slice(0:*)
 	real(real_kind), intent(inout):: tens(0:*)
 	integer, intent(inout):: ierr
+	real(real_kind), intent(in), optional:: alpha
+	real(real_kind), intent(in), optional:: beta
 	integer i,j,k,l,m,n,ks,kf,im(1:dim_num)
 	integer(LONGINT):: lts,lss,l_in,l_out,lb,le,ll,bases_in(1:dim_num),bases_out(1:dim_num),segs(0:MAX_THREADS) !`Is segs(:) threadsafe?
+	real(real_kind) alf,bet
 	real(8) time_beg
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
@@ -6132,6 +6181,8 @@
 
 	ierr=0
 !	time_beg=thread_wtime() !debug
+	alf=1.0; if(present(alpha)) alf=alpha
+	bet=0.0; if(present(beta)) bet=beta
 	if(dim_num.gt.0) then
 	 lts=1_LONGINT; do i=1,dim_num; bases_out(i)=lts; lts=lts*tens_ext(i); enddo !tensor block indexing bases
 	 lss=1_LONGINT; do i=1,dim_num; bases_in(i)=lss; lss=lss*slice_ext(i); enddo !slice indexing bases
@@ -6151,7 +6202,9 @@
 	 lb=int(im(1),LONGINT); le=int(slice_ext(1)-1,LONGINT); l_in=segs(n)-lb
 	 sloop: do while(l_in+lb.lt.segs(n+1))
 	  le=min(le,segs(n+1)-1_LONGINT-l_in) !to avoid different threads doing the same work
-	  do ll=lb,le; tens(l_out+ll)=slice(l_in+ll); enddo
+	  do ll=lb,le
+	   tens(l_out+ll)=tens(l_out+ll)*bet+slice(l_in+ll)*alf
+	  enddo
 	  l_in=l_in+le+1_LONGINT; lb=0_LONGINT
 	  do i=2,dim_num
 	   if(im(i)+1.lt.slice_ext(i)) then
@@ -6169,11 +6222,11 @@
 !        thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_insert_dlf_r4
-!------------------------------------------------------------------------------------------------
+!-----------------------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_insert_dlf_r8
 #endif
-	subroutine tensor_block_insert_dlf_r8(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr) !PARALLEL
+	subroutine tensor_block_insert_dlf_r8(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr,alpha,beta) !PARALLEL
 !This subroutine inserts a slice into a tensor block.
 !INPUT:
 ! - dim_num - number of tensor dimensions;
@@ -6194,8 +6247,11 @@
 	real(real_kind), intent(in):: slice(0:*)
 	real(real_kind), intent(inout):: tens(0:*)
 	integer, intent(inout):: ierr
+	real(real_kind), intent(in), optional:: alpha
+	real(real_kind), intent(in), optional:: beta
 	integer i,j,k,l,m,n,ks,kf,im(1:dim_num)
 	integer(LONGINT):: lts,lss,l_in,l_out,lb,le,ll,bases_in(1:dim_num),bases_out(1:dim_num),segs(0:MAX_THREADS) !`Is segs(:) threadsafe?
+	real(real_kind) alf,bet
 	real(8) time_beg
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
@@ -6204,6 +6260,8 @@
 
 	ierr=0
 !	time_beg=thread_wtime() !debug
+	alf=1d0; if(present(alpha)) alf=alpha
+	bet=0d0; if(present(beta)) bet=beta
 	if(dim_num.gt.0) then
 	 lts=1_LONGINT; do i=1,dim_num; bases_out(i)=lts; lts=lts*tens_ext(i); enddo !tensor block indexing bases
 	 lss=1_LONGINT; do i=1,dim_num; bases_in(i)=lss; lss=lss*slice_ext(i); enddo !slice indexing bases
@@ -6223,7 +6281,9 @@
 	 lb=int(im(1),LONGINT); le=int(slice_ext(1)-1,LONGINT); l_in=segs(n)-lb
 	 sloop: do while(l_in+lb.lt.segs(n+1))
 	  le=min(le,segs(n+1)-1_LONGINT-l_in) !to avoid different threads doing the same work
-	  do ll=lb,le; tens(l_out+ll)=slice(l_in+ll); enddo
+	  do ll=lb,le
+	   tens(l_out+ll)=tens(l_out+ll)*bet+slice(l_in+ll)*alf
+	  enddo
 	  l_in=l_in+le+1_LONGINT; lb=0_LONGINT
 	  do i=2,dim_num
 	   if(im(i)+1.lt.slice_ext(i)) then
@@ -6241,11 +6301,11 @@
 !        thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_insert_dlf_r8
-!------------------------------------------------------------------------------------------------
+!-----------------------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_insert_dlf_c4
 #endif
-	subroutine tensor_block_insert_dlf_c4(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr) !PARALLEL
+	subroutine tensor_block_insert_dlf_c4(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr,alpha,beta) !PARALLEL
 !This subroutine inserts a slice into a tensor block.
 !INPUT:
 ! - dim_num - number of tensor dimensions;
@@ -6266,8 +6326,11 @@
 	complex(real_kind), intent(in):: slice(0:*)
 	complex(real_kind), intent(inout):: tens(0:*)
 	integer, intent(inout):: ierr
+	complex(real_kind), intent(in), optional:: alpha
+	complex(real_kind), intent(in), optional:: beta
 	integer i,j,k,l,m,n,ks,kf,im(1:dim_num)
 	integer(LONGINT):: lts,lss,l_in,l_out,lb,le,ll,bases_in(1:dim_num),bases_out(1:dim_num),segs(0:MAX_THREADS) !`Is segs(:) threadsafe?
+	complex(real_kind) alf,bet
 	real(8) time_beg
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
@@ -6276,6 +6339,8 @@
 
 	ierr=0
 !	time_beg=thread_wtime() !debug
+	alf=(1.0,0.0); if(present(alpha)) alf=alpha
+	bet=(0.0,0.0); if(present(beta)) bet=beta
 	if(dim_num.gt.0) then
 	 lts=1_LONGINT; do i=1,dim_num; bases_out(i)=lts; lts=lts*tens_ext(i); enddo !tensor block indexing bases
 	 lss=1_LONGINT; do i=1,dim_num; bases_in(i)=lss; lss=lss*slice_ext(i); enddo !slice indexing bases
@@ -6295,7 +6360,9 @@
 	 lb=int(im(1),LONGINT); le=int(slice_ext(1)-1,LONGINT); l_in=segs(n)-lb
 	 sloop: do while(l_in+lb.lt.segs(n+1))
 	  le=min(le,segs(n+1)-1_LONGINT-l_in) !to avoid different threads doing the same work
-	  do ll=lb,le; tens(l_out+ll)=slice(l_in+ll); enddo
+	  do ll=lb,le
+	   tens(l_out+ll)=tens(l_out+ll)*bet+slice(l_in+ll)*alf
+	  enddo
 	  l_in=l_in+le+1_LONGINT; lb=0_LONGINT
 	  do i=2,dim_num
 	   if(im(i)+1.lt.slice_ext(i)) then
@@ -6313,11 +6380,11 @@
 !        thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_insert_dlf_c4
-!------------------------------------------------------------------------------------------------
+!-----------------------------------------------------------------------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: tensor_block_insert_dlf_c8
 #endif
-	subroutine tensor_block_insert_dlf_c8(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr) !PARALLEL
+	subroutine tensor_block_insert_dlf_c8(dim_num,tens,tens_ext,slice,slice_ext,ext_beg,ierr,alpha,beta) !PARALLEL
 !This subroutine inserts a slice into a tensor block.
 !INPUT:
 ! - dim_num - number of tensor dimensions;
@@ -6338,8 +6405,11 @@
 	complex(real_kind), intent(in):: slice(0:*)
 	complex(real_kind), intent(inout):: tens(0:*)
 	integer, intent(inout):: ierr
+	complex(real_kind), intent(in), optional:: alpha
+	complex(real_kind), intent(in), optional:: beta
 	integer i,j,k,l,m,n,ks,kf,im(1:dim_num)
 	integer(LONGINT):: lts,lss,l_in,l_out,lb,le,ll,bases_in(1:dim_num),bases_out(1:dim_num),segs(0:MAX_THREADS) !`Is segs(:) threadsafe?
+	complex(real_kind) alf,bet
 	real(8) time_beg
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
@@ -6348,6 +6418,8 @@
 
 	ierr=0
 !	time_beg=thread_wtime() !debug
+	alf=(1d0,0d0); if(present(alpha)) alf=alpha
+	bet=(0d0,0d0); if(present(beta)) bet=beta
 	if(dim_num.gt.0) then
 	 lts=1_LONGINT; do i=1,dim_num; bases_out(i)=lts; lts=lts*tens_ext(i); enddo !tensor block indexing bases
 	 lss=1_LONGINT; do i=1,dim_num; bases_in(i)=lss; lss=lss*slice_ext(i); enddo !slice indexing bases
@@ -6367,7 +6439,9 @@
 	 lb=int(im(1),LONGINT); le=int(slice_ext(1)-1,LONGINT); l_in=segs(n)-lb
 	 sloop: do while(l_in+lb.lt.segs(n+1))
 	  le=min(le,segs(n+1)-1_LONGINT-l_in) !to avoid different threads doing the same work
-	  do ll=lb,le; tens(l_out+ll)=slice(l_in+ll); enddo
+	  do ll=lb,le
+	   tens(l_out+ll)=tens(l_out+ll)*bet+slice(l_in+ll)*alf
+	  enddo
 	  l_in=l_in+le+1_LONGINT; lb=0_LONGINT
 	  do i=2,dim_num
 	   if(im(i)+1.lt.slice_ext(i)) then
