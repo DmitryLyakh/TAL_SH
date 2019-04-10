@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2019/03/28
+!REVISION: 2019/04/10
 
 !Copyright (C) 2013-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -2275,8 +2275,8 @@
 	endif
 	return
 	end function tensor_block_min
-!-----------------------------------------------------------------------
-	subroutine tensor_block_slice(tens,slice,ext_beg,ierr,data_kind) !PARALLEL
+!------------------------------------------------------------------------------------
+	subroutine tensor_block_slice(tens,slice,ext_beg,ierr,data_kind,accumulative) !PARALLEL
 !This subroutine extracts a slice from a tensor block.
 !Tensor block <slice> must have its shape defined on input!
 !INPUT:
@@ -2284,6 +2284,7 @@
 ! - slice - tensor block which will contain the slice (its shape specifies the slice dimensions);
 ! - ext_beg(1:) - beginning offset of each tensor dimension (numeration starts at 0) to slice from;
 ! - data_kind - (optional) requested data_kind, one of {'r4','r8','c4','c8'};
+! - accumulative - accumulative or not (default);
 !OUTPUT:
 ! - slice - filled tensor block slice;
 ! - ierr - error code (0:success).
@@ -2298,6 +2299,7 @@
 	type(tensor_block_t), intent(inout):: slice
 	integer, intent(in):: ext_beg(1:*)
 	character(2), intent(in), optional:: data_kind
+	logical, intent(in), optional:: accumulative
 	integer, intent(inout):: ierr
 	integer i,j,k,l,m,n,ks,kf,tlt,slt
 	integer(LONGINT) ls
@@ -2410,14 +2412,15 @@
 	endif
 	return
 	end subroutine tensor_block_slice
-!------------------------------------------------------------------------
-	subroutine tensor_block_insert(tens,slice,ext_beg,ierr,data_kind) !PARALLEL
+!-------------------------------------------------------------------------------------
+	subroutine tensor_block_insert(tens,slice,ext_beg,ierr,data_kind,accumulative) !PARALLEL
 !This subroutine inserts a slice into a tensor block.
 !INPUT:
 ! - tens - tensor block;
 ! - slice - slice to be inserted;
 ! - ext_beg(1:) - beginning offset of each tensor dimension (numeration starts at 0) where to insert;
 ! - data_kind - (optional) requested data_kind, one of {'r4','r8','c4','c8'};
+! - accumulative - accumulative or not (default);
 !OUTPUT:
 ! - tens - modified tensor block;
 ! - ierr - error code (0:success).
@@ -2431,6 +2434,7 @@
 	type(tensor_block_t), intent(inout):: slice !(out) because of <tensor_block_copy> because of <tensor_block_layout> because of <tensor_block_shape_ok>
 	integer, intent(in):: ext_beg(1:*)
 	character(2), intent(in), optional:: data_kind
+	logical, intent(in), optional:: accumulative
 	integer, intent(inout):: ierr
 	integer i,j,k,l,m,n,ks,kf,tlt,slt
 	integer(LONGINT) ls

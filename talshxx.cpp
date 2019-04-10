@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/04/08
+REVISION: 2019/04/10
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -237,7 +237,7 @@ int Tensor::extractSlice(TensorTask * task_handle,         //out: task handle as
   assert(task_handle->isEmpty());
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   //++left; ++right; ++(*this);
-  errc = talshTensorSlice(dtens,ltens,offsets.data(),device_id,device_kind,COPY_TT,task_hl);
+  errc = talshTensorSlice(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,NOPE,task_hl);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::extractSlice): talshTensorSlice error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -247,7 +247,7 @@ int Tensor::extractSlice(TensorTask * task_handle,         //out: task handle as
    task_handle->clean();
   }
  }else{ //synchronous
-  errc = talshTensorSlice(dtens,ltens,offsets.data(),device_id,device_kind,COPY_TT);
+  errc = talshTensorSlice(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::extractSlice): talshTensorSlice error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -270,7 +270,7 @@ int Tensor::insertSlice(TensorTask * task_handle,         //out: task handle ass
   assert(task_handle->isEmpty());
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   //++left; ++right; ++(*this);
-  errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_TT,task_hl);
+  errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,NOPE,task_hl);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::insertSlice): talshTensorInsert error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -280,7 +280,7 @@ int Tensor::insertSlice(TensorTask * task_handle,         //out: task handle ass
    task_handle->clean();
   }
  }else{ //synchronous
-  errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_TT);
+  errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::insertSlice): talshTensorInsert error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);

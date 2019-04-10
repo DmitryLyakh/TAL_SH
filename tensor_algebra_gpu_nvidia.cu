@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2019/04/02
+REVISION: 2019/04/10
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -3984,19 +3984,19 @@ NOTES:
  if(gpu_num != cur_gpu) errc=gpu_activate(cur_gpu);
  return stat; //either 0 (success) or NOT_CLEAN (warning)
 }
-//-------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------------------
 // TENSOR SLICING (non-blocking):
 __host__ int gpu_tensor_block_slice(tensBlck_t *ltens, tensBlck_t *dtens, const int *offsets,
-                                    unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id)
+                                    unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id, int accumulative)
 {
  //`Implement
  printf("\n#FATAL(tensor_algebra_gpu_nvidia:gpu_tensor_block_slice): Operation not implemented!\n");
  return -1;
 }
-//--------------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------------------------------------
 // TENSOR INSERTION (non-blocking):
 __host__ int gpu_tensor_block_insert(tensBlck_t *ltens, tensBlck_t *dtens, const int *offsets,
-                                     unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id)
+                                     unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id, int accumulative)
 {
  //`Implement
  printf("\n#FATAL(tensor_algebra_gpu_nvidia:gpu_tensor_block_insert): Operation not implemented!\n");

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2019/04/09
+REVISION: 2019/04/10
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -430,9 +430,10 @@ extern "C"{
                       int dev_id = DEV_DEFAULT,              //in: device id (flat or kind-specific)
                       int dev_kind = DEV_DEFAULT,            //in: device kind (if present, <dev_id> is kind-specific)
                       int copy_ctrl = COPY_MT,               //in: copy control (COPY_XX), defaults to COPY_MT
+                      int accumulative = NOPE,               //in: accumulate in VS overwrite destination tensor: [YEP|NOPE]
                       talsh_task_t * talsh_task = NULL);     //inout: TAL-SH task handle
  int talshTensorSlice_(talsh_tens_t * dtens, talsh_tens_t * ltens, const int * offsets,
-                       int dev_id, int dev_kind, int copy_ctrl, talsh_task_t * talsh_task);
+                       int dev_id, int dev_kind, int copy_ctrl, int accumulative, talsh_task_t * talsh_task);
 //  Tensor insertion:
  int talshTensorInsert(talsh_tens_t * dtens,                  //inout: destination tensor block
                        talsh_tens_t * ltens,                  //inout: source tensor block (tensor slice)
@@ -440,9 +441,10 @@ extern "C"{
                        int dev_id = DEV_DEFAULT,              //in: device id (flat or kind-specific)
                        int dev_kind = DEV_DEFAULT,            //in: device kind (if present, <dev_id> is kind-specific)
                        int copy_ctrl = COPY_MT,               //in: copy control (COPY_XX), defaults to COPY_MT
+                       int accumulative = NOPE,               //in: accumulate in VS overwrite destination tensor: [YEP|NOPE]
                        talsh_task_t * talsh_task = NULL);     //inout: TAL-SH task handle
  int talshTensorInsert_(talsh_tens_t * dtens, talsh_tens_t * ltens, const int * offsets,
-                        int dev_id, int dev_kind, int copy_ctrl, talsh_task_t * talsh_task);
+                        int dev_id, int dev_kind, int copy_ctrl, int accumulative, talsh_task_t * talsh_task);
 //  Tensor copy:
  int talshTensorCopy(talsh_tens_t * dtens,                  //inout: destination tensor block
                      talsh_tens_t * ltens,                  //inout: source tensor block

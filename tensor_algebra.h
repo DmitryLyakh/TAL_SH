@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2019/04/01
+REVISION: 2019/04/10
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -503,9 +503,9 @@ extern "C"{
  int gpu_tensor_block_place(tensBlck_t *ctens, int gpu_id, unsigned int coh_ctrl, cudaTask_t *cuda_task, void *dev_mem = NULL);
  int gpu_tensor_block_init(tensBlck_t *dtens, double val, unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1);
  int gpu_tensor_block_slice(tensBlck_t *ltens, tensBlck_t *dtens, const int * offsets,
-                            unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1);
+                            unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1, int accumulative = NOPE);
  int gpu_tensor_block_insert(tensBlck_t *ltens, tensBlck_t *dtens, const int * offsets,
-                             unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1);
+                             unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1, int accumulative = NOPE);
  int gpu_tensor_block_copy(tensBlck_t *ltens, tensBlck_t *dtens, const int * permutation,
                            unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1);
  int gpu_tensor_block_add(const int *cptrn, tensBlck_t *ltens, tensBlck_t *dtens, unsigned int coh_ctrl, cudaTask_t *cuda_task,
