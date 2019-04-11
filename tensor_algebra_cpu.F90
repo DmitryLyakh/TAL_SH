@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2019/04/10
+!REVISION: 2019/04/11
 
 !Copyright (C) 2013-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -78,8 +78,8 @@
         integer, parameter, private:: MAX_THREADS=1024        !max allowed number of threads in this module
         integer, private:: MEM_ALLOC_POLICY=MEM_ALLOC_TMP_BUF !memory allocation policy
         logical, private:: MEM_ALLOC_FALLBACK=.TRUE.          !memory allocation fallback to the regular allocator
-        logical, private:: DATA_KIND_SYNC=.TRUE. !if .TRUE., each tensor operation will syncronize all existing data kinds
-        logical, private:: TRANS_SHMEM=.TRUE.    !cache-efficient (true) VS scatter (false) tensor transpose algorithm
+        logical, private:: DATA_KIND_SYNC=.FALSE. !if .TRUE., each tensor operation will syncronize all existing data kinds
+        logical, private:: TRANS_SHMEM=.TRUE.     !cache-efficient (true) VS scatter (false) tensor transpose algorithm
 #ifndef NO_BLAS
         logical, private:: DISABLE_BLAS=.FALSE.  !if .TRUE. and BLAS is accessible, BLAS calls will be replaced by my own routines
 #else
