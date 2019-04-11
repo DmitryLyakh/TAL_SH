@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/04/10
+REVISION: 2019/04/11
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -220,6 +220,23 @@ bool Tensor::testWriteTask(int * status)
   if(res && *status == TALSH_TASK_COMPLETED) pimpl_->write_task_ = nullptr;
  }
  return res;
+}
+
+
+int Tensor::norm1(TensorTask * task_handle, //out: task handle associated with this operation or nullptr (synchronous)
+                  double & tens_norm1,      //out: 1-norm of the tensor
+                  const int device_kind,    //in: execution device kind
+                  const int device_id)      //in: execution device id
+{
+ int errc = TALSH_SUCCESS;
+ bool synced = this->sync(DEV_HOST,0);
+ if(synced){
+  talsh_tens_t * tens = this->getTalshTensorPtr();
+  tens_norm1 = talshTensorImageNorm1_cpu(tens);
+ }else{
+  errc = TALSH_FAILURE;
+ }
+ return errc;
 }
 
 

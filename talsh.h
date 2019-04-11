@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2019/04/10
+REVISION: 2019/04/11
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -144,6 +144,10 @@ typedef struct{
  talsh_task_t task_handle;                           //task handle
  int exec_dev_id;                                    //execution device id (flat device id)
  int stage;                                          //tensor operation stage
+ double time_started;
+ double time_scheduled;
+ double time_completed;
+ double time_finished;
 } talsh_tens_op_t;
 
 

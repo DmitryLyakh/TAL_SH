@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/04/10
+REVISION: 2019/04/11
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -219,6 +219,12 @@ public:
               const int device_kind = DEV_HOST,            //in: execution device kind
               const int device_id = 0,                     //in: execution device id
               const T scalar_value = TensorData<T>::zero); //in: scalar value
+
+ /** Computes the 1-norm of the tensor. **/
+ int norm1(TensorTask * task_handle,                       //out: task handle associated with this operation or nullptr (synchronous)
+           double & tens_norm1,                            //out: 1-norm of the tensor (sum of absolute values of tensor elements)
+           const int device_kind = DEV_HOST,               //in: execution device kind
+           const int device_id = 0);                       //in: execution device id
 
  /** Extracts a slice from a given position in the current tensor. **/
  int extractSlice(TensorTask * task_handle,                //out: task handle associated with this operation or nullptr (synchronous)

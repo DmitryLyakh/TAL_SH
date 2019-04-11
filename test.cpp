@@ -330,15 +330,22 @@ void test_talsh_xl(int * ierr)
  std::cout << " Max tensor size on execution device = " << talsh::getDeviceMaxTensorSize(device,0) << std::endl;
  //Test body (scoped):
  {
+  double norm1;
   talsh::Tensor rtens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{0.001,0.0});
   talsh::Tensor ltens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{0.01,0.0});
   talsh::Tensor dtens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{0.0,0.0});
-  std::cout << " Created tensor arguments of size " << dtens.getVolume()*8 << std::endl;
+  std::cout << " Created tensor arguments (" << ODIM << "," << VDIM << "," << ODIM << "," << VDIM << ") of size "
+            << dtens.getVolume()*8 << std::endl;
+  dtens.norm1(nullptr,norm1);
+  std::cout << " Destination tensor 1-norm = " << norm1 << std::endl;
   *ierr = dtens.contractAccumulateXL(nullptr,
                                      std::string("D(i,a,j,b)+=L(j,a,k,c)*R(k,b,i,c)"),
                                      ltens,rtens,device,0,std::complex<float>{1.0,0.0});
   bool done = dtens.sync();
   std::cout << " Tensor contraction completion status = " << done << "; Error " << *ierr << std::endl;
+  dtens.norm1(nullptr,norm1);
+  std::cout << " Destination tensor 1-norm = " << norm1 << std::endl;
+  std::cout << " Reference 1-norm = " << ((double)(ODIM*VDIM*ODIM*VDIM))*((double)(ODIM*VDIM))*(1e-5) << std::endl;
  }
  //Shutdown TAL-SH:
  talshStats(); //GPU statistics

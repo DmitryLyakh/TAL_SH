@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2019/04/10
+REVISION: 2019/04/11
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -381,6 +381,8 @@ typedef struct{
 typedef int (*talsh_tens_init_i)(const talsh_tens_data_t * tens_data,
                                  const talsh_tens_shape_t * tens_shape,
                                  const talsh_tens_signature_t * tens_signature);
+// Dummy function that does no initialization to a tensor:
+int talsh_tens_no_init(const talsh_tens_data_t *, const talsh_tens_shape_t *, const talsh_tens_signature_t *);
 
 // Device statistics:
 typedef struct{
