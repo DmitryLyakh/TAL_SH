@@ -1542,7 +1542,7 @@
          type(C_PTR), value:: ltens_p              !in: left tensor argument (tensor)
          type(C_PTR), value:: dtens_p              !inout: destination tensor argument (tensor slice)
          integer(C_INT), intent(in):: offsets(*)   !in: slice base offsets (each dimension numeration starts from 0)
-         integer(C_INT), intent(in):: accumulative !in: accumulative or not
+         integer(C_INT), intent(in), value:: accumulative !in: accumulative or not
          type(tensor_block_t), pointer:: dtp,ltp
          integer:: ierr
 
@@ -1567,7 +1567,7 @@
          type(C_PTR), value:: ltens_p              !in: left tensor argument (tensor slice)
          type(C_PTR), value:: dtens_p              !inout: destination tensor argument (tensor)
          integer(C_INT), intent(in):: offsets(*)   !in: slice base offsets (each dimension numeration starts from 0)
-         integer(C_INT), intent(in):: accumulative !in: accumulative or not
+         integer(C_INT), intent(in), value:: accumulative !in: accumulative or not
          type(tensor_block_t), pointer:: dtp,ltp
          integer:: ierr
 

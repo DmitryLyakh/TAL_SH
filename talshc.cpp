@@ -2694,21 +2694,26 @@ int talshTensorOpProgress(talsh_tens_op_t * tens_op, int * done)
  case TALSH_OP_DEFINED:
   errc = talshTensorOpActivate(tens_op);
   if(errc == TALSH_SUCCESS){
+   //printf("#DEBUG(talshTensorOpProgress): Activated tensor operation %p\n",tens_op); //debug
    errc = talshTensorOpProgress(tens_op,done);
   }else{
-   if(VERBOSE) printf("#ERROR(talshTensorOpProgress): DEFINED->RESOURCED error %d\n",errc);
+   if(errc != TRY_LATER && VERBOSE)
+   printf("#ERROR(talshTensorOpProgress): DEFINED->RESOURCED error %d\n",errc);
   }
   break;
  case TALSH_OP_RESOURCED:
   errc = talshTensorOpLoadInput(tens_op);
   if(errc == TALSH_SUCCESS){
+   //printf("#DEBUG(talshTensorOpProgress): Loaded tensor operation %p\n",tens_op); //debug
    errc = talshTensorOpProgress(tens_op,done);
   }else{
-   if(VERBOSE) printf("#ERROR(talshTensorOpProgress): RESOURCED->LOADED error %d\n",errc);
+   if(errc != TRY_LATER && VERBOSE)
+   printf("#ERROR(talshTensorOpProgress): RESOURCED->LOADED error %d\n",errc);
   }
   break;
  case TALSH_OP_LOADED:
   errc = talshTensorOpExecute(tens_op); //yields
+  //if(errc == TALSH_SUCCESS) printf("#DEBUG(talshTensorOpProgress): Scheduled tensor operation %p\n",tens_op); //debug
   if(errc != TALSH_SUCCESS && errc != TRY_LATER){
    if(VERBOSE) printf("#ERROR(talshTensorOpProgress): LOADED->SCHEDULED error %d\n",errc);
   }
@@ -2716,34 +2721,42 @@ int talshTensorOpProgress(talsh_tens_op_t * tens_op, int * done)
  case TALSH_OP_SCHEDULED:
   errc = talshTensorOpTest(tens_op,&completed,NOPE);
   if(errc == TALSH_SUCCESS && completed == YEP){
+   //printf("#DEBUG(talshTensorOpProgress): Completed tensor operation %p\n",tens_op); //debug
    errc = talshTensorOpProgress(tens_op,done);
   }else{
-   if(errc != TALSH_SUCCESS && VERBOSE) printf("#ERROR(talshTensorOpProgress): SCHEDULED->COMPLETED error %d\n",errc);
+   if(errc != TALSH_SUCCESS && errc != TRY_LATER && VERBOSE)
+   printf("#ERROR(talshTensorOpProgress): SCHEDULED->COMPLETED error %d\n",errc);
   }
   break;
  case TALSH_OP_COMPLETED:
   errc = talshTensorOpStoreOutput(tens_op);
   if(errc == TALSH_SUCCESS){
+   //printf("#DEBUG(talshTensorOpProgress): Stored tensor operation %p\n",tens_op); //debug
    errc = talshTensorOpProgress(tens_op,done);
   }else{
-   if(VERBOSE) printf("#ERROR(talshTensorOpProgress): COMPLETED->STORED error %d\n",errc);
+   if(errc != TRY_LATER && VERBOSE)
+   printf("#ERROR(talshTensorOpProgress): COMPLETED->STORED error %d\n",errc);
   }
   break;
  case TALSH_OP_STORED:
   errc = talshTensorOpDeactivate(tens_op);
   if(errc == TALSH_SUCCESS){
+   //printf("#DEBUG(talshTensorOpProgress): Deactivated tensor operation %p\n",tens_op); //debug
    errc = talshTensorOpProgress(tens_op,done);
   }else{
-   if(VERBOSE) printf("#ERROR(talshTensorOpProgress): STORED->RETIRED error %d\n",errc);
+   if(errc != TRY_LATER && VERBOSE)
+   printf("#ERROR(talshTensorOpProgress): STORED->RETIRED error %d\n",errc);
   }
   break;
  case TALSH_OP_RETIRED:
   *done = YEP;
+  //printf("#DEBUG(talshTensorOpProgress): Retired tensor operation %p\n",tens_op); //debug
   break;
  default:
   if(VERBOSE) printf("#ERROR(talshTensorOpProgress): Invalid tensor operation stage: %d\n",tens_op->stage);
   errc = TALSH_NOT_ALLOWED;
  }
+ //fflush(stdout); //debug
  return errc;
 }
 
@@ -4583,6 +4596,7 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
                           int dev_kind)         //in: device kind (if present, <dev_id> is kind-specific)
 /** Extra large tensor contraction dispatcher **/
 {
+ const int MAX_ACTIVE = 2; //max number of simultaneously active tensor operations
  int dims[MAX_TENSOR_RANK],data_kinds[TALSH_MAX_DEV_PRESENT];
  int errc,ier,n,dtk,devid,max_ops,num_dec,inlen,oulen,wid,beg,fin,done;
  size_t offs[MAX_TENSOR_RANK],totmem,argmem,dsz,lsz,rsz;
@@ -4592,7 +4606,7 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
  double tm;
 
  errc = TALSH_SUCCESS;
- printf("#DEBUG(talshTensorContractXL): Entered:\n"); //debug
+ //printf("#DEBUG(talshTensorContractXL): Entered:\n"); fflush(stdout); //debug
  tm = time_sys_sec();
  // Check function arguments:
  if(cptrn == NULL || dtens == NULL || ltens == NULL || rtens == NULL) return TALSH_INVALID_ARGS;
@@ -4604,7 +4618,7 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
  if(dev_kind == DEV_DEFAULT) dev_kind = DEV_HOST;
  if(dev_id == DEV_DEFAULT) dev_id = 0;
  devid = talshFlatDevId(dev_kind,dev_id); //execution device flat id
- printf(" #DEBUG(talshTensorContractXL): Execution device = %d\n",devid); //debug
+ //printf(" #DEBUG(talshTensorContractXL): Execution device = %d\n",devid); //debug
  // Ensure tensor presence on Host:
  if(errc == TALSH_SUCCESS) errc = talshTensorPlace(rtens,0,DEV_HOST);
  if(errc == TALSH_SUCCESS) errc = talshTensorPlace(ltens,0,DEV_HOST);
@@ -4616,7 +4630,7 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
   if(errc == TALSH_SUCCESS && (n != 1 || data_kinds[0] == NO_TYPE)) errc = TALSH_FAILURE;
  }
  tm = time_sys_sec() - tm;
- printf(" #DEBUG(talshTensorContractXL)[%.4f]: Placed tensor arguments on Host\n",tm); //debug
+ //printf(" #DEBUG(talshTensorContractXL)[%.4f]: Placed tensor arguments on Host\n",tm); //debug
  // Create temporary storage (slab) for tensor operations:
  if(errc == TALSH_SUCCESS){
   tm = time_sys_sec();
@@ -4624,7 +4638,7 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
   totmem = talshDeviceBufferSize(dev_id,dev_kind); //total size of the device buffer
   argmem = talshDeviceTensorSize(dev_id,dev_kind); //max entry size in the device buffer
   max_ops = 4096; //`Determine precisely
-  printf(" #DEBUG(talshTensorContractXL): Data kind = %d; ArgMemLim = %lu; TotMemLim = %lu\n",dtk,argmem,totmem); //debug
+  //printf(" #DEBUG(talshTensorContractXL): Data kind = %d; ArgMemLim = %lu; TotMemLim = %lu\n",dtk,argmem,totmem); //debug
   errc = slab_create(&op_stack);
   if(errc == 0){
    errc = slab_construct(op_stack,sizeof(talsh_tens_op_t),(size_t)max_ops);
@@ -4634,7 +4648,7 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
      inq = &(que[0]); ouq = &(que[max_ops]);
      inlen = 0; oulen = 0;
      tm = time_sys_sec() - tm;
-     printf(" #DEBUG(talshTensorContractXL)[%.4f]: Allocated tensor operation storage: %d\n",tm,max_ops); //debug
+     //printf(" #DEBUG(talshTensorContractXL)[%.4f]: Allocated tensor operation storage: %d\n",tm,max_ops); //debug
      // Create the grand-parental tensor operation:
      tm = time_sys_sec();
      errc = slab_entry_get(op_stack,&ptr);
@@ -4653,11 +4667,11 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
         inq[inlen++] = op;
         num_dec = 1;
         tm = time_sys_sec() - tm;
-        printf(" #DEBUG(talshTensorContractXL)[%.4f]: Created grand-parental tensor operation\n",tm); //debug
+        //printf(" #DEBUG(talshTensorContractXL)[%.4f]: Created grand-parental tensor operation\n",tm); //debug
         // Decompose the grand-parental tensor operation into descendant tensor operations:
         tm = time_sys_sec();
         while(num_dec > 0){
-         printf(" #DEBUG(talshTensorContractXL): Started decomposition cycle: Length = %d\n",inlen); //debug
+         //printf(" #DEBUG(talshTensorContractXL): Started decomposition cycle: Length = %d\n",inlen); //debug
          oulen = 0; num_dec = 0;
          // Decompose:
          for(int opn = 0; opn < inlen; ++opn){
@@ -4666,7 +4680,7 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
           lsz = talshTensorOpGetArgSize(op,1);
           rsz = talshTensorOpGetArgSize(op,2);
           if(dsz == 0 || lsz == 0 || rsz == 0){errc = TALSH_FAILURE; break;}
-          if(dsz > argmem || lsz > argmem || rsz > argmem || dsz+lsz+rsz > totmem){ //need to decompose further
+          if(dsz > argmem || lsz > argmem || rsz > argmem || (dsz+lsz+rsz)*13 > totmem){ //need to decompose further (13 = 12: Pipeline for 2 contractions)
            // Get new talsh_tens_op_t:
            errc = slab_entry_get(op_stack,&ptr); if(errc != TALSH_SUCCESS) break;
            ouq[oulen] = (talsh_tens_op_t*)ptr;
@@ -4696,7 +4710,7 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
           }
          }
          if(errc != TALSH_SUCCESS) break;
-         printf(" #DEBUG(talshTensorContractXL): Finished decomposition cycle: Length = %d\n",oulen); //debug
+         //printf(" #DEBUG(talshTensorContractXL): Finished decomposition cycle: Length = %d\n",oulen); //debug
          // Swap input with output:
          swp = inq; inq = ouq; ouq = swp;
          inlen = oulen; oulen = 0;
@@ -4704,16 +4718,17 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
         // Execute all generated tensor operations:
         if(errc == TALSH_SUCCESS){
          tm = time_sys_sec() - tm;
-         printf(" #DEBUG(talshTensorContractXL)[%.4f]: Decomposition length = %d\n",tm,inlen); //debug
+         //printf(" #DEBUG(talshTensorContractXL)[%.4f]: Decomposition length = %d\n",tm,inlen); //debug
          // Set execution device for all tensor operations:
          tm = time_sys_sec();
          for(int opn = 0; opn < inlen; ++opn){
           errc = talshTensorOpSetExecDevice(inq[opn],dev_id,dev_kind); if(errc != TALSH_SUCCESS) break;
-          talshTensorOpPrint(inq[opn]); //debug
+          //talshTensorOpPrint(inq[opn]); //debug
          }
          // Execute all tensor operations:
          if(errc == TALSH_SUCCESS){
-          wid = 2; beg = 0; fin = MIN(beg+wid,inlen);
+          //printf(" #DEBUG(talshTensorContractXL): Executing %d tensor operations\n",inlen); fflush(stdout); //debug
+          wid = MAX_ACTIVE; beg = 0; fin = MIN(beg+wid,inlen);
           num_dec = inlen; //number of unfinished tensor operations
           while(errc == TALSH_SUCCESS && num_dec > 0){
            int opn = beg;
@@ -4736,7 +4751,7 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
           }
          }
          tm = time_sys_sec() - tm;
-         printf(" #DEBUG(talshTensorContractXL)[%.4f]: Executed %d tensor operations\n",tm,inlen); //debug
+         //printf(" #DEBUG(talshTensorContractXL)[%.4f]: Executed %d tensor operations\n",tm,inlen); //debug
         }
         // Destruct all (presumably executed) tensor operations:
         tm = time_sys_sec();
@@ -4747,7 +4762,7 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
          if(ier != 0 && errc == TALSH_SUCCESS) errc = TALSH_FAILURE;
         }
         tm = time_sys_sec() - tm;
-        printf(" #DEBUG(talshTensorContractXL)[%.4f]: Destructed %d tensor operations\n",tm,inlen); //debug
+        //printf(" #DEBUG(talshTensorContractXL)[%.4f]: Destructed %d tensor operations\n",tm,inlen); //debug
        }else{
         ier = talshTensorOpDestruct(op);
         ier = slab_entry_release(op_stack,(void*)op);
@@ -4765,10 +4780,10 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
    tm = time_sys_sec();
    ier = slab_destroy(op_stack); if(ier != 0 && errc == TALSH_SUCCESS) errc = TALSH_FAILURE;
    tm = time_sys_sec() - tm;
-   printf(" #DEBUG(talshTensorContractXL)[%.4f]: Destroyed tensor operation storage\n",tm); //debug
+   //printf(" #DEBUG(talshTensorContractXL)[%.4f]: Destroyed tensor operation storage\n",tm); //debug
   }
  }
- printf("#DEBUG(talshTensorContractXL): Exited with status %d\n",errc); //debug
+ //printf("#DEBUG(talshTensorContractXL): Exited with status %d\n",errc); //debug
  return errc;
 }
 
