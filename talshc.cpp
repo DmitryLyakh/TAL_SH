@@ -2706,6 +2706,7 @@ int talshTensorOpProgress(talsh_tens_op_t * tens_op, int * done)
         a synchronous operation. **/
 {
  const bool SHOW_PROGRESS = false;
+ const bool CHECK_NORMS = false;
  int completed;
  double tm;
 
@@ -2761,12 +2762,23 @@ int talshTensorOpProgress(talsh_tens_op_t * tens_op, int * done)
   }
   break;
  case TALSH_OP_COMPLETED:
+  double tnorm1,snorm1;
+  if(CHECK_NORMS){
+   talshTensorOpPrint(tens_op);
+   tnorm1 = talshTensorImageNorm1_cpu(tens_op->tens_slice[0].tensor);
+   snorm1 = talshTensorImageNorm1_cpu(&(tens_op->tens_arg[0]));
+   printf("#DEBUG(talshTensorOpProgress): Tensor operation %p slice 1-norm = %e\n",tens_op,snorm1);
+  }
   tm = time_sys_sec();
   errc = talshTensorOpStoreOutput(tens_op);
   tm = time_sys_sec() - tm;
   if(errc == TALSH_SUCCESS){
    if(SHOW_PROGRESS)
    printf("#DEBUG(talshTensorOpProgress): Stored tensor operation %p in %.4f sec\n",tens_op,tm); //debug
+   if(CHECK_NORMS){
+    snorm1 = talshTensorImageNorm1_cpu(tens_op->tens_slice[0].tensor);
+    printf("#DEBUG(talshTensorOpProgress): Tensor operation %p inserted 1-norm = %e\n",tens_op,snorm1-tnorm1);
+   }
    errc = talshTensorOpProgress(tens_op,done);
   }else{
    if(errc != TRY_LATER && VERBOSE)

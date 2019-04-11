@@ -6208,7 +6208,7 @@
 	  l_in=l_in+le+1_LONGINT; lb=0_LONGINT
 	  do i=2,dim_num
 	   if(im(i)+1.lt.slice_ext(i)) then
-	    im(i)=im(i)+1; l_out=l_out+bases_out(i)
+	    im(i)=im(i)+1; l_out=l_out+bases_out(i); exit
 	   else
 	    l_out=l_out-im(i)*bases_out(i); im(i)=0
 	   endif
@@ -6287,7 +6287,7 @@
 	  l_in=l_in+le+1_LONGINT; lb=0_LONGINT
 	  do i=2,dim_num
 	   if(im(i)+1.lt.slice_ext(i)) then
-	    im(i)=im(i)+1; l_out=l_out+bases_out(i)
+	    im(i)=im(i)+1; l_out=l_out+bases_out(i); exit
 	   else
 	    l_out=l_out-im(i)*bases_out(i); im(i)=0
 	   endif
@@ -6366,7 +6366,7 @@
 	  l_in=l_in+le+1_LONGINT; lb=0_LONGINT
 	  do i=2,dim_num
 	   if(im(i)+1.lt.slice_ext(i)) then
-	    im(i)=im(i)+1; l_out=l_out+bases_out(i)
+	    im(i)=im(i)+1; l_out=l_out+bases_out(i); exit
 	   else
 	    l_out=l_out-im(i)*bases_out(i); im(i)=0
 	   endif
@@ -6445,7 +6445,7 @@
 	  l_in=l_in+le+1_LONGINT; lb=0_LONGINT
 	  do i=2,dim_num
 	   if(im(i)+1.lt.slice_ext(i)) then
-	    im(i)=im(i)+1; l_out=l_out+bases_out(i)
+	    im(i)=im(i)+1; l_out=l_out+bases_out(i); exit
 	   else
 	    l_out=l_out-im(i)*bases_out(i); im(i)=0
 	   endif

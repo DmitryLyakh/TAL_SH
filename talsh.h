@@ -25,6 +25,7 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #define TALSH_H_
 
 #include <math.h>
+#include "timer.h"
 #include "tensor_algebra.h"
 
 //TAL-SH PARAMETERS:
