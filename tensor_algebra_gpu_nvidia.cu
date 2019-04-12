@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2019/04/10
+REVISION: 2019/04/12
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -2453,6 +2453,32 @@ size_t tensShape_volume(const talsh_tens_shape_t * tshape)
 int tensShape_rank(const talsh_tens_shape_t * tshape)
 /** Returns the tensor shape rank (number of dimensions). **/
 {return tshape->num_dim;}
+
+int tensShape_reshape(talsh_tens_shape_t * tshape, int rank, const int * dims, const int * divs, const int * grps)
+{
+ int tens_rank,pinned,errc;
+ size_t vol;
+
+ errc=0;
+ if(tshape == NULL) return -1;
+ tens_rank=tensShape_rank(tshape);
+ if(tens_rank > 0){
+  if(tshape->dims != NULL){
+   vol=tensShape_volume(tshape);
+   pinned=mi_entry_pinned(tshape->dims);
+   errc=tensShape_destruct(tshape);
+   if(errc == 0){
+    errc=tensShape_construct(tshape,pinned,rank,dims,divs,grps);
+    if(errc == 0 && tensShape_volume(tshape) != vol) errc=-2;
+   }
+  }else{
+   errc=-3;
+  }
+ }else{
+  if(dims != NULL || divs != NULL || grps != NULL) errc=-4;
+ }
+ return errc;
+}
 
 int tensBlck_create(tensBlck_t **ctens)
 /** Creates an empty instance of tensBlck_t and initializes it to null (on Host). **/

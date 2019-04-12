@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/04/11
+REVISION: 2019/04/12
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -87,6 +87,14 @@ const int * Tensor::getDimExtents(unsigned int & num_dims) const
  num_dims = static_cast<unsigned int>((pimpl_->tensor_).shape_p->num_dim);
  if(num_dims == 0) return nullptr;
  return (pimpl_->tensor_).shape_p->dims;
+}
+
+
+/** Reshapes the tensor to a different shape of the same volume. **/
+int Tensor::reshape(const std::vector<int> & dims)
+{
+ int rank = dims.size();
+ return talshTensorReshape(&(pimpl_->tensor_),rank,dims.data());
 }
 
 

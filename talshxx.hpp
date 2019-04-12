@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/04/11
+REVISION: 2019/04/12
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -184,6 +184,9 @@ public:
 
  /** Returns the extent of a specific tensor dimension. **/
  int getDimExtent(unsigned int dim) const;
+
+ /** Reshapes the tensor to a different shape of the same volume. **/
+ int reshape(const std::vector<int> & dims); //new tensor dimension extents: dims[0:rank-1])
 
  /** Returns a direct pointer to the tensor data available on Host.
      If no image is available on Host, returns false.  **/

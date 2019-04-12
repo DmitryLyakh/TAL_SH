@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/04/11
+REVISION: 2019/04/12
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -1296,6 +1296,16 @@ int talshTensorDataKind(const talsh_tens_t * tens_block, int * num_images, int *
  *num_images=tens_block->ndev;
  for(i=0;i<(*num_images);++i) data_kinds[i]=tens_block->data_kind[i];
  return TALSH_SUCCESS;
+}
+
+int talshTensorReshape(talsh_tens_t * tens_block, int tens_rank, const int tens_dims[])
+/** Reshapes a tensor to a different shape of the same volume. **/
+{
+#pragma omp flush
+ if(tens_block == NULL) return TALSH_INVALID_ARGS;
+ if(talshTensorIsEmpty(tens_block) != NOPE) return TALSH_OBJECT_IS_EMPTY;
+ if(talshTensorIsHealthy(tens_block) != YEP) return TALSH_FAILURE;
+ return tensShape_reshape(tens_block->shape_p,tens_rank,tens_dims);
 }
 
 int talshTensorInUse(const talsh_tens_t * tens_block)
