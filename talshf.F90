@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2019/04/10
+!REVISION: 2019/04/12
 
 !Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -67,7 +67,10 @@
         integer(C_INT), parameter, public:: TALSH_TASK_OUTPUT_READY=2000004
         integer(C_INT), parameter, public:: TALSH_TASK_COMPLETED=2000005
  !Host argument buffer:
-        integer(C_SIZE_T), parameter, private:: HAB_SIZE_DEFAULT=16777216 !default size of the Host argument buffer in bytes
+        integer(C_INT), private:: ALLOCATE_VIA_HAB=0 !if negative, regular Host memory will be used for tensors instead of HAB
+        integer(C_SIZE_T), parameter, private:: HAB_SIZE_DEFAULT=16777216 !default size of the Host argument buffer in bytes (none)
+ !Execution device:
+        integer(C_INT), private:: EXECUTION_DEVICE=DEV_DEFAULT !if positive, the specified device will be used for tensor operation execution
  !CP-TAL:
         integer(C_INT), parameter, private:: CPTAL_MAX_TMP_FTENS=192 !max number of simultaneously existing temporary Fortran tensors for CP-TAL
 !DERIVED TYPES:
@@ -523,6 +526,7 @@
         public talsh_device_busy_least
         public talsh_device_memory_size
         public talsh_device_tensor_size
+        public talsh_enforce_execution_device
         public talsh_stats
  !TAL-SH tensor block API:
         public talsh_tensor_is_empty
@@ -864,7 +868,13 @@
          integer(C_SIZE_T):: hbuf_size
          integer(C_INT):: harg_max
 
-         if(present(host_buf_size)) then; hbuf_size=host_buf_size; else; hbuf_size=HAB_SIZE_DEFAULT; endif
+         if(present(host_buf_size)) then
+          ALLOCATE_VIA_HAB=0
+          hbuf_size=host_buf_size
+         else
+          ALLOCATE_VIA_HAB=-1
+          hbuf_size=HAB_SIZE_DEFAULT
+         endif
          if(present(gpu_list)) then; ngpus=size(gpu_list); gpus(1:ngpus)=gpu_list(1:ngpus); else; ngpus=0; endif
          if(present(mic_list)) then; nmics=size(mic_list); mics(1:nmics)=mic_list(1:nmics); else; nmics=0; endif
          if(present(amd_list)) then; namds=size(amd_list); amds(1:namds)=amd_list(1:namds); else; namds=0; endif
@@ -945,6 +955,23 @@
          tens_size=talshDeviceTensorSize_(dev_num,devk)
          return
         end function talsh_device_tensor_size
+!-----------------------------------------------------------------------------
+        function talsh_enforce_execution_device(dev_kind,dev_num) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                 !out: error code
+         integer(C_INT), intent(in):: dev_kind !in: device kind
+         integer(C_INT), intent(in):: dev_num  !in: device Id within its kind (0..MAX)
+         integer(C_INT):: devid
+
+         ierr=TALSH_SUCCESS
+         devid=talsh_flat_dev_id(dev_kind,dev_num)
+         if(devid.lt.DEV_MAX) then
+          EXECUTION_DEVICE=devid
+         else
+          ierr=TALSH_INVALID_ARGS
+         endif
+         return
+        end function talsh_enforce_execution_device
 !---------------------------------------------------------
         function talsh_stats(dev_id,dev_kind) result(ierr)
          implicit none
@@ -992,7 +1019,15 @@
           if(tens_rank.gt.0) tens_dims(1:tens_rank)=tens_shape(1:tens_rank)
           if(present(dev_id)) then; devid=dev_id; else; devid=talshFlatDevId(DEV_HOST,0); endif
           if(present(ext_mem)) then; tens_body_p=ext_mem; else; tens_body_p=C_NULL_PTR; endif
-          if(present(in_hab)) then; if(in_hab.ge.0) then; hab_entry=in_hab; else; hab_entry=-1; endif; else; hab_entry=-1; endif
+          if(present(in_hab)) then
+           if(in_hab.ge.0) then
+            hab_entry=in_hab
+           else
+            hab_entry=ALLOCATE_VIA_HAB
+           endif
+          else
+           hab_entry=ALLOCATE_VIA_HAB
+          endif
           if(present(init_method)) then; init_method_p=c_funloc(init_method); else; init_method_p=C_NULL_FUNPTR; endif
           val_real=0d0; val_imag=0d0; if(present(init_val)) then; val_real=real(init_val); val_imag=aimag(init_val); endif
           ierr=talshTensorConstruct_(tens_block,data_kind,tens_rank,tens_dims,devid,&
@@ -1485,6 +1520,7 @@
           if(present(scale)) then; scale_real=dble(scale); scale_imag=dimag(scale); else; scale_real=1d0; scale_imag=0d0; endif
           if(present(dev_id)) then; devn=dev_id; else; devn=DEV_DEFAULT; endif
           if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_DEFAULT; endif
+          if(devk.eq.DEV_DEFAULT.and.devn.eq.DEV_DEFAULT) devn=EXECUTION_DEVICE
           call string2array(cptrn(1:l),contr_ptrn,l,ierr); l=l+1; contr_ptrn(l:l)=achar(0) !C-string
           if(ierr.eq.0) then
            if(present(talsh_task)) then

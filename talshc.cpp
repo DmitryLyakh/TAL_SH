@@ -1912,7 +1912,7 @@ static int talshTaskFinalize(talsh_task_t * talsh_task, int task_status)
        case DEV_NVIDIA_GPU:
 #ifndef NO_GPU
         cuda_task=(cudaTask_t*)(talsh_task->task_p); //cuda_task has already been finalized in NV-TAL
-        //Append the newly formed destination image if needed:
+        //Append the newly formed destination image if needed (if there is one):
         j=cuda_task_arg_has_resource(cuda_task,(unsigned int)i,'d',&ier);
         if(j == YEP && ier == 0){
          if(cc == COPY_M || cc == COPY_K){
@@ -1964,7 +1964,7 @@ static int talshTaskFinalize(talsh_task_t * talsh_task, int task_status)
      //Discard/unmark the source image if needed:
      if(cc == COPY_D || cc == COPY_M){ //source to be discarded
       if(talsh_tens->avail[image_id] == NOPE){ //discard the source tensor body image only if it is marked for discarding
-       if(coherence_control){
+       if(coherence_control && talsh_tens->ndev > 1){
         j=talsh_tensor_image_discard(talsh_tens,image_id); if(j != 0 && errc == TALSH_SUCCESS) errc=NOT_CLEAN; //discard image
         src_dev_id=DEV_NULL;
        }else{
@@ -3720,10 +3720,12 @@ int talshTensorSlice(talsh_tens_t * dtens, //inout: destination tensor block (te
     errc=host_task_record(host_task,coh_ctrl,0); //record task success (finalized, no deferred coherence control on Host)
     if(errc){tsk->task_error=118; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;}
     dtens->avail[0] = YEP;
+    /*
     if(ltens->avail[limg] == NOPE){
      errc=talsh_tensor_image_discard(ltens,limg);
      if(errc){tsk->task_error=119; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;}
     }
+    */
    }
    //If blocking call, complete it here:
    if(errc == TALSH_SUCCESS && talsh_task == NULL){
@@ -3979,10 +3981,12 @@ int talshTensorInsert(talsh_tens_t * dtens, //inout: destination tensor block
     errc=host_task_record(host_task,coh_ctrl,0); //record task success (finalized, no deferred coherence control on Host)
     if(errc){tsk->task_error=118; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;}
     dtens->avail[0] = YEP;
+    /*
     if(ltens->avail[limg] == NOPE){
      errc=talsh_tensor_image_discard(ltens,limg);
      if(errc){tsk->task_error=119; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;}
     }
+    */
    }
    //If blocking call, complete it here:
    if(errc == TALSH_SUCCESS && talsh_task == NULL){
@@ -4244,10 +4248,12 @@ int talshTensorAdd(const char * cptrn,   //in: tensor addition pattern
     errc=host_task_record(host_task,coh_ctrl,0); //record task success (finalized, no deferred coherence control on Host)
     if(errc){tsk->task_error=118; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;}
     dtens->avail[0] = YEP;
+    /*
     if(ltens->avail[limg] == NOPE){
      errc=talsh_tensor_image_discard(ltens,limg);
      if(errc){tsk->task_error=119; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;}
     }
+    */
    }
    //If blocking call, complete it here:
    if(errc == TALSH_SUCCESS && talsh_task == NULL){
@@ -4532,6 +4538,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
     errc=host_task_record(host_task,coh_ctrl,0); //record task success (finalized, no deferred coherence control on Host)
     if(errc){tsk->task_error=120; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;}
     dtens->avail[0] = YEP;
+    /*
     if(ltens->avail[limg] == NOPE){
      errc=talsh_tensor_image_discard(ltens,limg);
      if(errc){tsk->task_error=121; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;}
@@ -4540,6 +4547,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
      errc=talsh_tensor_image_discard(rtens,rimg);
      if(errc){tsk->task_error=122; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;}
     }
+    */
    }
    //If blocking call, complete it here:
    if(errc == TALSH_SUCCESS && talsh_task == NULL){
