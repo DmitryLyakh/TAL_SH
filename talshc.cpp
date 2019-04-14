@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/04/12
+REVISION: 2019/04/14
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -4797,28 +4797,31 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
          }
          // Execute all tensor operations:
          if(errc == TALSH_SUCCESS){
-          //printf(" #DEBUG(talshTensorContractXL): Executing %d tensor operations\n",inlen); fflush(stdout); //debug
-          wid = MAX_ACTIVE; beg = 0; fin = MIN(beg+wid,inlen);
-          num_dec = inlen; //number of unfinished tensor operations
-          while(errc == TALSH_SUCCESS && num_dec > 0){
-           int opn = beg;
-           while(errc == TALSH_SUCCESS && opn < fin){
-            ier = talshTensorOpProgress(inq[opn],&done);
-            if(ier == TALSH_SUCCESS){
-             if(done == YEP){
-              --num_dec;
-              if(opn == beg){
-               ++beg; fin = MIN(beg+wid,inlen); opn = fin - 2;
+          errc=talshTensorInit(dtens,0.0,0.0,0,DEV_HOST);
+          if(errc == TALSH_SUCCESS){
+           //printf(" #DEBUG(talshTensorContractXL): Executing %d tensor operations\n",inlen); fflush(stdout); //debug
+           wid = MAX_ACTIVE; beg = 0; fin = MIN(beg+wid,inlen);
+           num_dec = inlen; //number of unfinished tensor operations
+           while(errc == TALSH_SUCCESS && num_dec > 0){
+            int opn = beg;
+            while(errc == TALSH_SUCCESS && opn < fin){
+             ier = talshTensorOpProgress(inq[opn],&done);
+             if(ier == TALSH_SUCCESS){
+              if(done == YEP){
+               --num_dec;
+               if(opn == beg){
+                ++beg; fin = MIN(beg+wid,inlen); opn = fin - 2;
+               }
+              }
+             }else{
+              if(ier != TRY_LATER){
+               if(VERBOSE) printf("#ERROR(talshTensorContractXL): Tensor operation %d progress error %d at stage %d\n",
+                                  opn,ier,inq[opn]->stage);
+               errc = TALSH_FAILURE;
               }
              }
-            }else{
-             if(ier != TRY_LATER){
-              if(VERBOSE) printf("#ERROR(talshTensorContractXL): Tensor operation %d progress error %d at stage %d\n",
-                                 opn,ier,inq[opn]->stage);
-              errc = TALSH_FAILURE;
-             }
+             ++opn;
             }
-            ++opn;
            }
           }
          }
