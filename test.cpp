@@ -39,6 +39,7 @@ extern "C"{
 #endif
 void test_talsh_c(int * ierr);
 void test_talsh_cxx(int * ierr);
+void test_talsh_xl(int * ierr);
 void test_talsh_qc(int * ierr);
 void test_nwchem_c(int * ierr);
 #ifndef NO_GPU
@@ -189,11 +190,20 @@ void test_talsh_cxx(int * ierr)
 #else
  int device = DEV_HOST;
 #endif
+ std::size_t host_buf_size = static_cast<std::size_t>(1024*1024*1024)*2;
 
  *ierr=0;
- //Initialize:
- talsh::initialize();
- //Tensor contraction (brackets are needed to push talsh::shutdown() out of scope):
+ //Initialize TAL-SH:
+ talsh::initialize(&host_buf_size);
+ //Check max buffer/tensor size:
+ if(device != DEV_HOST){
+  std::cout << " Max buffer size on Host             = " << talsh::getDeviceMaxBufferSize(DEV_HOST,0) << std::endl;
+  std::cout << " Max tensor size on Host             = " << talsh::getDeviceMaxTensorSize(DEV_HOST,0) << std::endl;
+ }
+ std::cout << " Max buffer size on execution device = " << talsh::getDeviceMaxBufferSize(device,0) << std::endl;
+ std::cout << " Max tensor size on execution device = " << talsh::getDeviceMaxTensorSize(device,0) << std::endl;
+
+ //Test tensor contraction (brackets are needed to push talsh::shutdown() out of scope):
  {
   //Create destination tensor:
   talsh::Tensor dtens({1,2,3,4},{VDIM,VDIM,ODIM,ODIM},1.0); //this initial value will be overwritten by 1st contraction (beta=0)
@@ -229,7 +239,8 @@ void test_talsh_cxx(int * ierr)
    }
   }
  }
- //Matrix multiplication (brackets are needed to push talsh::shutdown() out of scope):
+
+ //Test matrix multiplication:
  if(*ierr == 0){
   //Create destination tensor:
   talsh::Tensor dtens({1,2,3,4},{VDIM,VDIM,ODIM,ODIM},0.0);
@@ -245,7 +256,103 @@ void test_talsh_cxx(int * ierr)
   std::cout << "Matrix multiplication completion status = " << done << "; Error " << *ierr << std::endl;
   dtens.print(); //debug
  }
- //Shutdown:
+
+ //Test tensor slicing/insertion:
+ if(*ierr == 0){
+  //Create left tensor:
+  talsh::Tensor ltens({0,0,0},{3,4,5},0.0);
+  //Initialize left tensor:
+  unsigned int nd;
+  auto ldims = ltens.getDimExtents(nd);
+  double * lp;
+  ltens.getDataAccessHost(&lp);
+  for(int k = 0; k < ldims[2]; ++k){
+   for(int j = 0; j < ldims[1]; ++j){
+    for(int i = 0; i < ldims[0]; ++i){
+     auto l = i + j*ldims[0] + k*ldims[1]*ldims[0];
+     lp[l] = static_cast<double>(l);
+    }
+   }
+  }
+  //Create destination tensor:
+  talsh::Tensor dtens({1,2,3},{2,2,2},0.0);
+  //Extract a slice from left tensor:
+  talsh::TensorTask task_hl;
+  *ierr = ltens.extractSlice(&task_hl,dtens,std::vector<int>{1,2,3},DEV_HOST,0);
+  bool done = ltens.sync();
+  std::cout << "Slice extraction completion status = " << done << "; Error " << *ierr << std::endl;
+  if(*ierr == 0){
+   //dtens.print(0.0); //debug
+   //Reset slice to zero:
+   task_hl.clean();
+   *ierr = dtens.setValue(&task_hl,DEV_HOST,0,-13.0);
+   bool done = dtens.sync();
+   std::cout << "Slice value reset completion status = " << done << "; Error " << *ierr << std::endl;
+   if(*ierr == 0){
+    task_hl.clean();
+    *ierr = ltens.insertSlice(&task_hl,dtens,std::vector<int>{1,2,3},DEV_HOST,0);
+    bool done = ltens.sync();
+    std::cout << "Slice insertion completion status = " << done << "; Error " << *ierr << std::endl;
+    //if(*ierr == 0) ltens.print(0.0); //debug
+   }
+  }
+ }
+
+ //Shutdown TAL-SH:
+ talsh::shutdown();
+ return;
+}
+
+
+void test_talsh_xl(int * ierr)
+{
+ const std::size_t DESKTOP_MEM = 8; //GB
+ const std::size_t SUMMIT_MEM = 32; //GB
+ const std::size_t HOST_MEM_LIM = DESKTOP_MEM;
+#ifndef NO_GPU
+ int device = DEV_NVIDIA_GPU;
+#else
+ int device = DEV_HOST;
+#endif
+ std::size_t host_buf_size = static_cast<std::size_t>(1024*1024*1024)*HOST_MEM_LIM;
+
+ *ierr = 0;
+ //Initialize TAL-SH:
+ talsh::initialize(&host_buf_size);
+ const int ODIM = static_cast<int>(std::pow(static_cast<double>(host_buf_size/(4*8*8)),0.25));
+ const int VDIM = ODIM * 2;
+ //Check max buffer/tensor size:
+ if(device != DEV_HOST){
+  std::cout << " Max buffer size on Host             = " << talsh::getDeviceMaxBufferSize(DEV_HOST,0) << std::endl;
+  std::cout << " Max tensor size on Host             = " << talsh::getDeviceMaxTensorSize(DEV_HOST,0) << std::endl;
+ }
+ std::cout << " Max buffer size on execution device = " << talsh::getDeviceMaxBufferSize(device,0) << std::endl;
+ std::cout << " Max tensor size on execution device = " << talsh::getDeviceMaxTensorSize(device,0) << std::endl;
+ //Test body (scoped):
+ {
+  double norm1;
+  talsh::Tensor rtens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{0.001,0.0});
+  talsh::Tensor ltens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{0.01,0.0});
+  talsh::Tensor dtens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{0.0,0.0});
+  std::cout << " Created tensor arguments (" << ODIM << "," << VDIM << "," << ODIM << "," << VDIM << ") of size "
+            << dtens.getVolume()*8 << std::endl;
+  dtens.norm1(nullptr,norm1);
+  std::cout << " Destination tensor 1-norm = " << norm1 << std::endl;
+  double tm = time_sys_sec();
+  *ierr = dtens.contractAccumulateXL(nullptr,
+                                     std::string("D(i,a,j,b)+=L(j,a,k,c)*R(k,b,i,c)"),
+                                     ltens,rtens,device,0,std::complex<float>{1.0,0.0});
+  bool done = dtens.sync();
+  tm = time_sys_sec() - tm;
+  std::cout << " Tensor contraction completion status = " << done << "; Time (s) = " << tm << "; Error " << *ierr << std::endl;
+  double flops = ((double)(ODIM*VDIM))*((double)(ODIM*VDIM))*((double)(ODIM*VDIM))*8.0;
+  if(tm > 0.0) std::cout << " Performance (GFlop/s) = " << flops/tm/(1e9) << std::endl;
+  dtens.norm1(nullptr,norm1);
+  std::cout << " Destination tensor 1-norm = " << norm1 << std::endl;
+  std::cout << " Reference 1-norm = " << ((double)(ODIM*VDIM*ODIM*VDIM))*((double)(ODIM*VDIM))*(1e-5) << std::endl;
+ }
+ //Shutdown TAL-SH:
+ talshStats(); //GPU statistics
  talsh::shutdown();
  return;
 }

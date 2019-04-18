@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Memory management API header.
-REVISION: 2019/01/08
+REVISION: 2019/04/06
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -47,6 +47,10 @@ extern "C"{
  int arg_buf_deallocate(int gpu_beg, int gpu_end); //generic
  int arg_buf_clean_host(); //Host only
  int arg_buf_clean_gpu(int gpu_num); //NVidia GPU only
+ size_t get_arg_buf_size_host(); //Host only
+ size_t get_arg_buf_size_gpu(int gpu_num); //Nvidia GPU only
+ size_t get_blck_max_size_host(); //Host only
+ size_t get_blck_max_size_gpu(int gpu_num); //Nvidia GPU only
  int get_blck_buf_sizes_host(size_t *blck_sizes); //Host only
  int get_blck_buf_sizes_gpu(int gpu_num, size_t *blck_sizes); //NVidia GPU only
  void print_blck_buf_sizes_host(); //Host only

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/03/22
+REVISION: 2019/04/17
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -182,6 +182,12 @@ public:
  /** Returns tensor dimension extents (and tensor order). **/
  const int * getDimExtents(unsigned int & num_dims) const;
 
+ /** Returns the extent of a specific tensor dimension. **/
+ int getDimExtent(unsigned int dim) const;
+
+ /** Reshapes the tensor to a different shape of the same volume. **/
+ int reshape(const std::vector<int> & dims); //new tensor dimension extents: dims[0:rank-1])
+
  /** Returns a direct pointer to the tensor data available on Host.
      If no image is available on Host, returns false.  **/
  template<typename T>
@@ -200,7 +206,8 @@ public:
      on this tensor has failed to complete successfully. **/
  bool sync(const int device_kind = DEV_HOST, //in: device kind
            const int device_id = 0,          //in: specific device of the given kind which the synchronization is done for
-           void * device_mem = nullptr);     //in: optional pointer to that device's client memory where the tensor data should go
+           void * device_mem = nullptr,      //in: optional pointer to that device's client memory where the tensor data should go
+           bool exclusive = false);          //in: if true, tensor images on all other devices will be discarded
 
  /** Returns TRUE if the tensor is ready (has been computed).
      If ready, synchronizes its presence on the given device. **/
@@ -217,8 +224,30 @@ public:
               const int device_id = 0,                     //in: execution device id
               const T scalar_value = TensorData<T>::zero); //in: scalar value
 
+ /** Computes the 1-norm of the tensor. **/
+ int norm1(TensorTask * task_handle,                       //out: task handle associated with this operation or nullptr (synchronous)
+           double & tens_norm1,                            //out: 1-norm of the tensor (sum of absolute values of tensor elements)
+           const int device_kind = DEV_HOST,               //in: execution device kind
+           const int device_id = 0);                       //in: execution device id
+
+ /** Extracts a slice from a given position in the current tensor. **/
+ int extractSlice(TensorTask * task_handle,                //out: task handle associated with this operation or nullptr (synchronous)
+                  Tensor & slice,                          //inout: extracted tensor slice
+                  const std::vector<int> & offsets,        //in: base offsets of the slice (0-based)
+                  const int device_kind = DEV_HOST,        //in: execution device kind
+                  const int device_id = 0,                 //in: execution device id
+                  bool accumulative = false);              //in: accumulate versus overwrite the destination tensor
+
+ /** Inserts a slice into a given position in the current tensor. **/
+ int insertSlice(TensorTask * task_handle,                //out: task handle associated with this operation or nullptr (synchronous)
+                 Tensor & slice,                          //inout: inserted tensor slice
+                 const std::vector<int> & offsets,        //in: base offsets of the slice (0-based)
+                 const int device_kind = DEV_HOST,        //in: execution device kind
+                 const int device_id = 0,                 //in: execution device id
+                 bool accumulative = false);              //in: accumulate versus overwrite the destination tensor
+
  /** Performs accumulation of a tensor into the current tensor:
-     this += left * factor
+     this += left * scalar_factor
      Returns an error code (0:success). **/
  template <typename T>
  int accumulate(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)
@@ -226,10 +255,10 @@ public:
                 Tensor & left,                          //in: left tensor
                 const int device_kind = DEV_HOST,       //in: execution device kind
                 const int device_id = 0,                //in: execution device id
-                const T factor = TensorData<T>::unity); //in: alpha factor
+                const T factor = TensorData<T>::unity); //in: scalar factor
 
  /** Performs a tensor contraction of two tensors and accumulates the result into the current tensor:
-     this += left * right * factor
+     this += left * right * scalar_factor
      Returns an error code (0:success). **/
  template <typename T>
  int contractAccumulate(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)
@@ -238,8 +267,22 @@ public:
                         Tensor & right,                         //in: right tensor
                         const int device_kind = DEV_HOST,       //in: execution device kind
                         const int device_id = 0,                //in: execution device id
-                        const T factor = TensorData<T>::unity,  //in: scaling factor (alpha)
+                        const T factor = TensorData<T>::unity,  //in: scalar factor (alpha)
                         bool accumulative = true);              //in: accumulate versus overwrite the destination tensor
+
+ /** Performs an extra large tensor contraction of two tensors and accumulates the result into the current tensor:
+     this += left * right * scalar_factor
+     Regardless of the chosen execution device, this operation is blocking and the result will be available on Host.
+     Returns an error code (0:success). **/
+ template <typename T>
+ int contractAccumulateXL(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)
+                          const std::string & pattern,            //in: contraction pattern string
+                          Tensor & left,                          //in: left tensor
+                          Tensor & right,                         //in: right tensor
+                          const int device_kind = DEV_HOST,       //in: execution device kind
+                          const int device_id = 0,                //in: execution device id
+                          const T factor = TensorData<T>::unity,  //in: scalar factor (alpha)
+                          bool accumulative = true);              //in: accumulate versus overwrite the destination tensor
 
  /** Performs a matrix multiplication on two tensors and accumulates the result into the current tensor.
      Returns an error code (0:success). **/
@@ -249,10 +292,12 @@ public:
                         Tensor & right,                         //in: right tensor
                         const int device_kind = DEV_HOST,       //in: execution device kind
                         const int device_id = 0,                //in: execution device id
-                        const T factor = TensorData<T>::unity); //in: scaling factor (alpha)
+                        const T factor = TensorData<T>::unity); //in: scalar factor (alpha)
 
- /** Prints the tensor. **/
+ /** Prints the tensor info. **/
  void print() const;
+ /** Prints the tensor info and elements greater or equal to "thresh". **/
+ void print(double thresh) const;
 
 private:
 
@@ -327,6 +372,14 @@ int unpinHostMemory(T * host_ptr)
  return host_mem_unregister((void*)host_ptr);
 }
 
+// Max allocatable tensor size (bytes) in the device buffer per specified device:
+std::size_t getDeviceMaxTensorSize(const int device_kind = DEV_HOST, //in: device kind
+                                   const int device_id = 0);         //in: device id
+
+// Max device memory buffer size (bytes) per specified device:
+std::size_t getDeviceMaxBufferSize(const int device_kind = DEV_HOST, //in: device kind
+                                   const int device_id = 0);         //in: device id
+
 
 //Template definitions:
 
@@ -339,8 +392,8 @@ Tensor::Impl::Impl(const std::initializer_list<std::size_t> signature, //tensor 
  static_assert(TensorData<T>::supported,"Tensor data type is not supported!");
  int errc = talshTensorClean(&tensor_); assert(errc == TALSH_SUCCESS);
  const int rank = static_cast<int>(dims.size());
- errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),NULL,-1,NULL,
-                             realPart(init_val),imagPart(init_val));
+ errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),NULL,0,
+                             NULL,realPart(init_val),imagPart(init_val));
  assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
  write_task_ = nullptr;
 }
@@ -354,8 +407,8 @@ Tensor::Impl::Impl(const std::vector<std::size_t> & signature, //tensor signatur
  static_assert(TensorData<T>::supported,"Tensor data type is not supported!");
  int errc = talshTensorClean(&tensor_); assert(errc == TALSH_SUCCESS);
  const int rank = static_cast<int>(dims.size());
- errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),NULL,-1,NULL,
-                             realPart(init_val),imagPart(init_val));
+ errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),NULL,0,
+                             NULL,realPart(init_val),imagPart(init_val));
  assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
  write_task_ = nullptr;
 }
@@ -369,7 +422,7 @@ Tensor::Impl::Impl(const std::vector<std::size_t> & signature, //tensor signatur
  static_assert(TensorData<T>::supported,"Tensor data type is not supported!");
  int errc = talshTensorClean(&tensor_); assert(errc == TALSH_SUCCESS);
  const int rank = static_cast<int>(dims.size());
- errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),NULL);
+ errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),NULL,0);
  assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
  std::size_t vol = talshTensorVolume(&tensor_); assert(vol <= ext_data.size());
  errc = talshTensorImportData(&tensor_,TensorData<T>::kind,static_cast<const void*>(ext_data.data()));
@@ -392,8 +445,8 @@ Tensor::Impl::Impl(const std::initializer_list<std::size_t> signature, //tensor 
   errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem);
  }else{
   std::cout << "FATAL: Initialization of tensors with external memory storage is not implemented in TAL-SH yet!" << std::endl; assert(false);
-  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem,-1,NULL,
-                              realPart(*init_val),imagPart(*init_val));
+  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem,-1,
+                              NULL,realPart(*init_val),imagPart(*init_val));
  }
  assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
  write_task_ = nullptr;
@@ -414,8 +467,8 @@ Tensor::Impl::Impl(const std::vector<std::size_t> & signature, //tensor signatur
   errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem);
  }else{
   std::cout << "FATAL: Initialization of tensors with external memory storage is not implemented in TAL-SH yet!" << std::endl; assert(false);
-  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem,-1,NULL,
-                              realPart(*init_val),imagPart(*init_val));
+  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem,-1,
+                              NULL,realPart(*init_val),imagPart(*init_val));
  }
  assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
  write_task_ = nullptr;
@@ -541,7 +594,7 @@ int Tensor::setValue(TensorTask * task_handle, //out: task handle associated wit
  if(task_handle != nullptr){ //asynchronous
   assert(task_handle->isEmpty());
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
-  errc = talshTensorInit(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_T,task_hl);
+  errc = talshTensorInit(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_M,task_hl);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::setValue): talshTensorInit error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -551,7 +604,7 @@ int Tensor::setValue(TensorTask * task_handle, //out: task handle associated wit
    task_handle->clean();
   }
  }else{ //synchronous
-  errc = talshTensorInit(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_T);
+  errc = talshTensorInit(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_M);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::setValue): talshTensorInit error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -561,14 +614,14 @@ int Tensor::setValue(TensorTask * task_handle, //out: task handle associated wit
 
 
 /** Performs accumulation of a tensor into the current tensor:
-    this += left * factor **/
+    this += left * scalar_factor **/
 template <typename T>
 int Tensor::accumulate(TensorTask * task_handle,    //out: task handle associated with this operation or nullptr (synchronous)
                        const std::string & pattern, //in: accumulation pattern string
                        Tensor & left,               //in: left tensor
                        const int device_kind,       //in: execution device kind
                        const int device_id,         //in: execution device id
-                       const T factor)              //in: alpha factor
+                       const T factor)              //in: scalar factor
 {
  int errc = TALSH_SUCCESS;
  this->completeWriteTask();
@@ -579,7 +632,7 @@ int Tensor::accumulate(TensorTask * task_handle,    //out: task handle associate
   assert(task_handle->isEmpty());
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   //++left; ++right; ++(*this);
-  errc = talshTensorAdd(contr_ptrn,dtens,ltens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_TT,task_hl);
+  errc = talshTensorAdd(contr_ptrn,dtens,ltens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MT,task_hl);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::accumulate): talshTensorAdd error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -589,7 +642,7 @@ int Tensor::accumulate(TensorTask * task_handle,    //out: task handle associate
    task_handle->clean();
   }
  }else{ //synchronous
-  errc = talshTensorAdd(contr_ptrn,dtens,ltens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_TT);
+  errc = talshTensorAdd(contr_ptrn,dtens,ltens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MT);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::accumulate): talshTensorAdd error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -599,7 +652,7 @@ int Tensor::accumulate(TensorTask * task_handle,    //out: task handle associate
 
 
 /** Performs a tensor contraction of two tensors and accumulates the result into the current tensor:
-    this += left * right * factor **/
+    this += left * right * scalar_factor **/
 template <typename T>
 int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle associated with this operation or nullptr (synchronous)
                                const std::string & pattern, //in: contraction pattern string
@@ -607,12 +660,12 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
                                Tensor & right,              //in: right tensor
                                const int device_kind,       //in: execution device kind
                                const int device_id,         //in: execution device id
-                               const T factor,              //in: scaling factor (alpha)
+                               const T factor,              //in: scalar factor (alpha)
                                bool accumulative)           //in: accumulate in (default) VS overwrite destination tensor
 {
  int errc = TALSH_SUCCESS;
  this->completeWriteTask();
- int accum = YEP; if(!accumulative) accum=NOPE;
+ int accum = YEP; if(!accumulative) accum = NOPE;
  const char * contr_ptrn = pattern.c_str();
  talsh_tens_t * dtens = this->getTalshTensorPtr();
  talsh_tens_t * ltens = left.getTalshTensorPtr();
@@ -622,7 +675,7 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   //++left; ++right; ++(*this);
   errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,
-                             COPY_TTT,accum,task_hl);
+                             COPY_MTT,accum,task_hl);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
@@ -633,9 +686,45 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
   }
  }else{ //synchronous
   errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,
-                             COPY_TTT,accum);
+                             COPY_MTT,accum);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+ }
+ return errc;
+}
+
+
+/** Performs an extra large tensor contraction of two tensors and accumulates the result into the current tensor:
+    this += left * right * scalar_factor **/
+template <typename T>
+int Tensor::contractAccumulateXL(TensorTask * task_handle,    //out: task handle associated with this operation or nullptr (synchronous)
+                                 const std::string & pattern, //in: contraction pattern string
+                                 Tensor & left,               //in: left tensor
+                                 Tensor & right,              //in: right tensor
+                                 const int device_kind,       //in: execution device kind
+                                 const int device_id,         //in: execution device id
+                                 const T factor,              //in: scalar factor (alpha)
+                                 bool accumulative)           //in: accumulate in (default) VS overwrite destination tensor
+{
+ int errc = TALSH_SUCCESS;
+ this->completeWriteTask();
+ int accum = YEP; if(!accumulative) accum = NOPE;
+ const char * contr_ptrn = pattern.c_str();
+ talsh_tens_t * dtens = this->getTalshTensorPtr();
+ talsh_tens_t * ltens = left.getTalshTensorPtr();
+ talsh_tens_t * rtens = right.getTalshTensorPtr();
+ if(task_handle != nullptr){ //asynchronous
+  assert(task_handle->isEmpty());
+  //++left; ++right; ++(*this);
+  errc = talshTensorContractXL(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,accum);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::contractAccumulateXL): talshTensorContractXL error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+ }else{ //synchronous
+  errc = talshTensorContractXL(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,accum);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::contractAccumulateXL): talshTensorContractXL error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
  }
  return errc;
@@ -649,7 +738,7 @@ int Tensor::multiplyAccumulate(TensorTask * task_handle, //out: task handle asso
                                Tensor & right,           //in: right tensor
                                const int device_kind,    //in: execution device kind
                                const int device_id,      //in: execution device id
-                               const T factor)           //in: alpha factor
+                               const T factor)           //in: scalar factor
 {
  int errc = TALSH_SUCCESS;
  char cptrn[MAX_CONTRACTION_PATTERN_LEN];

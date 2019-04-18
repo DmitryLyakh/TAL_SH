@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2019/03/10
+REVISION: 2019/04/12
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -300,6 +300,12 @@ FOR DEVELOPERS ONLY:
 #define EXITED(x) printf("\n#DEBUG: EXITED %s\n",#x);
 
 //DERIVED TYPES (keep consistent with tensor_algebra.F90):
+// Tensor signature (interoperable):
+typedef struct{
+ int num_dim;      //tensor rank (number of dimensions): >=0; -1:empty
+ size_t * offsets; //tensor signature: An array of size <num_dim> (long integers)
+} talsh_tens_signature_t;
+
 // Tensor shape (interoperable):
 typedef struct{
  int num_dim;   //tensor rank (number of dimensions): >=0; -1:empty
@@ -307,12 +313,6 @@ typedef struct{
  int * divs;    //tensor dimension dividers (either in regular RAM or pinned)
  int * grps;    //tensor dimension groups (either in regular RAM or pinned)
 } talsh_tens_shape_t;
-
-// Tensor signature (interoperable):
-typedef struct{
- int num_dim;               //tensor rank (number of dimensions): >=0; -1:empty
- long long int * signature; //tensor signature: An array of long integers of size <num_dim>
-} talsh_tens_signature_t;
 
 // Tensor data descriptor (interoperable):
 typedef struct{
@@ -323,11 +323,11 @@ typedef struct{
 
 // Dense tensor block (interoperable):
 typedef struct{
- int num_dims;
- int data_kind;
- void * body_ptr;
- long long bases[MAX_TENSOR_RANK];
- long long dims[MAX_TENSOR_RANK];
+ int num_dim;                   //tensor rank (number of dimensions)
+ int data_kind;                 //data kind
+ void * body;                   //pointer to the tensor data storage
+ size_t bases[MAX_TENSOR_RANK]; //signature of the tensor block
+ size_t dims[MAX_TENSOR_RANK];  //dimension extents
 } talsh_tens_dense_t;
 
 // Device resource (occupied by a tensor block):
@@ -381,6 +381,8 @@ typedef struct{
 typedef int (*talsh_tens_init_i)(const talsh_tens_data_t * tens_data,
                                  const talsh_tens_shape_t * tens_shape,
                                  const talsh_tens_signature_t * tens_signature);
+// Dummy function that does no initialization to a tensor:
+int talsh_tens_no_init(const talsh_tens_data_t *, const talsh_tens_shape_t *, const talsh_tens_signature_t *);
 
 // Device statistics:
 typedef struct{
@@ -447,6 +449,15 @@ extern "C"{
  int gpu_print_stats(int gpu_num = -1);
 #endif /*NO_GPU */
 //  NV-TAL tensor block API:
+//   Tensor signature:
+ int tensSignature_create(talsh_tens_signature_t ** tsigna);
+ int tensSignature_clean(talsh_tens_signature_t * tsigna);
+ int tensSignature_construct(talsh_tens_signature_t * tsigna,
+                             int rank,
+                             const size_t * offsets = NULL);
+ int tensSignature_destruct(talsh_tens_signature_t * tsigna);
+ int tensSignature_destroy(talsh_tens_signature_t * tsigna);
+//   Tensor shape:
  int tensShape_create(talsh_tens_shape_t ** tshape);
  int tensShape_clean(talsh_tens_shape_t * tshape);
  int tensShape_construct(talsh_tens_shape_t * tshape, int pinned,
@@ -455,6 +466,9 @@ extern "C"{
  int tensShape_destroy(talsh_tens_shape_t * tshape);
  size_t tensShape_volume(const talsh_tens_shape_t * tshape);
  int tensShape_rank(const talsh_tens_shape_t * tshape);
+ int tensShape_reshape(talsh_tens_shape_t * tshape,
+                       int rank, const int * dims = NULL, const int * divs = NULL, const int * grps = NULL);
+//   Tensor block:
  int tensBlck_create(tensBlck_t **ctens);
  int tensBlck_clean(tensBlck_t *ctens);
  int tensBlck_destroy(tensBlck_t *ctens);
@@ -492,6 +506,12 @@ extern "C"{
 //  NV-TAL tensor operations:
  int gpu_tensor_block_place(tensBlck_t *ctens, int gpu_id, unsigned int coh_ctrl, cudaTask_t *cuda_task, void *dev_mem = NULL);
  int gpu_tensor_block_init(tensBlck_t *dtens, double val, unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1);
+ int gpu_tensor_block_slice(tensBlck_t *ltens, tensBlck_t *dtens, const int * offsets,
+                            unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1, int accumulative = NOPE);
+ int gpu_tensor_block_insert(tensBlck_t *ltens, tensBlck_t *dtens, const int * offsets,
+                             unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1, int accumulative = NOPE);
+ int gpu_tensor_block_copy(tensBlck_t *ltens, tensBlck_t *dtens, const int * permutation,
+                           unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id = -1);
  int gpu_tensor_block_add(const int *cptrn, tensBlck_t *ltens, tensBlck_t *dtens, unsigned int coh_ctrl, cudaTask_t *cuda_task,
                           int gpu_id = -1, double scale_real = 1.0, double scale_imag = 0.0, int conj_bits = 0);
  int gpu_tensor_block_contract_dlf(const int *cptrn, tensBlck_t *ltens, tensBlck_t *rtens, tensBlck_t *dtens,

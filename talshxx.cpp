@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/03/06
+REVISION: 2019/04/17
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -84,9 +84,26 @@ std::size_t Tensor::getVolume() const
 /** Returns tensor dimension extents (and tensor order). **/
 const int * Tensor::getDimExtents(unsigned int & num_dims) const
 {
- num_dims = (pimpl_->tensor_).shape_p->num_dim;
+ num_dims = static_cast<unsigned int>((pimpl_->tensor_).shape_p->num_dim);
  if(num_dims == 0) return nullptr;
  return (pimpl_->tensor_).shape_p->dims;
+}
+
+
+/** Reshapes the tensor to a different shape of the same volume. **/
+int Tensor::reshape(const std::vector<int> & dims)
+{
+ int rank = dims.size();
+ return talshTensorReshape(&(pimpl_->tensor_),rank,dims.data());
+}
+
+
+/** Returns the extent of a specific tensor dimension. **/
+int Tensor::getDimExtent(unsigned int dim) const
+{
+ int n = (pimpl_->tensor_).shape_p->num_dim;
+ assert(dim < n);
+ return ((pimpl_->tensor_).shape_p->dims)[dim];
 }
 
 
@@ -109,7 +126,7 @@ Tensor & Tensor::operator--()
 /** Synchronizes the tensor presence on the given device.
     Returns TRUE on success, FALSE if an active write task
     on this tensor has failed to complete successfully. **/
-bool Tensor::sync(const int device_kind, const int device_id, void * device_mem)
+bool Tensor::sync(const int device_kind, const int device_id, void * device_mem, bool exclusive)
 {
  bool res = this->completeWriteTask();
  if(res){
@@ -124,6 +141,10 @@ bool Tensor::sync(const int device_kind, const int device_id, void * device_mem)
    }
   }
   assert(errc == TALSH_SUCCESS);
+  if(exclusive){
+   errc = talshTensorDiscardOther(&(pimpl_->tensor_),device_id,device_kind);
+   assert(errc == TALSH_SUCCESS);
+  }
  }
  return res;
 }
@@ -156,7 +177,7 @@ bool Tensor::ready(int * status, const int device_kind, const int device_id, voi
 }
 
 
-/** Prints the tensor. **/
+/** Prints the tensor info. **/
 void Tensor::print() const
 {
  std::cout << "TAL-SH Tensor {";
@@ -165,6 +186,20 @@ void Tensor::print() const
  if(rank > 0) std::cout << (pimpl_->signature_).at(rank-1);
  std::cout << "} [use=" << pimpl_->used_ << "]:" << std::endl;
  talshTensorPrintInfo(&(pimpl_->tensor_));
+ return;
+}
+
+
+/** Prints the tensor info and body. **/
+void Tensor::print(double thresh) const
+{
+ std::cout << "TAL-SH Tensor {";
+ std::size_t rank = (pimpl_->signature_).size();
+ for(std::size_t i = 0; i < rank - 1; ++i) std::cout << (pimpl_->signature_).at(i) << ",";
+ if(rank > 0) std::cout << (pimpl_->signature_).at(rank-1);
+ std::cout << "} [use=" << pimpl_->used_ << "]:" << std::endl;
+ talshTensorPrintInfo(&(pimpl_->tensor_));
+ talshTensorPrintBody(&(pimpl_->tensor_),thresh);
  return;
 }
 
@@ -200,6 +235,93 @@ bool Tensor::testWriteTask(int * status)
 }
 
 
+int Tensor::norm1(TensorTask * task_handle, //out: task handle associated with this operation or nullptr (synchronous)
+                  double & tens_norm1,      //out: 1-norm of the tensor
+                  const int device_kind,    //in: execution device kind
+                  const int device_id)      //in: execution device id
+{
+ int errc = TALSH_SUCCESS;
+ bool synced = this->sync(DEV_HOST,0);
+ if(synced){
+  talsh_tens_t * tens = this->getTalshTensorPtr();
+  tens_norm1 = talshTensorImageNorm1_cpu(tens);
+ }else{
+  errc = TALSH_FAILURE;
+ }
+ return errc;
+}
+
+
+int Tensor::extractSlice(TensorTask * task_handle,         //out: task handle associated with this operation or nullptr (synchronous)
+                         Tensor & slice,                   //inout: extracted tensor slice
+                         const std::vector<int> & offsets, //in: base offsets of the slice (0-based)
+                         const int device_kind,            //in: execution device kind
+                         const int device_id,              //in: execution device id
+                         bool accumulative)                //in: accumulative VS overwrite (defaults to overwrite)
+{
+ int errc = TALSH_SUCCESS;
+ int accum = NOPE; if(accumulative) accum = YEP;
+ this->completeWriteTask();
+ talsh_tens_t * ltens = this->getTalshTensorPtr();
+ talsh_tens_t * dtens = slice.getTalshTensorPtr();
+ if(task_handle != nullptr){ //asynchronous
+  assert(task_handle->isEmpty());
+  talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
+  //++left; ++right; ++(*this);
+  errc = talshTensorSlice(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,accum,task_hl);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::extractSlice): talshTensorSlice error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+  if(errc == TALSH_SUCCESS){
+   pimpl_->write_task_ = task_handle;
+  }else{
+   task_handle->clean();
+  }
+ }else{ //synchronous
+  errc = talshTensorSlice(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,accum);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::extractSlice): talshTensorSlice error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+ }
+ return errc;
+}
+
+
+int Tensor::insertSlice(TensorTask * task_handle,         //out: task handle associated with this operation or nullptr (synchronous)
+                        Tensor & slice,                   //inout: inserted tensor slice
+                        const std::vector<int> & offsets, //in: base offsets of the slice (0-based)
+                        const int device_kind,            //in: execution device kind
+                        const int device_id,              //in: execution device id
+                        bool accumulative)                //in: accumulative VS overwrite (defaults to overwrite)
+{
+ int errc = TALSH_SUCCESS;
+ int accum = NOPE; if(accumulative) accum = YEP;
+ this->completeWriteTask();
+ talsh_tens_t * dtens = this->getTalshTensorPtr();
+ talsh_tens_t * ltens = slice.getTalshTensorPtr();
+ if(task_handle != nullptr){ //asynchronous
+  assert(task_handle->isEmpty());
+  talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
+  //++left; ++right; ++(*this);
+  errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,accum,task_hl);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::insertSlice): talshTensorInsert error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+  if(errc == TALSH_SUCCESS){
+   pimpl_->write_task_ = task_handle;
+  }else{
+   task_handle->clean();
+  }
+ }else{ //synchronous
+  errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,accum);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::insertSlice): talshTensorInsert error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+ }
+ return errc;
+}
+
+
 /** Initializes TAL-SH runtime. **/
 void initialize(std::size_t * host_buffer_size)
 {
@@ -227,6 +349,18 @@ void shutdown()
  int errc = talshShutdown();
  assert(errc == TALSH_SUCCESS);
  return;
+}
+
+
+std::size_t getDeviceMaxTensorSize(const int device_kind, const int device_id)
+{
+ return talshDeviceTensorSize(device_id,device_kind);
+}
+
+
+std::size_t getDeviceMaxBufferSize(const int device_kind, const int device_id)
+{
+ return talshDeviceBufferSize(device_id,device_kind);
 }
 
 
