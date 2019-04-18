@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2019/04/12
+!REVISION: 2019/04/17
 
 !Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -70,7 +70,7 @@
         integer(C_INT), private:: ALLOCATE_VIA_HAB=0 !if negative, regular Host memory will be used for tensors instead of HAB
         integer(C_SIZE_T), parameter, private:: HAB_SIZE_DEFAULT=16777216 !default size of the Host argument buffer in bytes (none)
  !Execution device:
-        integer(C_INT), private:: EXECUTION_DEVICE=DEV_DEFAULT !if positive, the specified device will be used for tensor operation execution
+        integer(C_INT), private:: EXECUTION_DEVICE=DEV_DEFAULT !if >=0, the specified device will be used for tensor operation execution by default
  !CP-TAL:
         integer(C_INT), parameter, private:: CPTAL_MAX_TMP_FTENS=192 !max number of simultaneously existing temporary Fortran tensors for CP-TAL
 !DERIVED TYPES:
@@ -469,7 +469,7 @@
           integer(C_INT), value, intent(in):: copy_ctrl
           type(talsh_task_t), intent(inout):: talsh_task
          end function talshTensorAdd_
-  !Tensor contraction:
+  !Tensor contraction (regular):
          integer(C_INT) function talshTensorContract_(cptrn,dtens,ltens,rtens,scale_real,scale_imag,dev_id,dev_kind,&
                                                      &copy_ctrl,accumulative,talsh_task) bind(c,name='talshTensorContract_')
           import
@@ -486,6 +486,21 @@
           integer(C_INT), value, intent(in):: accumulative
           type(talsh_task_t), intent(inout):: talsh_task
          end function talshTensorContract_
+  !Tensor contraction (extra large):
+         integer(C_INT) function talshTensorContractXL_(cptrn,dtens,ltens,rtens,scale_real,scale_imag,dev_id,dev_kind,&
+                                                       &accumulative) bind(c,name='talshTensorContractXL_')
+          import
+          implicit none
+          character(C_CHAR), intent(in):: cptrn(*)
+          type(talsh_tens_t), intent(inout):: dtens
+          type(talsh_tens_t), intent(inout):: ltens
+          type(talsh_tens_t), intent(inout):: rtens
+          real(C_DOUBLE), value, intent(in):: scale_real
+          real(C_DOUBLE), value, intent(in):: scale_imag
+          integer(C_INT), value, intent(in):: dev_id
+          integer(C_INT), value, intent(in):: dev_kind
+          integer(C_INT), value, intent(in):: accumulative
+         end function talshTensorContractXL_
  !Internal TAL-SH C/C++ API:
   !Obtains the information on a specific tensor body image:
          integer(C_INT) function talsh_tensor_image_info(talsh_tens,image_id,dev_id,data_kind,gmem_p,buf_entry)&
@@ -569,6 +584,7 @@
 !       public talsh_tensor_copy
         public talsh_tensor_add
         public talsh_tensor_contract
+        public talsh_tensor_contract_xl
 
        contains
 !INTERNAL FUNCTIONS:
@@ -1520,7 +1536,7 @@
           if(present(scale)) then; scale_real=dble(scale); scale_imag=dimag(scale); else; scale_real=1d0; scale_imag=0d0; endif
           if(present(dev_id)) then; devn=dev_id; else; devn=DEV_DEFAULT; endif
           if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_DEFAULT; endif
-          if(devk.eq.DEV_DEFAULT.and.devn.eq.DEV_DEFAULT) devn=EXECUTION_DEVICE
+          if(devk.eq.DEV_DEFAULT.and.devn.eq.DEV_DEFAULT) devn=EXECUTION_DEVICE !default execution device
           call string2array(cptrn(1:l),contr_ptrn,l,ierr); l=l+1; contr_ptrn(l:l)=achar(0) !C-string
           if(ierr.eq.0) then
            if(present(talsh_task)) then
@@ -1541,6 +1557,41 @@
          endif
          return
         end function talsh_tensor_contract
+!-----------------------------------------------------------------------------------------------------------------
+        function talsh_tensor_contract_xl(cptrn,dtens,ltens,rtens,scale,dev_id,dev_kind,accumulative) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                            !out: error code (0:success)
+         character(*), intent(in):: cptrn                 !in: symbolic contraction pattern, e.g. "D(a,b,c,d)+=L(c,i,j,a)*R(b,j,d,i)"
+         type(talsh_tens_t), intent(inout):: dtens        !inout: destination tensor block
+         type(talsh_tens_t), intent(inout):: ltens        !inout: left source tensor block
+         type(talsh_tens_t), intent(inout):: rtens        !inout: right source tensor block
+         complex(8), intent(in), optional:: scale         !in: scaling factor, defaults to 1
+         integer(C_INT), intent(in), optional:: dev_id    !in: device id (flat or kind-specific)
+         integer(C_INT), intent(in), optional:: dev_kind  !in: device kind (if present, <dev_id> is kind-specific)
+         logical, intent(in), optional:: accumulative     !in: accumulate (default) VS overwrite destination
+         character(C_CHAR):: contr_ptrn(1:1024) !contraction pattern as a C-string
+         integer(C_INT):: devn,devk,accum
+         integer:: l
+         real(C_DOUBLE):: scale_real,scale_imag
+
+         ierr=TALSH_SUCCESS; l=len_trim(cptrn)
+         if(l.gt.0) then
+          accum=YEP; if(present(accumulative)) then; if(.not.accumulative) accum=NOPE; endif
+          if(present(scale)) then; scale_real=dble(scale); scale_imag=dimag(scale); else; scale_real=1d0; scale_imag=0d0; endif
+          if(present(dev_id)) then; devn=dev_id; else; devn=DEV_DEFAULT; endif
+          if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_DEFAULT; endif
+          if(devk.eq.DEV_DEFAULT.and.devn.eq.DEV_DEFAULT) devn=EXECUTION_DEVICE !default execution device (flat id)
+          call string2array(cptrn(1:l),contr_ptrn,l,ierr); l=l+1; contr_ptrn(l:l)=achar(0) !C-string
+          if(ierr.eq.0) then
+           ierr=talshTensorContractXL_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,accum)
+          else
+           ierr=TALSH_INVALID_ARGS
+          endif
+         else
+          ierr=TALSH_INVALID_ARGS
+         endif
+         return
+        end function talsh_tensor_contract_xl
 ![CP-TAL]=====================================================================================================================
         integer(C_INT) function cpu_tensor_block_init(dtens_p,val_real,val_imag,arg_conj) bind(c,name='cpu_tensor_block_init')
          implicit none

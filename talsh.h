@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2019/04/12
+REVISION: 2019/04/17
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -499,9 +499,10 @@ extern "C"{
                            double scale_real = 1.0,     //in: scaling value (real part), defaults to 1
                            double scale_imag = 0.0,     //in: scaling value (imaginary part), defaults to 0
                            int dev_id = DEV_DEFAULT,    //in: device id (flat or kind-specific)
-                           int dev_kind = DEV_DEFAULT); //in: device kind (if present, <dev_id> is kind-specific)
+                           int dev_kind = DEV_DEFAULT,  //in: device kind (if present, <dev_id> is kind-specific)
+                           int accumulative = YEP);     //in: accumulate in (default) VS overwrite destination tensor: [YEP|NOPE]
  int talshTensorContractXL_(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * ltens, talsh_tens_t * rtens,
-                            double scale_real, double scale_imag, int dev_id, int dev_kind);
+                            double scale_real, double scale_imag, int dev_id, int dev_kind, int accumulative);
 // TAL-SH debugging:
 //  1-norm of the tensor body image on Host:
  double talshTensorImageNorm1_cpu(const talsh_tens_t * talsh_tens);

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/04/12
+REVISION: 2019/04/17
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -206,7 +206,8 @@ public:
      on this tensor has failed to complete successfully. **/
  bool sync(const int device_kind = DEV_HOST, //in: device kind
            const int device_id = 0,          //in: specific device of the given kind which the synchronization is done for
-           void * device_mem = nullptr);     //in: optional pointer to that device's client memory where the tensor data should go
+           void * device_mem = nullptr,      //in: optional pointer to that device's client memory where the tensor data should go
+           bool exclusive = false);          //in: if true, tensor images on all other devices will be discarded
 
  /** Returns TRUE if the tensor is ready (has been computed).
      If ready, synchronizes its presence on the given device. **/
@@ -716,12 +717,12 @@ int Tensor::contractAccumulateXL(TensorTask * task_handle,    //out: task handle
  if(task_handle != nullptr){ //asynchronous
   assert(task_handle->isEmpty());
   //++left; ++right; ++(*this);
-  errc = talshTensorContractXL(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind);
+  errc = talshTensorContractXL(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,accum);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::contractAccumulateXL): talshTensorContractXL error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
  }else{ //synchronous
-  errc = talshTensorContractXL(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind);
+  errc = talshTensorContractXL(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,accum);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::contractAccumulateXL): talshTensorContractXL error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);

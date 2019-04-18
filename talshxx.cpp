@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/04/12
+REVISION: 2019/04/17
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -126,7 +126,7 @@ Tensor & Tensor::operator--()
 /** Synchronizes the tensor presence on the given device.
     Returns TRUE on success, FALSE if an active write task
     on this tensor has failed to complete successfully. **/
-bool Tensor::sync(const int device_kind, const int device_id, void * device_mem)
+bool Tensor::sync(const int device_kind, const int device_id, void * device_mem, bool exclusive)
 {
  bool res = this->completeWriteTask();
  if(res){
@@ -141,6 +141,10 @@ bool Tensor::sync(const int device_kind, const int device_id, void * device_mem)
    }
   }
   assert(errc == TALSH_SUCCESS);
+  if(exclusive){
+   errc = talshTensorDiscardOther(&(pimpl_->tensor_),device_id,device_kind);
+   assert(errc == TALSH_SUCCESS);
+  }
  }
  return res;
 }

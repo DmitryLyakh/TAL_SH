@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/04/14
+REVISION: 2019/04/17
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -4663,7 +4663,8 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
                           double scale_real,    //in: scaling value (real part), defaults to 1
                           double scale_imag,    //in: scaling value (imaginary part), defaults to 0
                           int dev_id,           //in: device id (flat or kind-specific)
-                          int dev_kind)         //in: device kind (if present, <dev_id> is kind-specific)
+                          int dev_kind,         //in: device kind (if present, <dev_id> is kind-specific)
+                          int accumulative)     //in: accumulate in (default) VS overwrite destination tensor: [YEP|NOPE]
 /** Extra large tensor contraction dispatcher **/
 {
  const int MAX_ACTIVE = 2; //max number of simultaneously active tensor operations
@@ -4797,7 +4798,7 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
          }
          // Execute all tensor operations:
          if(errc == TALSH_SUCCESS){
-          errc=talshTensorInit(dtens,0.0,0.0,0,DEV_HOST);
+          if(accumulative != YEP) errc=talshTensorInit(dtens,0.0,0.0,0,DEV_HOST);
           if(errc == TALSH_SUCCESS){
            //printf(" #DEBUG(talshTensorContractXL): Executing %d tensor operations\n",inlen); fflush(stdout); //debug
            wid = MAX_ACTIVE; beg = 0; fin = MIN(beg+wid,inlen);
@@ -4823,6 +4824,8 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
              ++opn;
             }
            }
+          }else{
+           if(VERBOSE) printf("#ERROR(talshTensorContractXL): talshTensorInit error %d\n",errc);
           }
          }
          tm = time_sys_sec() - tm;
@@ -4863,9 +4866,9 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
 }
 
 int talshTensorContractXL_(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * ltens, talsh_tens_t * rtens,
-                           double scale_real, double scale_imag, int dev_id, int dev_kind) //Fortran wrapper
+                           double scale_real, double scale_imag, int dev_id, int dev_kind, int accumulative) //Fortran wrapper
 {
- return talshTensorContractXL(cptrn,dtens,ltens,rtens,scale_real,scale_imag,dev_id,dev_kind);
+ return talshTensorContractXL(cptrn,dtens,ltens,rtens,scale_real,scale_imag,dev_id,dev_kind,accumulative);
 }
 
 double talshTensorImageNorm1_cpu(const talsh_tens_t * talsh_tens)
