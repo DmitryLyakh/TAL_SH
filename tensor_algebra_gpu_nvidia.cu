@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2019/05/01
+REVISION: 2019/05/03
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -6128,11 +6128,17 @@ NOTES:
  }
 #else
  if(gpu_query_fast_math(gpu_num) == YEP){
-  if(dtens->data_kind == R4 || dtens->data_kind == C4){
+  if(dtens->data_kind == R4 || dtens->data_kind == C4){ //`Will require extension if new hardware
    if(lr%WMMA_ALIGN == 0 && ll%WMMA_ALIGN == 0 && lc%WMMA_ALIGN == 0){
     if(TRANS_SHMEM == EFF_TRN_ON){
-     perm_d=YEP; perm_l=YEP; perm_r=YEP;
-     fast_math=YEP;
+     if(dtens->data_kind == C4 || dtens->data_kind == C8){ //complex data types will require real/imag split
+      if(scale_real == 1.0 && scale_imag == 0.0){ //`Lift this restriction in future (requires better handling of prefactors)
+       perm_d=YEP; perm_l=YEP; perm_r=YEP;
+       fast_math=YEP;
+      }
+     }else{
+      fast_math=YEP;
+     }
     }
    }
   }
