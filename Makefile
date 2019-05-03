@@ -319,7 +319,19 @@ CFLAGS_PGI_PRF = -c -g -O3 -silent -w -Mnovect
 CFLAGS_IBM_DEV = -c -g -O0 -qsmp=omp -D_DEBUG
 CFLAGS_IBM_OPT = -c -O3 -qsmp=omp
 CFLAGS_IBM_PRF = -c -g -O3 -qsmp=omp
+ifeq ($(WITH_CUTT),YES)
+ifeq ($(WITH_CUTENSOR),YES)
+CFLAGS = $(CFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(NO_GPU) $(NO_AMD) $(NO_PHI) $(NO_BLAS) -D$(EXA_OS) $(PIC_FLAG) -DUSE_CUTT -DUSE_CUTENSOR
+else
+CFLAGS = $(CFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(NO_GPU) $(NO_AMD) $(NO_PHI) $(NO_BLAS) -D$(EXA_OS) $(PIC_FLAG) -DUSE_CUTT
+endif
+else
+ifeq ($(WITH_CUTENSOR),YES)
+CFLAGS = $(CFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(NO_GPU) $(NO_AMD) $(NO_PHI) $(NO_BLAS) -D$(EXA_OS) $(PIC_FLAG) -DUSE_CUTENSOR
+else
 CFLAGS = $(CFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(NO_GPU) $(NO_AMD) $(NO_PHI) $(NO_BLAS) -D$(EXA_OS) $(PIC_FLAG)
+endif
+endif
 
 #CPP FLAGS:
 ifeq ($(TOOLKIT),CRAY)

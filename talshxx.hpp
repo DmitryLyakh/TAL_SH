@@ -218,7 +218,7 @@ public:
 
  /** Performs tensor initialization to some scalar value.
      Returns an error code (0:success). **/
- template <typename T>
+ template <typename T = double>
  int setValue(TensorTask * task_handle,                    //out: task handle associated with this operation or nullptr (synchronous)
               const int device_kind = DEV_HOST,            //in: execution device kind
               const int device_id = 0,                     //in: execution device id
@@ -249,7 +249,7 @@ public:
  /** Performs accumulation of a tensor into the current tensor:
      this += left * scalar_factor
      Returns an error code (0:success). **/
- template <typename T>
+ template <typename T = double>
  int accumulate(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)
                 const std::string & pattern,            //in: accumulation pattern string
                 Tensor & left,                          //in: left tensor
@@ -260,7 +260,7 @@ public:
  /** Performs a tensor contraction of two tensors and accumulates the result into the current tensor:
      this += left * right * scalar_factor
      Returns an error code (0:success). **/
- template <typename T>
+ template <typename T = double>
  int contractAccumulate(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)
                         const std::string & pattern,            //in: contraction pattern string
                         Tensor & left,                          //in: left tensor
@@ -274,7 +274,7 @@ public:
      this += left * right * scalar_factor
      Regardless of the chosen execution device, this operation is blocking and the result will be available on Host.
      Returns an error code (0:success). **/
- template <typename T>
+ template <typename T = double>
  int contractAccumulateXL(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)
                           const std::string & pattern,            //in: contraction pattern string
                           Tensor & left,                          //in: left tensor
@@ -286,7 +286,7 @@ public:
 
  /** Performs a matrix multiplication on two tensors and accumulates the result into the current tensor.
      Returns an error code (0:success). **/
- template <typename T>
+ template <typename T = double>
  int multiplyAccumulate(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)
                         Tensor & left,                          //in: left tensor
                         Tensor & right,                         //in: right tensor

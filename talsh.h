@@ -175,6 +175,15 @@ extern "C"{
  void talshSetMemAllocPolicyHost(int mem_policy,
                                  int fallback,
                                  int * ierr);
+// Enable fast math on a given device:
+ int talshEnableFastMath(int dev_kind,
+                         int dev_id = DEV_DEFAULT);
+// Disable fast math on a given device:
+ int talshDisableFastMath(int dev_kind,
+                          int dev_id = DEV_DEFAULT);
+// Query fast math on a given device:
+ int talshQueryFastMath(int dev_kind,
+                        int dev_id);
 //  Get on-node device count:
  int talshDeviceCount(int dev_kind,
                       int * dev_count);

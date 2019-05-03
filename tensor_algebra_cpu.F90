@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2019/04/11
+!REVISION: 2019/05/03
 
 !Copyright (C) 2013-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -2305,12 +2305,12 @@
 	integer(LONGINT) ls
 	character(2) dtk
 	complex(8) beta
-	logical res
+	logical res,accum
 
 	ierr=0
-	beta=(0d0,0d0)
+	beta=(0d0,0d0); accum=.FALSE.
 	if(present(accumulative)) then
-	 if(accumulative) beta=(1d0,0d0)
+	 if(accumulative) then; accum=.TRUE.; beta=(1d0,0d0); endif
 	endif
 	if(tens%tensor_shape%num_dim.eq.slice%tensor_shape%num_dim) then
 	 n=tens%tensor_shape%num_dim
@@ -2370,7 +2370,12 @@
 	  enddo
 !Slicing:
 	  if(kf.eq.0) then !one-to-one copy
-	   call tensor_block_copy(tens,slice,ierr); if(ierr.ne.0) then; ierr=18; return; endif
+	   if(accum) then
+	    call tensor_block_add(slice,tens,ierr)
+	   else
+	    call tensor_block_copy(tens,slice,ierr)
+	   endif
+	   if(ierr.ne.0) then; ierr=18; return; endif
 	  else !true slicing
 	   tlt=tensor_block_layout(tens,ierr); if(ierr.ne.0) then; ierr=19; return; endif
 	   slt=tensor_block_layout(slice,ierr,.TRUE.); if(ierr.ne.0) then; ierr=20; return; endif
@@ -2449,11 +2454,12 @@
 	integer(LONGINT) ls
 	character(2) dtk,stk
 	complex(8) beta
+	logical accum
 
 	ierr=0
-	beta=(0d0,0d0)
+	beta=(0d0,0d0); accum=.FALSE.
 	if(present(accumulative)) then
-	 if(accumulative) beta=(1d0,0d0)
+	 if(accumulative) then; accum=.TRUE.; beta=(1d0,0d0); endif
 	endif
 	if(tens%tensor_shape%num_dim.eq.slice%tensor_shape%num_dim) then
 	 n=tens%tensor_shape%num_dim
@@ -2525,7 +2531,12 @@
 	  enddo
 !Insertion:
 	  if(kf.eq.0) then !one-to-one copy
-	   call tensor_block_copy(slice,tens,ierr); if(ierr.ne.0) then; ierr=22; return; endif
+	   if(accum) then
+	    call tensor_block_add(tens,slice,ierr)
+	   else
+	    call tensor_block_copy(slice,tens,ierr)
+	   endif
+	   if(ierr.ne.0) then; ierr=22; return; endif
 	  else !true insertion
 	   tlt=tensor_block_layout(tens,ierr); if(ierr.ne.0) then; ierr=23; return; endif
 	   slt=tensor_block_layout(slice,ierr,.TRUE.); if(ierr.ne.0) then; ierr=24; return; endif
