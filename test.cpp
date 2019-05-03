@@ -309,6 +309,7 @@ void test_talsh_xl(int * ierr)
  const std::size_t DESKTOP_MEM = 8; //GB
  const std::size_t SUMMIT_MEM = 32; //GB
  const std::size_t HOST_MEM_LIM = DESKTOP_MEM;
+ const float d_init = 1e-4;
 #ifndef NO_GPU
  int device = DEV_NVIDIA_GPU;
 #else
@@ -330,26 +331,42 @@ void test_talsh_xl(int * ierr)
  std::cout << " Max tensor size on execution device = " << talsh::getDeviceMaxTensorSize(device,0) << std::endl;
  //Test body (scoped):
  {
-  double norm1;
-  talsh::Tensor rtens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{0.001,0.0});
-  talsh::Tensor ltens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{0.01,0.0});
-  talsh::Tensor dtens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{0.0,0.0});
+  double norm1,nrm1;
+  talsh::Tensor rtens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{0.001f,0.0f});
+  talsh::Tensor ltens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{0.01f,0.0f});
+  talsh::Tensor dtens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{d_init,0.0f});
   std::cout << " Created tensor arguments (" << ODIM << "," << VDIM << "," << ODIM << "," << VDIM << ") of size "
-            << dtens.getVolume()*8 << std::endl;
+            << dtens.getVolume()*sizeof(std::complex<float>) << std::endl;
   dtens.norm1(nullptr,norm1);
   std::cout << " Destination tensor 1-norm = " << norm1 << std::endl;
   double tm = time_sys_sec();
   *ierr = dtens.contractAccumulateXL(nullptr,
                                      std::string("D(i,a,j,b)+=L(j,a,k,c)*R(k,b,i,c)"),
-                                     ltens,rtens,device,0,std::complex<float>{1.0,0.0});
+                                     ltens,rtens,device,0,std::complex<float>{0.5f,0.0f});
   bool done = dtens.sync();
   tm = time_sys_sec() - tm;
   std::cout << " Tensor contraction completion status = " << done << "; Time (s) = " << tm << "; Error " << *ierr << std::endl;
   double flops = ((double)(ODIM*VDIM))*((double)(ODIM*VDIM))*((double)(ODIM*VDIM))*8.0;
   if(tm > 0.0) std::cout << " Performance (GFlop/s) = " << flops/tm/(1e9) << std::endl;
   dtens.norm1(nullptr,norm1);
+  double val = (((double)(ODIM*VDIM))*(1e-3)*(1e-2)*(0.5)+d_init); //dtens element value
+  nrm1 = ((double)(ODIM*VDIM*ODIM*VDIM))*val; //reference 1-norm
   std::cout << " Destination tensor 1-norm = " << norm1 << std::endl;
-  std::cout << " Reference 1-norm = " << ((double)(ODIM*VDIM*ODIM*VDIM))*((double)(ODIM*VDIM))*(1e-5) << std::endl;
+  std::cout << " Reference 1-norm          = " << nrm1 << ": Difference = " << abs(norm1 - nrm1) << std::endl;
+  const std::complex<float> * data_ptr;
+  bool res = dtens.getDataAccessHostConst(&data_ptr);
+  if(res){
+   double diff = 0.0;
+   std::size_t vol = dtens.getVolume();
+   for(std::size_t l = 0; l < vol; ++l){
+    std::complex<float> df = (data_ptr[l] - std::complex<float>{(float)val,0.0f});
+    double rl = df.real();
+    double im = df.imag();
+    double nm = sqrt(rl*rl + im*im);
+    if(nm > diff) diff = nm;
+   }
+   std::cout << " Max elementwise norm difference = " << diff << std::endl;
+  }
  }
  //Shutdown TAL-SH:
  talshStats(); //GPU statistics

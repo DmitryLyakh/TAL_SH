@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2019/04/12
+REVISION: 2019/05/01
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -132,6 +132,7 @@ FOR DEVELOPERS ONLY:
 #endif
 #define GPU_CACHE_LINE_LEN 128     //cache line length in bytes
 #define GPU_SHMEM_WIDTH 8          //default width of the GPU shared memory banks (4 or 8 bytes)
+#define WMMA_ALIGN 8               //matrix dimension size alignment requirement for fast math on tensor cores
 #define MAX_CUDA_BLOCKS 1024       //max number of CUDA thread blocks per kernel
 #if CUDA_ARCH >= 300
 #define TENS_TRANSP_BUF_SIZE 2048  //buffer size (elements) for <gpu_tensor_block_copy_dlf__>
@@ -405,6 +406,7 @@ extern "C"{
  int tens_valid_data_kind(int datk, int * datk_size = NULL);
  int tens_valid_data_kind_(int datk, int * datk_size);
  void get_contr_pattern_sym(const int * rank_left, const int * rank_right, const int * conj_bits, const int * cptrn_dig, char * cptrn_sym, int * cpl, int * ierr);
+ int get_contr_pattern_cutensor(const int * dig_ptrn, int drank, int * ptrn_d, int lrank, int * ptrn_l, int rrank, int * ptrn_r);
  size_t tens_elem_offset_f(unsigned int num_dim, const unsigned int * dims, const unsigned int * mlndx);
  void tens_elem_mlndx_f(size_t offset, unsigned int num_dim, const unsigned int * dims, unsigned int * mlndx);
  unsigned int argument_coherence_get_value(unsigned int coh_ctrl, unsigned int tot_args, unsigned int arg_num);
@@ -444,6 +446,9 @@ extern "C"{
  size_t gpu_device_memory_size(int gpu_num);
 //  NV-TAL internal control:
  int gpu_set_shmem_width(int width);
+ int gpu_enable_fast_math(int gpu_num = -1);
+ int gpu_disable_fast_math(int gpu_num = -1);
+ int gpu_query_fast_math(int gpu_num);
  void gpu_set_transpose_algorithm(int alg); //{EFF_TRN_OFF,EFF_TRN_ON,EFF_TRN_ON_CUTT}
  void gpu_set_matmult_algorithm(int alg);
  int gpu_print_stats(int gpu_num = -1);

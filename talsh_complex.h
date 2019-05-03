@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Complex arithmetic header.
-REVISION: 2019/01/04
+REVISION: 2019/04/17
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -80,6 +80,7 @@ inline void talshComplex4DivEq(talshComplex4 * x, talshComplex4 y);
 inline void talshComplex8DivEq(talshComplex8 * x, talshComplex8 y);
 */
 
+
 //DEFINITIONS:
 //Construct a complex number:
 #ifndef NO_GPU
@@ -147,6 +148,38 @@ double talshComplex8Real(talshComplex8 cmplx)
 #endif
 #endif
 
+//Get the real component of a complex number:
+#ifndef NO_GPU
+__host__ __device__ __forceinline__ float talshComplexReal(talshComplex4 cmplx)
+{
+ return cuCrealf(cmplx);
+}
+__host__ __device__ __forceinline__ double talshComplexReal(talshComplex8 cmplx)
+{
+ return cuCreal(cmplx);
+}
+#else
+#ifdef __cplusplus
+inline float talshComplexReal(talshComplex4 cmplx)
+{
+ return cmplx.real();
+}
+inline double talshComplexReal(talshComplex8 cmplx)
+{
+ return cmplx.real();
+}
+#else
+float talshComplexReal(talshComplex4 cmplx)
+{
+ return cmplx.real;
+}
+double talshComplexReal(talshComplex8 cmplx)
+{
+ return cmplx.real;
+}
+#endif
+#endif
+
 //Get the imaginary component of a complex number:
 #ifndef NO_GPU
 __host__ __device__ __forceinline__ float talshComplex4Imag(talshComplex4 cmplx)
@@ -173,6 +206,38 @@ float talshComplex4Imag(talshComplex4 cmplx)
  return cmplx.imag;
 }
 double talshComplex8Imag(talshComplex8 cmplx)
+{
+ return cmplx.imag;
+}
+#endif
+#endif
+
+//Get the imaginary component of a complex number:
+#ifndef NO_GPU
+__host__ __device__ __forceinline__ float talshComplexImag(talshComplex4 cmplx)
+{
+ return cuCimagf(cmplx);
+}
+__host__ __device__ __forceinline__ double talshComplexImag(talshComplex8 cmplx)
+{
+ return cuCimag(cmplx);
+}
+#else
+#ifdef __cplusplus
+inline float talshComplexImag(talshComplex4 cmplx)
+{
+ return cmplx.imag();
+}
+inline double talshComplexImag(talshComplex8 cmplx)
+{
+ return cmplx.imag();
+}
+#else
+float talshComplexImag(talshComplex4 cmplx)
+{
+ return cmplx.imag;
+}
+double talshComplexImag(talshComplex8 cmplx)
 {
  return cmplx.imag;
 }
@@ -456,5 +521,49 @@ talshComplex8 talshComplex8Div(talshComplex8 x, talshComplex8 y)
 }
 #endif
 #endif
+
+//HELPERS:
+template<typename T>
+struct ComplexType{
+ using Type = T;
+ using RealType = void;
+ static constexpr bool valid = false;
+};
+
+template<>
+struct ComplexType<talshComplex4>{
+ using Type = talshComplex4;
+ using RealType = float;
+ static constexpr bool valid = true;
+};
+
+template<>
+struct ComplexType<talshComplex8>{
+ using Type = talshComplex8;
+ using RealType = double;
+ static constexpr bool valid = true;
+};
+
+
+template<typename T>
+struct RealType{
+ using Type = T;
+ using ComplexType = void;
+ static constexpr bool valid = false;
+};
+
+template<>
+struct RealType<float>{
+ using Type = float;
+ using ComplexType = talshComplex4;
+ static constexpr bool valid = true;
+};
+
+template<>
+struct RealType<double>{
+ using Type = double;
+ using ComplexType = talshComplex8;
+ static constexpr bool valid = true;
+};
 
 #endif /*TALSH_COMPLEX_H_*/

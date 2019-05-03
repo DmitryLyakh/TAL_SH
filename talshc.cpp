@@ -629,6 +629,71 @@ int talshShutdown()
  return TALSH_SUCCESS;
 }
 
+int talshEnableFastMath(int dev_kind, int dev_id)
+/** Enable fast math on a given device. **/
+{
+ int errc;
+
+#pragma omp flush
+ errc=TALSH_SUCCESS;
+ switch(dev_kind){
+ case DEV_NVIDIA_GPU:
+#ifndef NO_GPU
+  if(dev_id >= 0){
+   errc=gpu_enable_fast_math(dev_id);
+  }else{
+   errc=gpu_enable_fast_math();
+  }
+#endif
+  break;
+ default:
+  errc=TALSH_NOT_AVAILABLE;
+ }
+#pragma omp flush
+ return errc;
+}
+
+int talshDisableFastMath(int dev_kind, int dev_id)
+/** Disable fast math on a given device. **/
+{
+ int errc;
+
+#pragma omp flush
+ errc=TALSH_SUCCESS;
+ switch(dev_kind){
+ case DEV_NVIDIA_GPU:
+#ifndef NO_GPU
+  if(dev_id >= 0){
+   errc=gpu_disable_fast_math(dev_id);
+  }else{
+   errc=gpu_disable_fast_math();
+  }
+#endif
+  break;
+ default:
+  errc=TALSH_NOT_AVAILABLE;
+ }
+#pragma omp flush
+ return errc;
+}
+
+int talshQueryFastMath(int dev_kind, int dev_id)
+/** Query fast math on a given device. **/
+{
+ int ans;
+
+#pragma omp flush
+ ans=NOPE;
+ switch(dev_kind){
+ case DEV_NVIDIA_GPU:
+#ifndef NO_GPU
+  ans=gpu_query_fast_math(dev_id);
+#endif
+  break;
+ }
+ return ans;
+}
+
 int talshDeviceCount(int dev_kind, int * dev_count)
 /** Returns the total number of devices of specific kind found on node. **/
 {
