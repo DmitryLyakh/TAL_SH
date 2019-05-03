@@ -344,13 +344,13 @@
         if(ierr.ne.TALSH_SUCCESS) then; ierr=2; return; endif
 !Construct tensors:
         write(*,'(1x,"Constructing tensor dtens ... ")',ADVANCE='NO')
-        ierr=talsh_tensor_construct(dtens,R8,(/93,93,93,93/),init_val=(1d-4,0d0))
+        ierr=talsh_tensor_construct(dtens,R8,(/33,33,33,33/),init_val=(1d-4,0d0))
         write(*,'("Status ",i11)') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=3; return; endif
         write(*,'(1x,"Constructing tensor ltens ... ")',ADVANCE='NO')
-        ierr=talsh_tensor_construct(ltens,R8,(/420,93,93/),init_val=(1d-3,0d0))
+        ierr=talsh_tensor_construct(ltens,R8,(/420,33,33/),init_val=(1d-3,0d0))
         write(*,'("Status ",i11)') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=4; return; endif
         write(*,'(1x,"Constructing tensor rtens ... ")',ADVANCE='NO')
-        ierr=talsh_tensor_construct(rtens,R8,(/420,93,93/),init_val=(1d-2,0d0))
+        ierr=talsh_tensor_construct(rtens,R8,(/420,33,33/),init_val=(1d-2,0d0))
         write(*,'("Status ",i11)') ierr; if(ierr.ne.TALSH_SUCCESS) then; ierr=5; return; endif
 !Contract tensors:
 #ifndef NO_GPU
