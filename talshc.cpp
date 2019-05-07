@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/04/17
+REVISION: 2019/05/06
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -2749,6 +2749,7 @@ int talshTensorOpDestruct(talsh_tens_op_t * tens_op)
     tens_op->num_args = 0;
    }
   }else{
+   if(VERBOSE) printf("#ERROR(talshTensorOpDestruct): Attempt to destruct an active tensor operation: Status = %d\n",stat);
    errc = TALSH_IN_PROGRESS;
   }
  }
@@ -4732,9 +4733,10 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
                           int accumulative)     //in: accumulate in (default) VS overwrite destination tensor: [YEP|NOPE]
 /** Extra large tensor contraction dispatcher **/
 {
- const int MAX_ACTIVE = 2; //max number of simultaneously active tensor operations
+ const int MAX_ACTIVE = 2;      //max number of simultaneously active tensor operations per device
+ const int MAX_TENS_OPS = 8192; //max total number of derived tensor operations
  int dims[MAX_TENSOR_RANK],data_kinds[TALSH_MAX_DEV_PRESENT];
- int errc,ier,n,dtk,devid,max_ops,num_dec,inlen,oulen,wid,beg,fin,done;
+ int errc,ier,n,dtk,max_ops,num_dec,inlen,oulen,wid,beg,fin,done,dev_beg,dev_end;
  size_t offs[MAX_TENSOR_RANK],totmem,argmem,dsz,lsz,rsz;
  talsh_tens_op_t *op,**que,**inq,**ouq,**swp;
  slab_t *op_stack;
@@ -4751,10 +4753,25 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
  if(talshTensorIsHealthy(dtens) != YEP || talshTensorIsHealthy(ltens) != YEP || talshTensorIsHealthy(rtens) != YEP)
   return TALSH_OBJECT_BROKEN;
  // Check execution device:
- if(dev_kind == DEV_DEFAULT) dev_kind = DEV_HOST;
- if(dev_id == DEV_DEFAULT) dev_id = 0;
- devid = talshFlatDevId(dev_kind,dev_id); //execution device flat id
- //printf(" #DEBUG(talshTensorContractXL): Execution device = %d\n",devid); //debug
+ if(dev_kind == DEV_DEFAULT){
+  if(dev_id == DEV_DEFAULT){
+   dev_kind=DEV_HOST; dev_id=0;
+  }else{
+   dev_id=talshKindDevId(dev_id,&dev_kind);
+  }
+  dev_beg=dev_id; dev_end=dev_id;
+ }else{
+  if(dev_id == DEV_DEFAULT){
+   switch(dev_kind){
+   case DEV_HOST: dev_beg=0; dev_end=0; break;
+   case DEV_NVIDIA_GPU: dev_beg=talsh_gpu_beg; dev_end=talsh_gpu_end; break;
+   default: return TALSH_NOT_AVAILABLE;
+   }
+  }else{
+   dev_beg=dev_id; dev_end=dev_id;
+  }
+ }
+ //printf(" #DEBUG(talshTensorContractXL): Execution device kind = %d: [%d:%d]\n",dev_kind,dev_beg,dev_end); //debug
  // Ensure tensor presence on Host:
  if(errc == TALSH_SUCCESS) errc = talshTensorPlace(rtens,0,DEV_HOST);
  if(errc == TALSH_SUCCESS) errc = talshTensorPlace(ltens,0,DEV_HOST);
@@ -4771,9 +4788,13 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
  if(errc == TALSH_SUCCESS){
   tm = time_sys_sec();
   dtk = data_kinds[0]; //destination tensor data kind defines execution data kind
-  totmem = talshDeviceBufferSize(dev_id,dev_kind); //total size of the device buffer
-  argmem = talshDeviceTensorSize(dev_id,dev_kind); //max entry size in the device buffer
-  max_ops = 4096; //`Determine precisely
+  totmem = talshDeviceBufferSize(dev_beg,dev_kind); //total size of the device buffer
+  argmem = talshDeviceTensorSize(dev_beg,dev_kind); //max entry size in the device buffer
+  for(int i = dev_beg+1; i <= dev_end; ++i){
+   dsz = talshDeviceBufferSize(i,dev_kind); if(dsz < totmem) totmem = dsz;
+   dsz = talshDeviceTensorSize(i,dev_kind); if(dsz < argmem) argmem = dsz;
+  }
+  max_ops = MAX_TENS_OPS; //`Determine precisely
   //printf(" #DEBUG(talshTensorContractXL): Data kind = %d; ArgMemLim = %lu; TotMemLim = %lu\n",dtk,argmem,totmem); //debug
   errc = slab_create(&op_stack);
   if(errc == 0){
@@ -4857,16 +4878,19 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
          //printf(" #DEBUG(talshTensorContractXL)[%.4f]: Decomposition length = %d\n",tm,inlen); //debug
          // Set execution device for all tensor operations:
          tm = time_sys_sec();
+         dev_id = dev_beg;
          for(int opn = 0; opn < inlen; ++opn){
           errc = talshTensorOpSetExecDevice(inq[opn],dev_id,dev_kind); if(errc != TALSH_SUCCESS) break;
           //talshTensorOpPrint(inq[opn]); //debug
+          if(++dev_id > dev_end) dev_id = dev_beg;
          }
          // Execute all tensor operations:
          if(errc == TALSH_SUCCESS){
           if(accumulative != YEP) errc=talshTensorInit(dtens,0.0,0.0,0,DEV_HOST);
           if(errc == TALSH_SUCCESS){
            //printf(" #DEBUG(talshTensorContractXL): Executing %d tensor operations\n",inlen); fflush(stdout); //debug
-           wid = MAX_ACTIVE; beg = 0; fin = MIN(beg+wid,inlen);
+           wid = MAX_ACTIVE * (dev_end - dev_beg + 1);
+           beg = 0; fin = MIN(beg+wid,inlen);
            num_dec = inlen; //number of unfinished tensor operations
            while(errc == TALSH_SUCCESS && num_dec > 0){
             int opn = beg;
@@ -4874,8 +4898,8 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
              ier = talshTensorOpProgress(inq[opn],&done);
              if(ier == TALSH_SUCCESS){
               if(done == YEP){
-               --num_dec;
                if(opn == beg){
+                --num_dec;
                 ++beg; fin = MIN(beg+wid,inlen); opn = fin - 2;
                }
               }
@@ -4900,9 +4924,15 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
         tm = time_sys_sec();
         for(int opn = inlen - 1; opn >= 0; --opn){
          ier = talshTensorOpDestruct(inq[opn]);
-         if(ier != TALSH_SUCCESS && errc == TALSH_SUCCESS) errc = TALSH_FAILURE;
+         if(ier != TALSH_SUCCESS && errc == TALSH_SUCCESS){
+          if(VERBOSE) printf("#ERROR(talshTensorContractXL): talshTensorOpDestruct error %d for operation #%d\n",ier,opn);
+          errc = TALSH_FAILURE;
+         }
          ier = slab_entry_release(op_stack,(void*)(inq[opn])); inq[opn] = NULL;
-         if(ier != 0 && errc == TALSH_SUCCESS) errc = TALSH_FAILURE;
+         if(ier != 0 && errc == TALSH_SUCCESS){
+          if(VERBOSE) printf("#ERROR(talshTensorContractXL): slab_entry_release error %d for operation #%d\n",ier,opn);
+          errc = TALSH_FAILURE;
+         }
         }
         tm = time_sys_sec() - tm;
         //printf(" #DEBUG(talshTensorContractXL)[%.4f]: Destructed %d tensor operations\n",tm,inlen); //debug
@@ -4921,7 +4951,11 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
    }
    // Destroy temporary storage for tensor operations:
    tm = time_sys_sec();
-   ier = slab_destroy(op_stack); if(ier != 0 && errc == TALSH_SUCCESS) errc = TALSH_FAILURE;
+   ier = slab_destroy(op_stack);
+   if(ier != 0 && errc == TALSH_SUCCESS){
+    if(VERBOSE) printf("#ERROR(talshTensorContractXL): slab_destroy error %d\n",ier);
+    errc = TALSH_FAILURE;
+   }
    tm = time_sys_sec() - tm;
    //printf(" #DEBUG(talshTensorContractXL)[%.4f]: Destroyed tensor operation storage\n",tm); //debug
   }

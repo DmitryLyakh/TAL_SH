@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/04/17
+REVISION: 2019/05/05
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -273,6 +273,7 @@ public:
  /** Performs an extra large tensor contraction of two tensors and accumulates the result into the current tensor:
      this += left * right * scalar_factor
      Regardless of the chosen execution device, this operation is blocking and the result will be available on Host.
+     By providing a specific device_kind with device_id=DEV_DEFAULT, all devices of the requested kind will be used.
      Returns an error code (0:success). **/
  template <typename T = double>
  int contractAccumulateXL(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)

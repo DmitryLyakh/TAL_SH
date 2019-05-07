@@ -306,21 +306,22 @@ void test_talsh_cxx(int * ierr)
 
 void test_talsh_xl(int * ierr)
 {
- const std::size_t DESKTOP_MEM = 8; //GB
- const std::size_t SUMMIT_MEM = 32; //GB
+ const std::size_t DESKTOP_MEM = 8;  //GB
+ const std::size_t SUMMIT_MEM = 128; //GB
  const std::size_t HOST_MEM_LIM = DESKTOP_MEM;
- const float d_init = 1e-4;
+ const int device_id = 0; //[0...max] OR DEV_DEFAULT (for all)
 #ifndef NO_GPU
- int device = DEV_NVIDIA_GPU;
+ const int device = DEV_NVIDIA_GPU;
 #else
- int device = DEV_HOST;
+ const int device = DEV_HOST;
 #endif
- std::size_t host_buf_size = static_cast<std::size_t>(1024*1024*1024)*HOST_MEM_LIM;
+ const float d_init = 1e-4;
 
  *ierr = 0;
  //Initialize TAL-SH:
+ std::size_t host_buf_size = std::size_t{1024*1024*1024}*HOST_MEM_LIM;
  talsh::initialize(&host_buf_size);
- const int ODIM = static_cast<int>(std::pow(static_cast<double>(host_buf_size/(4*8*8)),0.25));
+ const int ODIM = static_cast<int>(std::pow(static_cast<double>(host_buf_size/(4*4*8*8)),0.25));
  const int VDIM = ODIM * 2;
  //Check max buffer/tensor size:
  if(device != DEV_HOST){
@@ -342,7 +343,7 @@ void test_talsh_xl(int * ierr)
   double tm = time_sys_sec();
   *ierr = dtens.contractAccumulateXL(nullptr,
                                      std::string("D(i,a,j,b)+=L(j,a,k,c)*R(k,b,i,c)"),
-                                     ltens,rtens,device,0,std::complex<float>{0.5f,0.0f});
+                                     ltens,rtens,device,device_id,std::complex<float>{0.5f,0.0f});
   bool done = dtens.sync();
   tm = time_sys_sec() - tm;
   std::cout << " Tensor contraction completion status = " << done << "; Time (s) = " << tm << "; Error " << *ierr << std::endl;
