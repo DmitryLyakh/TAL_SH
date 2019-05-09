@@ -370,9 +370,9 @@ void test_talsh_xl(int * ierr)
    std::cout << " Max elementwise norm difference = " << diff << std::endl;
   }
   std::cout << " Tensor reduction into scalar ... ";
-  *ierr = stens.contractAccumulate(nullptr,
-                                   std::string("D()+=L(i,a,j,b)*R(j,b,i,a)"),
-                                   ltens,rtens,device,device_id,std::complex<float>{1.0f,0.0f});
+  *ierr = stens.contractAccumulateXL(nullptr,
+                                     std::string("D()+=L(i,a,j,b)*R(j,b,i,a)"),
+                                     ltens,rtens,device,device_id,std::complex<float>{1.0f,0.0f});
   done = stens.sync();
   std::cout << " Status = " << done << "; Error " << *ierr << std::endl;
   stens.print(0.0);

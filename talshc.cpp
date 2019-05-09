@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/05/06
+REVISION: 2019/05/09
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -1750,21 +1750,23 @@ int talshTensorSliceConstruct(talsh_tens_slice_t * slice,
                               const int * grps)
 {
  int rank;
-
  int errc = TALSH_SUCCESS;
  if(slice == NULL || tensor == NULL) return TALSH_INVALID_ARGS;
  //Check consistency:
  const int * tens_dims = talshTensorDimExtents(tensor,&rank);
- if(rank <= 0) return TALSH_INVALID_ARGS;
- if(offsets == NULL || dims == NULL) return TALSH_INVALID_ARGS;
+ if(rank < 0 || (rank > 0 && (offsets == NULL || dims == NULL))) return TALSH_INVALID_ARGS;
  for(int i = 0; i < rank; ++i){
   if(dims[i] <= 0 || offsets[i] + dims[i] > tens_dims[i]) return TALSH_INVALID_ARGS;
  }
  //Construct tensor slice:
  errc = tensSignature_construct(&(slice->bases),rank,offsets);
- if(errc == 0) errc = tensShape_construct(&(slice->shape),NOPE,rank,dims,divs,grps);
  if(errc == 0){
-  slice->tensor = (talsh_tens_t*)tensor;
+  errc = tensShape_construct(&(slice->shape),NOPE,rank,dims,divs,grps);
+  if(errc == 0){
+   slice->tensor = (talsh_tens_t*)tensor;
+  }else{
+   talshTensorSliceDestruct(slice);
+  }
  }else{
   talshTensorSliceDestruct(slice);
  }
@@ -1782,8 +1784,8 @@ int talshTensorSliceDestruct(talsh_tens_slice_t * slice)
 {
  int errc = TALSH_SUCCESS;
  if(slice == NULL) return TALSH_INVALID_ARGS;
- if(errc == 0) errc = tensSignature_destruct(&(slice->bases));
  if(errc == 0) errc = tensShape_destruct(&(slice->shape));
+ if(errc == 0) errc = tensSignature_destruct(&(slice->bases));
  int ierr = talshTensorSliceClean(slice); if(ierr != 0 && errc == 0) errc = ierr;
  return errc;
 }
@@ -3010,7 +3012,7 @@ int talshTensorOpDecompose2(         //out: error code
   case TALSH_TENSOR_CONTRACT:
    // Parse the tensor contraction pattern and extract necessary information:
    errc=talsh_get_contr_ptrn_str2dig(tens_op->symb_pattern,contr_ptrn,&drank,&lrank,&rrank,&conj_bits);
-   if(drank <= 0 && lrank <= 0 && rrank <= 0) errc = TALSH_NOT_ALLOWED; //at least one argument must have positive order
+   if(drank <= 0 && lrank <= 0 && rrank <= 0) errc = TALSH_NOT_ALLOWED; //at least one argument must have positive rank
    if(errc == TALSH_SUCCESS){
     cpl = lrank + rrank; //length of contr_ptrn[]
     //printf("#DEBUG(talshTensorOpDecompose2): Digital index pattern: "); //debug
