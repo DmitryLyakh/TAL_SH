@@ -339,7 +339,7 @@ void test_talsh_xl(int * ierr)
   talsh::Tensor stens({},std::complex<float>{0.0f,0.0f});
   std::cout << " Created tensor arguments (" << ODIM << "," << VDIM << "," << ODIM << "," << VDIM << ") of size "
             << dtens.getVolume()*sizeof(std::complex<float>) << std::endl;
-  dtens.norm1(nullptr,norm1);
+  dtens.norm1(nullptr,&norm1);
   std::cout << " Destination tensor 1-norm = " << norm1 << std::endl;
   double tm = time_sys_sec();
   *ierr = dtens.contractAccumulateXL(nullptr,
@@ -350,7 +350,7 @@ void test_talsh_xl(int * ierr)
   std::cout << " Tensor contraction completion status = " << done << "; Time (s) = " << tm << "; Error " << *ierr << std::endl;
   double flops = ((double)(ODIM*VDIM))*((double)(ODIM*VDIM))*((double)(ODIM*VDIM))*8.0;
   if(tm > 0.0) std::cout << " Performance (GFlop/s) = " << flops/tm/(1e9) << std::endl;
-  dtens.norm1(nullptr,norm1);
+  dtens.norm1(nullptr,&norm1);
   double val = (((double)(ODIM*VDIM))*(1e-3)*(1e-2)*(0.5)+d_init); //dtens element value
   nrm1 = ((double)(ODIM*VDIM))*((double)(ODIM*VDIM))*val; //reference 1-norm
   std::cout << " Destination tensor 1-norm = " << norm1 << std::endl;
