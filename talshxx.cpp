@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/04/17
+REVISION: 2019/05/07
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -182,8 +182,10 @@ void Tensor::print() const
 {
  std::cout << "TAL-SH Tensor {";
  std::size_t rank = (pimpl_->signature_).size();
- for(std::size_t i = 0; i < rank - 1; ++i) std::cout << (pimpl_->signature_).at(i) << ",";
- if(rank > 0) std::cout << (pimpl_->signature_).at(rank-1);
+ if(rank > 0){
+  for(std::size_t i = 0; i < rank - 1; ++i) std::cout << (pimpl_->signature_).at(i) << ",";
+  std::cout << (pimpl_->signature_).at(rank-1);
+ }
  std::cout << "} [use=" << pimpl_->used_ << "]:" << std::endl;
  talshTensorPrintInfo(&(pimpl_->tensor_));
  return;
@@ -195,8 +197,10 @@ void Tensor::print(double thresh) const
 {
  std::cout << "TAL-SH Tensor {";
  std::size_t rank = (pimpl_->signature_).size();
- for(std::size_t i = 0; i < rank - 1; ++i) std::cout << (pimpl_->signature_).at(i) << ",";
- if(rank > 0) std::cout << (pimpl_->signature_).at(rank-1);
+ if(rank > 0){
+  for(std::size_t i = 0; i < rank - 1; ++i) std::cout << (pimpl_->signature_).at(i) << ",";
+  std::cout << (pimpl_->signature_).at(rank-1);
+ }
  std::cout << "} [use=" << pimpl_->used_ << "]:" << std::endl;
  talshTensorPrintInfo(&(pimpl_->tensor_));
  talshTensorPrintBody(&(pimpl_->tensor_),thresh);

@@ -306,7 +306,7 @@ void test_talsh_cxx(int * ierr)
 
 void test_talsh_xl(int * ierr)
 {
- const std::size_t DESKTOP_MEM = 8;  //GB
+ const std::size_t DESKTOP_MEM = 4;  //GB
  const std::size_t SUMMIT_MEM = 128; //GB
  const std::size_t HOST_MEM_LIM = DESKTOP_MEM;
  const int device_id = 0; //[0...max] OR DEV_DEFAULT (for all)
@@ -336,6 +336,7 @@ void test_talsh_xl(int * ierr)
   talsh::Tensor rtens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{0.001f,0.0f});
   talsh::Tensor ltens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{0.01f,0.0f});
   talsh::Tensor dtens({ODIM,VDIM,ODIM,VDIM},std::complex<float>{d_init,0.0f});
+  talsh::Tensor stens({},std::complex<float>{0.0f,0.0f});
   std::cout << " Created tensor arguments (" << ODIM << "," << VDIM << "," << ODIM << "," << VDIM << ") of size "
             << dtens.getVolume()*sizeof(std::complex<float>) << std::endl;
   dtens.norm1(nullptr,norm1);
@@ -351,7 +352,7 @@ void test_talsh_xl(int * ierr)
   if(tm > 0.0) std::cout << " Performance (GFlop/s) = " << flops/tm/(1e9) << std::endl;
   dtens.norm1(nullptr,norm1);
   double val = (((double)(ODIM*VDIM))*(1e-3)*(1e-2)*(0.5)+d_init); //dtens element value
-  nrm1 = ((double)(ODIM*VDIM*ODIM*VDIM))*val; //reference 1-norm
+  nrm1 = ((double)(ODIM*VDIM))*((double)(ODIM*VDIM))*val; //reference 1-norm
   std::cout << " Destination tensor 1-norm = " << norm1 << std::endl;
   std::cout << " Reference 1-norm          = " << nrm1 << ": Difference = " << abs(norm1 - nrm1) << std::endl;
   const std::complex<float> * data_ptr;
@@ -368,6 +369,14 @@ void test_talsh_xl(int * ierr)
    }
    std::cout << " Max elementwise norm difference = " << diff << std::endl;
   }
+  std::cout << " Tensor reduction into scalar ... ";
+  *ierr = stens.contractAccumulate(nullptr,
+                                   std::string("D()+=L(i,a,j,b)*R(j,b,i,a)"),
+                                   ltens,rtens,device,device_id,std::complex<float>{1.0f,0.0f});
+  done = stens.sync();
+  std::cout << " Status = " << done << "; Error " << *ierr << std::endl;
+  stens.print(0.0);
+  std::cout << " Reference value = " << ((double)(ODIM*VDIM))*((double)(ODIM*VDIM))*(1e-3)*(1e-2) << std::endl;
  }
  //Shutdown TAL-SH:
  talshStats(); //GPU statistics
