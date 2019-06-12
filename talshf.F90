@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2019/04/17
+!REVISION: 2019/06/06
 
 !Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -70,7 +70,8 @@
         integer(C_INT), private:: ALLOCATE_VIA_HAB=0 !if negative, regular Host memory will be used for tensors instead of HAB
         integer(C_SIZE_T), parameter, private:: HAB_SIZE_DEFAULT=16777216 !default size of the Host argument buffer in bytes (none)
  !Execution device:
-        integer(C_INT), private:: EXECUTION_DEVICE=DEV_DEFAULT !if >=0, the specified device will be used for tensor operation execution by default
+        integer(C_INT), private:: EXECUTION_DEVICE_KIND=DEV_DEFAULT !if set, the specified device kind will be used for tensor operation execution by default
+        integer(C_INT), private:: EXECUTION_DEVICE_ID=DEV_DEFAULT   !if set, the specified device id within its kind will be used for tensor operation execution by default
  !CP-TAL:
         integer(C_INT), parameter, private:: CPTAL_MAX_TMP_FTENS=192 !max number of simultaneously existing temporary Fortran tensors for CP-TAL
 !DERIVED TYPES:
@@ -254,6 +255,14 @@
           integer(C_INT), intent(out):: num_images
           integer(C_INT), intent(inout):: data_kinds(*)
          end function talshTensorDataKind
+  !Reshape the tensor to a compatible shape (same volume):
+         integer(C_INT) function talshTensorReshape(tens_block,tens_rank,tens_dims) bind(c,name='talshTensorReshape')
+          import
+          implicit none
+          type(talsh_tens_t), intent(inout):: tens_block
+          integer(C_INT), intent(in), value:: tens_rank
+          integer(C_INT), intent(in):: tens_dims(*)
+         end function talshTensorReshape
   !Query the presence of the tensor block on device(s):
          integer(C_INT) function talshTensorPresence_(tens_block,ncopies,copies,data_kinds,dev_kind,dev_id)&
                                  &bind(c,name='talshTensorPresence_')
@@ -555,6 +564,7 @@
         public talsh_tensor_dimensions
         public talsh_tensor_shape
         public talsh_tensor_data_kind
+        public talsh_tensor_reshape
         public talsh_tensor_presence
         public talsh_tensor_get_body_access
         public talsh_tensor_get_scalar
@@ -977,15 +987,10 @@
          integer(C_INT):: ierr                 !out: error code
          integer(C_INT), intent(in):: dev_kind !in: device kind
          integer(C_INT), intent(in):: dev_num  !in: device Id within its kind (0..MAX)
-         integer(C_INT):: devid
 
          ierr=TALSH_SUCCESS
-         devid=talsh_flat_dev_id(dev_kind,dev_num)
-         if(devid.lt.DEV_MAX) then
-          EXECUTION_DEVICE=devid
-         else
-          ierr=TALSH_INVALID_ARGS
-         endif
+         EXECUTION_DEVICE_KIND=dev_kind
+         EXECUTION_DEVICE_ID=dev_num
          return
         end function talsh_enforce_execution_device
 !---------------------------------------------------------
@@ -1191,6 +1196,18 @@
          ierr=talshTensorDataKind(tens_block,num_images,data_kinds)
          return
         end function talsh_tensor_data_kind
+!-----------------------------------------------------------------------
+        function talsh_tensor_reshape(tens_block,tens_dims) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                          !out: error code (0:success)
+         type(talsh_tens_t), intent(inout):: tens_block !inout: tensor block
+         integer(INTD), intent(in):: tens_dims(1:)      !in: new tensor dimension extents (compatible by volume)
+         integer(C_INT):: tens_rank,dims(1:MAX_TENSOR_RANK)
+         tens_rank=size(tens_dims)
+         if(tens_rank.gt.0) dims(1:tens_rank)=tens_dims(1:tens_rank)
+         ierr=talshTensorReshape(tens_block,tens_rank,dims)
+         return
+        end function talsh_tensor_reshape
 !--------------------------------------------------------------------------------------------------------
         function talsh_tensor_presence(tens_block,ncopies,copies,data_kinds,dev_kind,dev_id) result(ierr)
          implicit none
@@ -1508,7 +1525,7 @@
          endif
          return
         end function talsh_tensor_add
-!------------------------------------------------------------------------------------
+!-------------------------------------------------------------------------------------
         function talsh_tensor_contract(cptrn,dtens,ltens,rtens,scale,dev_id,dev_kind,&
                                       &copy_ctrl,accumulative,talsh_task) result(ierr)
          implicit none
@@ -1536,18 +1553,22 @@
           if(present(scale)) then; scale_real=dble(scale); scale_imag=dimag(scale); else; scale_real=1d0; scale_imag=0d0; endif
           if(present(dev_id)) then; devn=dev_id; else; devn=DEV_DEFAULT; endif
           if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_DEFAULT; endif
-          if(devk.eq.DEV_DEFAULT.and.devn.eq.DEV_DEFAULT) devn=EXECUTION_DEVICE !default execution device
           call string2array(cptrn(1:l),contr_ptrn,l,ierr); l=l+1; contr_ptrn(l:l)=achar(0) !C-string
           if(ierr.eq.0) then
-           if(present(talsh_task)) then
-            ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,coh_ctrl,accum,talsh_task)
+           if(devk.eq.DEV_DEFAULT.and.devn.eq.DEV_DEFAULT.and.EXECUTION_DEVICE_KIND.ge.0.and.(.not.present(talsh_task))) then
+            devk=EXECUTION_DEVICE_KIND; devn=EXECUTION_DEVICE_ID
+            ierr=talshTensorContractXL_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,accum)
            else
-            ierr=talsh_task_clean(tsk)
-            ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,coh_ctrl,accum,tsk)
-            if(ierr.eq.TALSH_SUCCESS) then
-             ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
+            if(present(talsh_task)) then
+             ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,coh_ctrl,accum,talsh_task)
+            else
+             ierr=talsh_task_clean(tsk)
+             ierr=talshTensorContract_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,coh_ctrl,accum,tsk)
+             if(ierr.eq.TALSH_SUCCESS) then
+              ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
+             endif
+             sts=talsh_task_destruct(tsk)
             endif
-            sts=talsh_task_destruct(tsk)
            endif
           else
            ierr=TALSH_INVALID_ARGS
@@ -1580,9 +1601,11 @@
           if(present(scale)) then; scale_real=dble(scale); scale_imag=dimag(scale); else; scale_real=1d0; scale_imag=0d0; endif
           if(present(dev_id)) then; devn=dev_id; else; devn=DEV_DEFAULT; endif
           if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_DEFAULT; endif
-          if(devk.eq.DEV_DEFAULT.and.devn.eq.DEV_DEFAULT) devn=EXECUTION_DEVICE !default execution device (flat id)
           call string2array(cptrn(1:l),contr_ptrn,l,ierr); l=l+1; contr_ptrn(l:l)=achar(0) !C-string
           if(ierr.eq.0) then
+           if(devk.eq.DEV_DEFAULT.and.devn.eq.DEV_DEFAULT.and.EXECUTION_DEVICE_KIND.ge.0) then
+            devk=EXECUTION_DEVICE_KIND; devn=EXECUTION_DEVICE_ID
+           endif
            ierr=talshTensorContractXL_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,accum)
           else
            ierr=TALSH_INVALID_ARGS

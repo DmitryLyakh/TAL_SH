@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2019/05/03
+!REVISION: 2019/05/11
 
 !Copyright (C) 2013-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -255,14 +255,14 @@
         private array_free_r8              !frees an array pointer R8
         private array_free_c4              !frees an array pointer C4
         private array_free_c8              !frees an array pointer C8
-        private tensor_block_slice_dlf     !extracts a slice from a tensor block (Fortran-like dimension-led storage layout)
-        private tensor_block_insert_dlf    !inserts a slice into a tensor block (Fortran-like dimension-led storage layout)
-        private tensor_block_copy_dlf      !tensor transpose for dimension-led (Fortran-like-stored) dense tensor blocks
-        private tensor_block_copy_scatter_dlf !tensor transpose for dimension-led (Fortran-like-stored) dense tensor blocks (scattering variant)
-        private tensor_block_fcontract_dlf !multiplies two matrices derived from tensors to produce a scalar (left is transposed, right is normal)
-        private tensor_block_pcontract_dlf !multiplies two matrices derived from tensors to produce a third matrix (left is transposed, right is normal)
-        private tensor_block_ftrace_dlf    !takes a full trace of a tensor block
-        private tensor_block_ptrace_dlf    !takes a partial trace of a tensor block
+        public tensor_block_slice_dlf      !extracts a slice from a tensor block (Fortran-like dimension-led storage layout)
+        public tensor_block_insert_dlf     !inserts a slice into a tensor block (Fortran-like dimension-led storage layout)
+        public tensor_block_copy_dlf       !tensor transpose for dimension-led (Fortran-like-stored) dense tensor blocks
+        public tensor_block_copy_scatter_dlf !tensor transpose for dimension-led (Fortran-like-stored) dense tensor blocks (scattering variant)
+        public tensor_block_fcontract_dlf  !multiplies two matrices derived from tensors to produce a scalar (left is transposed, right is normal)
+        public tensor_block_pcontract_dlf  !multiplies two matrices derived from tensors to produce a third matrix (left is transposed, right is normal)
+        public tensor_block_ftrace_dlf     !takes a full trace of a tensor block
+        public tensor_block_ptrace_dlf     !takes a partial trace of a tensor block
 
        contains
 !-----------------

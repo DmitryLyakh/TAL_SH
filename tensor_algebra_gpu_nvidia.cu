@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2019/05/03
+REVISION: 2019/06/12
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -6870,6 +6870,7 @@ NOTES:
    switch(dtens->data_kind){
     case R4:
 #ifdef USE_CUTENSOR
+     if(cuda_task->pref_ptr == NULL) cuda_task->pref_ptr=&h_sgemm_beta_one;
      err_cutensor=cutensorContraction(cutensor_handle[gpu_num],
                                       cuda_task->pref_ptr,
                                       larg,cuda_task->tens_cudesc[1],cumod_l,
@@ -6878,6 +6879,7 @@ NOTES:
                                       darg,cuda_task->tens_cudesc[0],cumod_d,
                                       darg,cuda_task->tens_cudesc[0],cumod_d,
                                       CUTENSOR_OP_IDENTITY,CUDA_R_32F,CUTENSOR_ALGO_DEFAULT,NULL,(uint64_t)0,*cuda_stream);
+     if(cuda_task->pref_ptr == &h_sgemm_beta_one) cuda_task->pref_ptr=NULL;
 #else
      err_cublas=cublasSgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
                 (float*)alpha_plus_p,(float*)larg,(int)lc,(float*)rarg,(int)lc,(float*)beta_p,(float*)darg,(int)ll);
@@ -6885,6 +6887,7 @@ NOTES:
      break;
     case R8:
 #ifdef USE_CUTENSOR
+     if(cuda_task->pref_ptr == NULL) cuda_task->pref_ptr=&h_dgemm_beta_one;
      err_cutensor=cutensorContraction(cutensor_handle[gpu_num],
                                       cuda_task->pref_ptr,
                                       larg,cuda_task->tens_cudesc[1],cumod_l,
@@ -6893,6 +6896,7 @@ NOTES:
                                       darg,cuda_task->tens_cudesc[0],cumod_d,
                                       darg,cuda_task->tens_cudesc[0],cumod_d,
                                       CUTENSOR_OP_IDENTITY,CUDA_R_64F,CUTENSOR_ALGO_DEFAULT,NULL,(uint64_t)0,*cuda_stream);
+     if(cuda_task->pref_ptr == &h_dgemm_beta_one) cuda_task->pref_ptr=NULL;
 #else
      err_cublas=cublasDgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
                 (double*)alpha_plus_p,(double*)larg,(int)lc,(double*)rarg,(int)lc,(double*)beta_p,(double*)darg,(int)ll);
@@ -6929,6 +6933,7 @@ NOTES:
       }
      }else{
 #ifdef USE_CUTENSOR
+      if(cuda_task->pref_ptr == NULL) cuda_task->pref_ptr=&h_cgemm_beta_one;
       err_cutensor=cutensorContraction(cutensor_handle[gpu_num], //`Missing argument conjugation
                                        cuda_task->pref_ptr,
                                        larg,cuda_task->tens_cudesc[1],cumod_l,
@@ -6937,6 +6942,7 @@ NOTES:
                                        darg,cuda_task->tens_cudesc[0],cumod_d,
                                        darg,cuda_task->tens_cudesc[0],cumod_d,
                                        CUTENSOR_OP_IDENTITY,CUDA_C_32F,CUTENSOR_ALGO_DEFAULT,NULL,(uint64_t)0,*cuda_stream);
+      if(cuda_task->pref_ptr == &h_cgemm_beta_one) cuda_task->pref_ptr=NULL;
 #else
       if(conj_r){
        err_cublas=cublasCgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
@@ -6952,6 +6958,7 @@ NOTES:
      break;
     case C8:
 #ifdef USE_CUTENSOR
+     if(cuda_task->pref_ptr == NULL) cuda_task->pref_ptr=&h_zgemm_beta_one;
      err_cutensor=cutensorContraction(cutensor_handle[gpu_num], //`Missing argument conjugation
                                       cuda_task->pref_ptr,
                                       larg,cuda_task->tens_cudesc[1],cumod_l,
@@ -6960,6 +6967,7 @@ NOTES:
                                       darg,cuda_task->tens_cudesc[0],cumod_d,
                                       darg,cuda_task->tens_cudesc[0],cumod_d,
                                       CUTENSOR_OP_IDENTITY,CUDA_C_64F,CUTENSOR_ALGO_DEFAULT,NULL,(uint64_t)0,*cuda_stream);
+     if(cuda_task->pref_ptr == &h_zgemm_beta_one) cuda_task->pref_ptr=NULL;
 #else
      if(conj_r){
       err_cublas=cublasZgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2019/04/17
+REVISION: 2019/06/06
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -260,7 +260,7 @@ extern "C"{
  int talshTensorDataKind(const talsh_tens_t * tens_block,
                          int * num_images,
                          int * data_kinds);
-//  Reshape a tensor:
+//  Reshape a tensor to a compatible shape (same volume):
  int talshTensorReshape(talsh_tens_t * tens_block,
                         int tens_rank,
                         const int tens_dims[]);

@@ -162,7 +162,15 @@ LIB_WRAP = -L.
 ifeq ($(TOOLKIT),IBM)
  LIB = $(LIB_$(WRAP)) -L$(PATH_IBM_XL_CPP) -libmc++ -lstdc++
 else
+ifeq ($(EXA_OS),LINUX)
  LIB = $(LIB_$(WRAP)) -lstdc++
+else
+ifeq ($(TOOLKIT),INTEL)
+ LIB = $(LIB_$(WRAP)) -lc++
+else
+ LIB = $(LIB_$(WRAP)) -lstdc++
+endif
+endif
 endif
 
 #MPI INCLUDES:
