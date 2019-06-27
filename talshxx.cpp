@@ -84,6 +84,14 @@ Tensor::Tensor(const std::vector<std::size_t> & signature, //tensor signature (i
 }
 
 
+Tensor::Tensor(const std::vector<int> & dims,              //tensor dimension extents: dims[0:rank-1]
+               int data_kind,                              //tensor data kind
+               talsh_tens_init_i init_func):               //user-defined tensor initialization function
+ Tensor(std::vector<std::size_t>(dims.size(),0),dims,data_kind,init_func)
+{
+}
+
+
 /** Returns the tensor rank (order in math terms). **/
 int Tensor::getRank() const
 {

@@ -156,6 +156,11 @@ public:
  Tensor(const std::vector<int> & dims,                      //tensor dimension extents: dims[0:rank-1]
         const std::vector<T> & ext_data);                   //imported data (its type will define tensor element data kind)
 
+ /** Short Ctor with user-defined initialization (TAL-SH provides tensor data storage) **/
+ Tensor(const std::vector<int> & dims,                      //tensor dimension extents: dims[0:rank-1]
+        int data_kind,                                      //tensor data kind
+        talsh_tens_init_i init_func);                       //user-defined tensor initialization function
+
  /** Short Ctor with scalar initialization (Application provides tensor data storage) **/
  template <typename T>
  Tensor(const std::vector<int> & dims,                      //tensor dimension extents: dims[0:rank-1]
