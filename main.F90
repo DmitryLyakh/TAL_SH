@@ -28,6 +28,7 @@
         logical, parameter:: TEST_F_TALSH=.TRUE.
         logical, parameter:: TEST_XLF_TALSH=.TRUE.
         logical, parameter:: TEST_QC_TALSH=.TRUE.
+        logical, parameter:: TEST_QC_TALSH_XL=.FALSE.
         logical, parameter:: TEST_NWCHEM=.TRUE.
         logical, parameter:: TEST_COMPLEX=.TRUE.
         logical, parameter:: BENCH_TALSH_RND=.FALSE.
@@ -54,6 +55,11 @@
           import
           integer(C_INT), intent(out):: ierr
          end subroutine test_talsh_qc
+
+         subroutine test_talsh_qc_xl(ierr) bind(c)
+          import
+          integer(C_INT), intent(out):: ierr
+         end subroutine test_talsh_qc_xl
 
          subroutine test_nwchem_c(ierr) bind(c)
           import
@@ -124,6 +130,14 @@
         if(TEST_QC_TALSH) then
          write(*,'("Testing TAL-SH tensor contractions for QC ...")')
          call test_talsh_qc(ierr)
+         write(*,'("Done: Status ",i5)') ierr
+         if(ierr.ne.0) stop
+         write(*,*)''
+        endif
+!Test TAL-SH C++11 tensor contractions for QC with XL interface:
+        if(TEST_QC_TALSH_XL) then
+         write(*,'("Testing TAL-SH tensor contractions for QC with XL ...")')
+         call test_talsh_qc_xl(ierr)
          write(*,'("Done: Status ",i5)') ierr
          if(ierr.ne.0) stop
          write(*,*)''

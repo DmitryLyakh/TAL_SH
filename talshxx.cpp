@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/05/09
+REVISION: 2019/06/26
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -51,6 +51,20 @@ double imagPart(std::complex<double> number){return number.imag();}
 
 //Functions:
 
+Tensor::Impl::Impl(const std::vector<std::size_t> & signature, //tensor signature (identifier): signature[0:rank-1]
+                   const std::vector<int> & dims,              //tensor dimension extents: dims[0:rank-1]
+                   int data_kind,                              //tensor data kind
+                   talsh_tens_init_i init_func):               //user-defined tensor initialization function
+ signature_(signature), host_mem_(nullptr), used_(0)
+{
+ int errc = talshTensorClean(&tensor_); assert(errc == TALSH_SUCCESS);
+ const int rank = static_cast<int>(dims.size());
+ errc = talshTensorConstruct(&tensor_,data_kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),NULL,0,init_func);
+ assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
+ write_task_ = nullptr;
+}
+
+
 Tensor::Impl::~Impl()
 {
  if(used_ != 0) std::cout << "#ERROR(Tensor::Impl::~Impl): Non-zero use count = " << used_ << std::endl;
@@ -58,6 +72,15 @@ Tensor::Impl::~Impl()
  assert(used_ == 0 && write_task_ == nullptr);
  int errc = talshTensorDestruct(&tensor_);
  assert(errc == TALSH_SUCCESS);
+}
+
+
+Tensor::Tensor(const std::vector<std::size_t> & signature, //tensor signature (identifier): signature[0:rank-1]
+               const std::vector<int> & dims,              //tensor dimension extents: dims[0:rank-1]
+               int data_kind,                              //tensor data kind
+               talsh_tens_init_i init_func):               //user-defined tensor initialization function
+ pimpl_(new Impl(signature,dims,data_kind,init_func))
+{
 }
 
 

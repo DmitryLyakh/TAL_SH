@@ -40,6 +40,7 @@ extern "C"{
 void test_talsh_c(int * ierr);
 void test_talsh_cxx(int * ierr);
 void test_talsh_xl(int * ierr);
+void test_talsh_qc_xl(int * ierr);
 void test_talsh_qc(int * ierr);
 void test_nwchem_c(int * ierr);
 #ifndef NO_GPU
@@ -309,12 +310,12 @@ void test_talsh_xl(int * ierr)
  const std::size_t DESKTOP_MEM = 4;  //GB
  const std::size_t SUMMIT_MEM = 128; //GB
  const std::size_t HOST_MEM_LIM = DESKTOP_MEM;
- const int device_id = 0; //[0...max] OR DEV_DEFAULT (for all)
 #ifndef NO_GPU
  const int device = DEV_NVIDIA_GPU;
 #else
  const int device = DEV_HOST;
 #endif
+ const int device_id = 0; //[0...max] or DEV_DEFAULT (all devices)
  const float d_init = 1e-4;
 
  *ierr = 0;
@@ -377,6 +378,48 @@ void test_talsh_xl(int * ierr)
   std::cout << " Status = " << done << "; Error " << *ierr << std::endl;
   stens.print(0.0);
   std::cout << " Reference value = " << ((double)(ODIM*VDIM))*((double)(ODIM*VDIM))*(1e-3)*(1e-2) << std::endl;
+ }
+ //Shutdown TAL-SH:
+ talshStats(); //GPU statistics
+ talsh::shutdown();
+ return;
+}
+
+
+void test_talsh_qc_xl(int * ierr)
+{
+ const std::size_t HOST_MEM_LIM = 128; //GB
+#ifndef NO_GPU
+ const int device = DEV_NVIDIA_GPU;
+#else
+ const int device = DEV_HOST;
+#endif
+ const int device_id = DEV_DEFAULT; //[0...max] or DEV_DEFAULT (all devices)
+
+ *ierr = 0;
+ //Initialize TAL-SH:
+ std::size_t host_buf_size = std::size_t{1024*1024*1024}*HOST_MEM_LIM;
+ talsh::initialize(&host_buf_size);
+ //Check max buffer/tensor size:
+ if(device != DEV_HOST){
+  std::cout << " Max buffer size on Host             = " << talsh::getDeviceMaxBufferSize(DEV_HOST,0) << std::endl;
+  std::cout << " Max tensor size on Host             = " << talsh::getDeviceMaxTensorSize(DEV_HOST,0) << std::endl;
+ }
+ std::cout << " Max buffer size on execution device = " << talsh::getDeviceMaxBufferSize(device,0) << std::endl;
+ std::cout << " Max tensor size on execution device = " << talsh::getDeviceMaxTensorSize(device,0) << std::endl;
+ //Test body (scoped):
+ {
+  talsh::Tensor ltens({1,2,128,64,128,64,32},std::complex<float>{0.001f,0.0f});
+  talsh::Tensor rtens({32,128,64,256},std::complex<float>{0.0001f,0.0f});
+  talsh::Tensor dtens({1,2,128,64,32,256,32},std::complex<float>{0.0f,0.0f});
+  double tm = time_sys_sec();
+  *ierr = dtens.contractAccumulateXL(nullptr,std::string("D(a,b,c,d,h,i,g)+=L(a,b,c,d,e,f,g)*R(h,e,f,i)"),
+                                     ltens,rtens,device,device_id);
+  bool done = dtens.sync();
+  tm = time_sys_sec() - tm;
+  std::cout << " Tensor contraction completion status = " << done << "; Time (s) = " << tm << "; Error " << *ierr << std::endl;
+  double flops = std::pow(2.0,19.0+13.0+13.0)*8.0;
+  if(tm > 0.0) std::cout << " Performance (GFlop/s) = " << flops/tm/(1e9) << std::endl;
  }
  //Shutdown TAL-SH:
  talshStats(); //GPU statistics

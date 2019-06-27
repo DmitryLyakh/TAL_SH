@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/05/09
+REVISION: 2019/06/26
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -126,6 +126,12 @@ public:
  Tensor(const std::vector<std::size_t> & signature,         //tensor signature (identifier): signature[0:rank-1]
         const std::vector<int> & dims,                      //tensor dimension extents: dims[0:rank-1]
         const std::vector<T> & ext_data);                   //imported data (its type will define tensor element data kind)
+
+  /** Full Ctor with user-defined initialization (TAL-SH provides tensor data storage) **/
+ Tensor(const std::vector<std::size_t> & signature,         //tensor signature (identifier): signature[0:rank-1]
+        const std::vector<int> & dims,                      //tensor dimension extents: dims[0:rank-1]
+        int data_kind,                                      //tensor data kind
+        talsh_tens_init_i init_func);                       //user-defined tensor initialization function
 
  /** Full Ctor with scalar initialization (Application provides tensor data storage) **/
  template <typename T>
@@ -330,6 +336,11 @@ private:
   Impl(const std::vector<std::size_t> & signature,         //tensor signature (identifier): signature[0:rank-1]
        const std::vector<int> & dims,                      //tensor dimension extents: dims[0:rank-1]
        const std::vector<T> & ext_data);                   //imported data (its type will define tensor element data kind)
+
+  Impl(const std::vector<std::size_t> & signature,         //tensor signature (identifier): signature[0:rank-1]
+       const std::vector<int> & dims,                      //tensor dimension extents: dims[0:rank-1]
+       int data_kind,                                      //tensor data kind
+       talsh_tens_init_i init_func);                       //user-defined tensor initialization function
 
   template <typename T>
   Impl(const std::initializer_list<std::size_t> signature, //tensor signature (identifier): signature[0:rank-1]
