@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2019/05/11
+!REVISION: 2019/07/01
 
 !Copyright (C) 2013-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -655,8 +655,8 @@
 	       tensor_block_compatible=.FALSE.; return
 	      else
 	       if(associated(tens_in%data_real4)) then
-	        ls=size(tens_in%data_real4)
-	        if(size(tens_out%data_real4).ne.ls.or.tens_out%tensor_block_size.ne.ls) then
+	        ls=size(tens_in%data_real4,kind=8)
+	        if(size(tens_out%data_real4,kind=8).ne.ls.or.tens_out%tensor_block_size.ne.ls) then
 	         tensor_block_compatible=.FALSE.; ierr=2; return
 	        endif
 	       endif
@@ -666,8 +666,8 @@
 	       tensor_block_compatible=.FALSE.; return
 	      else
 	       if(associated(tens_in%data_real8)) then
-	        ls=size(tens_in%data_real8)
-	        if(size(tens_out%data_real8).ne.ls.or.tens_out%tensor_block_size.ne.ls) then
+	        ls=size(tens_in%data_real8,kind=8)
+	        if(size(tens_out%data_real8,kind=8).ne.ls.or.tens_out%tensor_block_size.ne.ls) then
 	         tensor_block_compatible=.FALSE.; ierr=3; return
 	        endif
 	       endif
@@ -677,8 +677,8 @@
 	       tensor_block_compatible=.FALSE.; return
 	      else
 	       if(associated(tens_in%data_cmplx4)) then
-	        ls=size(tens_in%data_cmplx4)
-	        if(size(tens_out%data_cmplx4).ne.ls.or.tens_out%tensor_block_size.ne.ls) then
+	        ls=size(tens_in%data_cmplx4,kind=8)
+	        if(size(tens_out%data_cmplx4,kind=8).ne.ls.or.tens_out%tensor_block_size.ne.ls) then
 	         tensor_block_compatible=.FALSE.; ierr=4; return
 	        endif
 	       endif
@@ -688,8 +688,8 @@
 	       tensor_block_compatible=.FALSE.; return
 	      else
 	       if(associated(tens_in%data_cmplx8)) then
-	        ls=size(tens_in%data_cmplx8)
-	        if(size(tens_out%data_cmplx8).ne.ls.or.tens_out%tensor_block_size.ne.ls) then
+	        ls=size(tens_in%data_cmplx8,kind=8)
+	        if(size(tens_out%data_cmplx8,kind=8).ne.ls.or.tens_out%tensor_block_size.ne.ls) then
 	         tensor_block_compatible=.FALSE.; ierr=5; return
 	        endif
 	       endif
@@ -748,7 +748,7 @@
 !Allocate data arrays, if needed:
  !REAL4:
 	 if(associated(tens_in%data_real4)) then
-	  if(size(tens_in%data_real4).eq.tens_in%tensor_block_size) then
+	  if(size(tens_in%data_real4,kind=8).eq.tens_in%tensor_block_size) then
 	   if(.not.associated(tens_out%data_real4)) then
 !	    allocate(tens_out%data_real4(0:tens_in%tensor_block_size-1),STAT=ierr)
 	    ierr=array_alloc(tens_out%data_real4,tens_in%tensor_block_size,base=0_LONGINT)
@@ -761,7 +761,7 @@
 	 endif
  !REAL8:
 	 if(associated(tens_in%data_real8)) then
-	  if(size(tens_in%data_real8).eq.tens_in%tensor_block_size) then
+	  if(size(tens_in%data_real8,kind=8).eq.tens_in%tensor_block_size) then
 	   if(.not.associated(tens_out%data_real8)) then
 !	    allocate(tens_out%data_real8(0:tens_in%tensor_block_size-1),STAT=ierr)
 	    ierr=array_alloc(tens_out%data_real8,tens_in%tensor_block_size,base=0_LONGINT)
@@ -774,7 +774,7 @@
 	 endif
  !CMPLX4:
 	 if(associated(tens_in%data_cmplx4)) then
-	  if(size(tens_in%data_cmplx4).eq.tens_in%tensor_block_size) then
+	  if(size(tens_in%data_cmplx4,kind=8).eq.tens_in%tensor_block_size) then
 	   if(.not.associated(tens_out%data_cmplx4)) then
 !	    allocate(tens_out%data_cmplx4(0:tens_in%tensor_block_size-1),STAT=ierr)
 	    ierr=array_alloc(tens_out%data_cmplx4,tens_in%tensor_block_size,base=0_LONGINT)
@@ -787,7 +787,7 @@
 	 endif
  !CMPLX8:
 	 if(associated(tens_in%data_cmplx8)) then
-	  if(size(tens_in%data_cmplx8).eq.tens_in%tensor_block_size) then
+	  if(size(tens_in%data_cmplx8,kind=8).eq.tens_in%tensor_block_size) then
 	   if(.not.associated(tens_out%data_cmplx8)) then
 !	    allocate(tens_out%data_cmplx8(0:tens_in%tensor_block_size-1),STAT=ierr)
 	    ierr=array_alloc(tens_out%data_cmplx8,tens_in%tensor_block_size,base=0_LONGINT)
@@ -1013,7 +1013,7 @@
 	case('r4','R4')
 	 if(tens_block%tensor_shape%num_dim.gt.0) then !true tensor
 	  if(associated(tens_block%data_real4)) then
-	   if(size(tens_block%data_real4).ne.tens_block%tensor_block_size) then
+	   if(size(tens_block%data_real4,kind=8).ne.tens_block%tensor_block_size) then
 	    if(tensor_block_alloc(tens_block,'r4',ierr)) then
 	     if(ierr.ne.0) then; ierr=16; return; endif
 !	     deallocate(tens_block%data_real4,STAT=ierr)
@@ -1099,7 +1099,7 @@
 	case('r8','R8')
 	 if(tens_block%tensor_shape%num_dim.gt.0) then !true tensor
 	  if(associated(tens_block%data_real8)) then
-	   if(size(tens_block%data_real8).ne.tens_block%tensor_block_size) then
+	   if(size(tens_block%data_real8,kind=8).ne.tens_block%tensor_block_size) then
 	    if(tensor_block_alloc(tens_block,'r8',ierr)) then
 	     if(ierr.ne.0) then; ierr=25; return; endif
 !	     deallocate(tens_block%data_real8,STAT=ierr)
@@ -1185,7 +1185,7 @@
 	case('c4','C4')
 	 if(tens_block%tensor_shape%num_dim.gt.0) then !true tensor
 	  if(associated(tens_block%data_cmplx4)) then
-	   if(size(tens_block%data_cmplx4).ne.tens_block%tensor_block_size) then
+	   if(size(tens_block%data_cmplx4,kind=8).ne.tens_block%tensor_block_size) then
 	    if(tensor_block_alloc(tens_block,'c4',ierr)) then
 	     if(ierr.ne.0) then; ierr=34; return; endif
 !	     deallocate(tens_block%data_cmplx4,STAT=ierr)
@@ -1270,7 +1270,7 @@
 	case('c8','C8')
 	 if(tens_block%tensor_shape%num_dim.gt.0) then !true tensor
 	  if(associated(tens_block%data_cmplx8)) then
-	   if(size(tens_block%data_cmplx8).ne.tens_block%tensor_block_size) then
+	   if(size(tens_block%data_cmplx8,kind=8).ne.tens_block%tensor_block_size) then
 	    if(tensor_block_alloc(tens_block,'c8',ierr)) then
 	     if(ierr.ne.0) then; ierr=43; return; endif
 !	     deallocate(tens_block%data_cmplx8,STAT=ierr)
@@ -1668,7 +1668,7 @@
 	      if(ierr.ne.0) then; ierr=23; return; endif
 	      res=tensor_block_alloc(tens,'r4',ierr,.TRUE.); if(ierr.ne.0) then; ierr=24; return; endif
 	     endif
-	     if(size(tens%data_real4).eq.ls) then
+	     if(size(tens%data_real4,kind=8).eq.ls) then
 	      select case(mast_kind)
 	      case('r8','R8')
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
@@ -1696,7 +1696,7 @@
 	      if(ierr.ne.0) then; ierr=26; return; endif
 	      res=tensor_block_alloc(tens,'r8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=27; return; endif
 	     endif
-	     if(size(tens%data_real8).eq.ls) then
+	     if(size(tens%data_real8,kind=8).eq.ls) then
 	      select case(mast_kind)
 	      case('r4','R4')
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
@@ -1724,7 +1724,7 @@
 	      if(ierr.ne.0) then; ierr=29; return; endif
 	      res=tensor_block_alloc(tens,'c4',ierr,.TRUE.); if(ierr.ne.0) then; ierr=30; return; endif
 	     endif
-	     if(size(tens%data_cmplx4).eq.ls) then
+	     if(size(tens%data_cmplx4,kind=8).eq.ls) then
 	      select case(mast_kind)
 	      case('r4','R4')
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
@@ -1752,7 +1752,7 @@
 	      if(ierr.ne.0) then; ierr=32; return; endif
 	      res=tensor_block_alloc(tens,'c8',ierr,.TRUE.); if(ierr.ne.0) then; ierr=33; return; endif
 	     endif
-	     if(size(tens%data_cmplx8).eq.ls) then
+	     if(size(tens%data_cmplx8,kind=8).eq.ls) then
 	      select case(mast_kind)
 	      case('r4','R4')
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
@@ -1807,7 +1807,7 @@
 	if(ls.gt.0_LONGINT) then
 !REAL4:
 	 if(associated(tens%data_real4)) then
-	  if(size(tens%data_real4).eq.ls) then
+	  if(size(tens%data_real4,kind=8).eq.ls) then
 	   fac_r4=real(cmplx8_to_real8(scale_fac),4)
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) FIRSTPRIVATE(fac_r4) SCHEDULE(GUIDED)
 	   do l0=0_LONGINT,ls-1_LONGINT; tens%data_real4(l0)=tens%data_real4(l0)*fac_r4; enddo
@@ -1818,7 +1818,7 @@
 	 endif
 !REAL8:
 	 if(associated(tens%data_real8)) then
-	  if(size(tens%data_real8).eq.ls) then
+	  if(size(tens%data_real8,kind=8).eq.ls) then
 	   fac_r8=cmplx8_to_real8(scale_fac)
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) FIRSTPRIVATE(fac_r8) SCHEDULE(GUIDED)
 	   do l0=0_LONGINT,ls-1_LONGINT; tens%data_real8(l0)=tens%data_real8(l0)*fac_r8; enddo
@@ -1829,7 +1829,7 @@
 	 endif
 !CMPLX4:
 	 if(associated(tens%data_cmplx4)) then
-	  if(size(tens%data_cmplx4).eq.ls) then
+	  if(size(tens%data_cmplx4,kind=8).eq.ls) then
 	   fac_c4=cmplx(scale_fac,kind=4)
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) FIRSTPRIVATE(fac_c4) SCHEDULE(GUIDED)
 	   do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx4(l0)=tens%data_cmplx4(l0)*fac_c4; enddo
@@ -1840,7 +1840,7 @@
 	 endif
 !CMPLX8:
 	 if(associated(tens%data_cmplx8)) then
-	  if(size(tens%data_cmplx8).eq.ls) then
+	  if(size(tens%data_cmplx8,kind=8).eq.ls) then
 	   fac_c8=scale_fac
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) FIRSTPRIVATE(fac_c8) SCHEDULE(GUIDED)
 	   do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx8(l0)=tens%data_cmplx8(l0)*fac_c8; enddo
@@ -1872,7 +1872,7 @@
 	if(ls.gt.0_LONGINT) then
 !CMPLX4:
 	 if(associated(tens%data_cmplx4)) then
-	  if(size(tens%data_cmplx4).eq.ls) then
+	  if(size(tens%data_cmplx4,kind=8).eq.ls) then
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
 	   do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx4(l0)=conjg(tens%data_cmplx4(l0)); enddo
 !$OMP END PARALLEL DO
@@ -1882,7 +1882,7 @@
 	 endif
 !CMPLX8:
 	 if(associated(tens%data_cmplx8)) then
-	  if(size(tens%data_cmplx8).eq.ls) then
+	  if(size(tens%data_cmplx8,kind=8).eq.ls) then
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED)
 	   do l0=0_LONGINT,ls-1_LONGINT; tens%data_cmplx8(l0)=conjg(tens%data_cmplx8(l0)); enddo
 !$OMP END PARALLEL DO
@@ -1925,7 +1925,7 @@
 	  select case(datk)
 	  case('r4','R4')
 	   if(associated(tens%data_real4)) then
-	    if(size(tens%data_real4).eq.ls) then
+	    if(size(tens%data_real4,kind=8).eq.ls) then
 	     val_r4=0.0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val_r4)
 	     do l0=0_LONGINT,ls-1_LONGINT; val_r4=val_r4+abs(tens%data_real4(l0)); enddo
@@ -1939,7 +1939,7 @@
 	   endif
 	  case('r8','R8')
 	   if(associated(tens%data_real8)) then
-	    if(size(tens%data_real8).eq.ls) then
+	    if(size(tens%data_real8,kind=8).eq.ls) then
 	     val_r8=0d0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val_r8)
 	     do l0=0_LONGINT,ls-1_LONGINT; val_r8=val_r8+abs(tens%data_real8(l0)); enddo
@@ -1953,7 +1953,7 @@
 	   endif
 	  case('c4','C4')
 	   if(associated(tens%data_cmplx4)) then
-	    if(size(tens%data_cmplx4).eq.ls) then
+	    if(size(tens%data_cmplx4,kind=8).eq.ls) then
 	     val_r4=0.0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val_r4)
 	     do l0=0_LONGINT,ls-1_LONGINT; val_r4=val_r4+abs(tens%data_cmplx4(l0)); enddo
@@ -1967,7 +1967,7 @@
 	   endif
 	  case('c8','C8')
 	   if(associated(tens%data_cmplx8)) then
-	    if(size(tens%data_cmplx8).eq.ls) then
+	    if(size(tens%data_cmplx8,kind=8).eq.ls) then
 	     val_r8=0d0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val_r8)
 	     do l0=0_LONGINT,ls-1_LONGINT; val_r8=val_r8+abs(tens%data_cmplx8(l0)); enddo
@@ -2024,7 +2024,7 @@
 	  select case(datk)
 	  case('r4','R4')
 	   if(associated(tens%data_real4)) then
-	    if(size(tens%data_real4).eq.ls) then
+	    if(size(tens%data_real4,kind=8).eq.ls) then
 	     val_r4=0.0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val_r4)
 	     do l0=0_LONGINT,ls-1_LONGINT; val_r4=val_r4+tens%data_real4(l0)**2; enddo
@@ -2038,7 +2038,7 @@
 	   endif
 	  case('r8','R8')
 	   if(associated(tens%data_real8)) then
-	    if(size(tens%data_real8).eq.ls) then
+	    if(size(tens%data_real8,kind=8).eq.ls) then
 	     val_r8=0d0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val_r8)
 	     do l0=0_LONGINT,ls-1_LONGINT; val_r8=val_r8+tens%data_real8(l0)**2; enddo
@@ -2052,7 +2052,7 @@
 	   endif
 	  case('c4','C4')
 	   if(associated(tens%data_cmplx4)) then
-	    if(size(tens%data_cmplx4).eq.ls) then
+	    if(size(tens%data_cmplx4,kind=8).eq.ls) then
 	     val_r4=0d0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val_r4)
 	     do l0=0_LONGINT,ls-1_LONGINT; val_r4=val_r4+abs(tens%data_cmplx4(l0))**2; enddo
@@ -2066,7 +2066,7 @@
 	   endif
 	  case('c8','C8')
 	   if(associated(tens%data_cmplx8)) then
-	    if(size(tens%data_cmplx8).eq.ls) then
+	    if(size(tens%data_cmplx8,kind=8).eq.ls) then
 	     val_r8=0d0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val_r8)
 	     do l0=0_LONGINT,ls-1_LONGINT; val_r8=val_r8+abs(tens%data_cmplx8(l0))**2; enddo
@@ -2119,7 +2119,7 @@
 	 select case(dtk)
 	 case('r4','R4')
 	  if(associated(tens%data_real4)) then
-	   if(size(tens%data_real4).eq.tens%tensor_block_size) then
+	   if(size(tens%data_real4,kind=8).eq.tens%tensor_block_size) then
 	    valr4=0.0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(max:valr4)
 	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr4=max(valr4,abs(tens%data_real4(l0))); enddo
@@ -2133,7 +2133,7 @@
 	  endif
 	 case('r8','R8')
 	  if(associated(tens%data_real8)) then
-	   if(size(tens%data_real8).eq.tens%tensor_block_size) then
+	   if(size(tens%data_real8,kind=8).eq.tens%tensor_block_size) then
 	    valr8=0d0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(max:valr8)
 	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr8=max(valr8,abs(tens%data_real8(l0))); enddo
@@ -2147,7 +2147,7 @@
 	  endif
 	 case('c4','C4')
 	  if(associated(tens%data_cmplx4)) then
-	   if(size(tens%data_cmplx4).eq.tens%tensor_block_size) then
+	   if(size(tens%data_cmplx4,kind=8).eq.tens%tensor_block_size) then
 	    valr4=0.0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(max:valr4)
 	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr4=max(valr4,abs(tens%data_cmplx4(l0))); enddo
@@ -2161,7 +2161,7 @@
 	  endif
 	 case('c8','C8')
 	  if(associated(tens%data_cmplx8)) then
-	   if(size(tens%data_cmplx8).eq.tens%tensor_block_size) then
+	   if(size(tens%data_cmplx8,kind=8).eq.tens%tensor_block_size) then
 	    valr8=0d0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(max:valr8)
 	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr8=max(valr8,abs(tens%data_cmplx8(l0))); enddo
@@ -2211,7 +2211,7 @@
 	 select case(dtk)
 	 case('r4','R4')
 	  if(associated(tens%data_real4)) then
-	   if(size(tens%data_real4).eq.tens%tensor_block_size) then
+	   if(size(tens%data_real4,kind=8).eq.tens%tensor_block_size) then
 	    valr4=abs(tens%data_real4(0))
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(min:valr4)
 	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr4=min(valr4,abs(tens%data_real4(l0))); enddo
@@ -2225,7 +2225,7 @@
 	  endif
 	 case('r8','R8')
 	  if(associated(tens%data_real8)) then
-	   if(size(tens%data_real8).eq.tens%tensor_block_size) then
+	   if(size(tens%data_real8,kind=8).eq.tens%tensor_block_size) then
 	    valr8=abs(tens%data_real8(0))
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(min:valr8)
 	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr8=min(valr8,abs(tens%data_real8(l0))); enddo
@@ -2239,7 +2239,7 @@
 	  endif
 	 case('c4','C4')
 	  if(associated(tens%data_cmplx4)) then
-	   if(size(tens%data_cmplx4).eq.tens%tensor_block_size) then
+	   if(size(tens%data_cmplx4,kind=8).eq.tens%tensor_block_size) then
 	    valr4=abs(tens%data_cmplx4(0))
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(min:valr4)
 	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr4=min(valr4,abs(tens%data_cmplx4(l0))); enddo
@@ -2253,7 +2253,7 @@
 	  endif
 	 case('c8','C8')
 	  if(associated(tens%data_cmplx8)) then
-	   if(size(tens%data_cmplx8).eq.tens%tensor_block_size) then
+	   if(size(tens%data_cmplx8,kind=8).eq.tens%tensor_block_size) then
 	    valr8=abs(tens%data_cmplx8(0))
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(min:valr8)
 	    do l0=0_LONGINT,tens%tensor_block_size-1_LONGINT; valr8=min(valr8,abs(tens%data_cmplx8(l0))); enddo
@@ -2952,7 +2952,7 @@
 	  case('r4','R4')
 	   cmp_thr4=real(cmp_thr8,4)
 	   if(associated(tens1%data_real4).and.associated(tens2%data_real4)) then
-	    l1=size(tens1%data_real4); l2=size(tens2%data_real4)
+	    l1=size(tens1%data_real4,kind=8); l2=size(tens2%data_real4,kind=8)
 	    if(l1.eq.l2.and.l1.eq.tens1%tensor_block_size.and.l1.eq.tens2%tensor_block_size.and.l1.gt.0) then
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l2) FIRSTPRIVATE(cmp_thr4) REDUCTION(+:diffc)
 	     do l0=0_LONGINT,l1-1_LONGINT,chunk_size
@@ -2986,7 +2986,7 @@
 	   endif
 	  case('r8','R8')
 	   if(associated(tens1%data_real8).and.associated(tens2%data_real8)) then
-	    l1=size(tens1%data_real8); l2=size(tens2%data_real8)
+	    l1=size(tens1%data_real8,kind=8); l2=size(tens2%data_real8,kind=8)
 	    if(l1.eq.l2.and.l1.eq.tens1%tensor_block_size.and.l1.eq.tens2%tensor_block_size.and.l1.gt.0) then
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l2) FIRSTPRIVATE(cmp_thr8) REDUCTION(+:diffc)
 	     do l0=0_LONGINT,l1-1_LONGINT,chunk_size
@@ -3021,7 +3021,7 @@
 	  case('c4','C4')
 	   cmp_thr4=real(cmp_thr8,4)
 	   if(associated(tens1%data_cmplx4).and.associated(tens2%data_cmplx4)) then
-	    l1=size(tens1%data_cmplx4); l2=size(tens2%data_cmplx4)
+	    l1=size(tens1%data_cmplx4,kind=8); l2=size(tens2%data_cmplx4,kind=8)
 	    if(l1.eq.l2.and.l1.eq.tens1%tensor_block_size.and.l1.eq.tens2%tensor_block_size.and.l1.gt.0) then
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l2) FIRSTPRIVATE(cmp_thr4)
 	     do l0=0_LONGINT,l1-1_LONGINT,chunk_size
@@ -3055,7 +3055,7 @@
 	   endif
 	  case('c8','C8')
 	   if(associated(tens1%data_cmplx8).and.associated(tens2%data_cmplx8)) then
-	    l1=size(tens1%data_cmplx8); l2=size(tens2%data_cmplx8)
+	    l1=size(tens1%data_cmplx8,kind=8); l2=size(tens2%data_cmplx8,kind=8)
 	    if(l1.eq.l2.and.l1.eq.tens1%tensor_block_size.and.l1.eq.tens2%tensor_block_size.and.l1.gt.0) then
 !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l2) FIRSTPRIVATE(cmp_thr8)
 	     do l0=0_LONGINT,l1-1_LONGINT,chunk_size
@@ -3346,7 +3346,7 @@
 	      else
 	       dlt='  '
 	      endif
-	      if(size(tens0%data_real4).eq.ls.and.tens1%tensor_block_size.eq.ls) then
+	      if(size(tens0%data_real4,kind=8).eq.ls.and.tens1%tensor_block_size.eq.ls) then
                if(accum) then !accumulating
                 if(scale_present) then !scaling present
                  val_r4=real(cmplx8_to_real8(val_c8),4)
@@ -3398,7 +3398,7 @@
 	      else
 	       dlt='  '
 	      endif
-	      if(size(tens0%data_real8).eq.ls.and.tens1%tensor_block_size.eq.ls) then
+	      if(size(tens0%data_real8,kind=8).eq.ls.and.tens1%tensor_block_size.eq.ls) then
                if(accum) then !accumulating
                 if(scale_present) then !scaling present
                  val_r8=cmplx8_to_real8(val_c8)
@@ -3450,7 +3450,7 @@
 	      else
 	       dlt='  '
 	      endif
-	      if(size(tens0%data_cmplx4).eq.ls.and.tens1%tensor_block_size.eq.ls) then
+	      if(size(tens0%data_cmplx4,kind=8).eq.ls.and.tens1%tensor_block_size.eq.ls) then
                if(accum) then !accumlating
                 if(lconj) then !left tensor is conjugated
                  if(scale_present) then !scaling present
@@ -3536,7 +3536,7 @@
 	      else
 	       dlt='  '
 	      endif
-	      if(size(tens0%data_cmplx8).eq.ls.and.tens1%tensor_block_size.eq.ls) then
+	      if(size(tens0%data_cmplx8,kind=8).eq.ls.and.tens1%tensor_block_size.eq.ls) then
                if(accum) then !accumulating
                 if(lconj) then !left tensor is conjugated
                  if(scale_present) then !scaling present

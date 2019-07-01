@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/06/26
+REVISION: 2019/06/27
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -396,6 +396,10 @@ std::size_t getDeviceMaxTensorSize(const int device_kind = DEV_HOST, //in: devic
 // Max device memory buffer size (bytes) per specified device:
 std::size_t getDeviceMaxBufferSize(const int device_kind = DEV_HOST, //in: device kind
                                    const int device_id = 0);         //in: device id
+
+// Enable fast math on a given device(s):
+bool enableFastMath(int device_kind,              //in: device kind
+                    int device_id = DEV_DEFAULT); //in: device id
 
 
 //Template definitions:
