@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/06/27
+REVISION: 2019/07/02
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -358,11 +358,13 @@ int Tensor::insertSlice(TensorTask * task_handle,         //out: task handle ass
 
 
 /** Initializes TAL-SH runtime. **/
-void initialize(std::size_t * host_buffer_size)
+int initialize(std::size_t * host_buffer_size)
 {
  int num_gpu, gpu_list[MAX_GPUS_PER_NODE];
- int errc = talshDeviceCount(DEV_NVIDIA_GPU,&num_gpu);
- assert(errc == TALSH_SUCCESS && num_gpu >= 0);
+ int errc = TALSH_SUCCESS;
+ errc = talshDeviceCount(DEV_NVIDIA_GPU,&num_gpu);
+ //assert(errc == TALSH_SUCCESS && num_gpu >= 0);
+ if(errc != TALSH_SUCCESS) return errc;
  if(num_gpu > 0){for(int i = 0; i < num_gpu; ++i) gpu_list[i]=i;};
 
  int host_arg_max;
@@ -372,18 +374,18 @@ void initialize(std::size_t * host_buffer_size)
  }else{
   errc = talshInit(host_buffer_size,&host_arg_max,num_gpu,gpu_list,0,NULL,0,NULL);
  }
- if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talshInit): TAL-SH initialization error " << errc << std::endl;
- assert(errc == TALSH_SUCCESS);
- return;
+ if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::initialize): TAL-SH initialization error " << errc << std::endl;
+ //assert(errc == TALSH_SUCCESS);
+ return errc;
 }
 
 
 /** Shutsdown TAL-SH runtime. **/
-void shutdown()
+int shutdown()
 {
  int errc = talshShutdown();
- assert(errc == TALSH_SUCCESS);
- return;
+ //assert(errc == TALSH_SUCCESS);
+ return errc;
 }
 
 

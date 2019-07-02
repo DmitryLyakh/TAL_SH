@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/06/27
+REVISION: 2019/07/02
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -373,8 +373,8 @@ private:
 //Namespace API:
 
 // TAL-SH initialization/shutdown:
-void initialize(std::size_t * host_buffer_size = nullptr); //in: desired host buffer size; out: actual host buffer size
-void shutdown();
+int initialize(std::size_t * host_buffer_size = nullptr); //in: desired host buffer size; out: actual host buffer size
+int shutdown();
 
 // Host memory pinning/unpinning for accelerated computing:
 template<typename T>
