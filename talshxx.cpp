@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/07/02
+REVISION: 2019/09/04
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -245,6 +245,21 @@ talsh_tens_t * Tensor::getTalshTensorPtr()
 }
 
 
+/** Resets the write task on the tensor. The preceding task must have been finalized. **/
+void Tensor::resetWriteTask(TensorTask * task)
+{
+ pimpl_->write_task_ = task;
+ return;
+}
+
+
+/** Returns a non-owning pointer to the write task, or nullptr. **/
+TensorTask * Tensor::getWriteTask()
+{
+ return pimpl_->write_task_;
+}
+
+
 /** Completes the current write task on the tensor, if any. **/
 bool Tensor::completeWriteTask()
 {
@@ -297,10 +312,11 @@ int Tensor::extractSlice(TensorTask * task_handle,         //out: task handle as
  int errc = TALSH_SUCCESS;
  int accum = NOPE; if(accumulative) accum = YEP;
  this->completeWriteTask();
+ slice.completeWriteTask();
  talsh_tens_t * ltens = this->getTalshTensorPtr();
  talsh_tens_t * dtens = slice.getTalshTensorPtr();
  if(task_handle != nullptr){ //asynchronous
-  assert(task_handle->isEmpty());
+  bool task_empty = task_handle->isEmpty(); assert(task_empty);
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   //++left; ++right; ++(*this);
   errc = talshTensorSlice(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,accum,task_hl);
@@ -308,7 +324,10 @@ int Tensor::extractSlice(TensorTask * task_handle,         //out: task handle as
    std::cout << "#ERROR(talsh::Tensor::extractSlice): talshTensorSlice error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
   if(errc == TALSH_SUCCESS){
-   pimpl_->write_task_ = task_handle;
+   task_handle->used_tensors_[0] = &slice;
+   task_handle->used_tensors_[1] = this;
+   task_handle->num_tensors_ = 2;
+   slice.resetWriteTask(task_handle);
   }else{
    task_handle->clean();
   }
@@ -332,10 +351,11 @@ int Tensor::insertSlice(TensorTask * task_handle,         //out: task handle ass
  int errc = TALSH_SUCCESS;
  int accum = NOPE; if(accumulative) accum = YEP;
  this->completeWriteTask();
+ slice.completeWriteTask();
  talsh_tens_t * dtens = this->getTalshTensorPtr();
  talsh_tens_t * ltens = slice.getTalshTensorPtr();
  if(task_handle != nullptr){ //asynchronous
-  assert(task_handle->isEmpty());
+  bool task_empty = task_handle->isEmpty(); assert(task_empty);
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   //++left; ++right; ++(*this);
   errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,accum,task_hl);
@@ -343,7 +363,10 @@ int Tensor::insertSlice(TensorTask * task_handle,         //out: task handle ass
    std::cout << "#ERROR(talsh::Tensor::insertSlice): talshTensorInsert error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
   if(errc == TALSH_SUCCESS){
-   pimpl_->write_task_ = task_handle;
+   task_handle->used_tensors_[0] = this;
+   task_handle->used_tensors_[1] = &slice;
+   task_handle->num_tensors_ = 2;
+   this->resetWriteTask(task_handle);
   }else{
    task_handle->clean();
   }

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/07/02
+REVISION: 2019/09/04
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -311,6 +311,11 @@ public:
  /** Prints the tensor info and elements greater or equal to "thresh". **/
  void print(double thresh) const;
 
+ /** Resets the write task on the tensor. **/
+ void resetWriteTask(TensorTask * task = nullptr);
+ /** Returns a non-owning pointer to the write task, or nullptr. **/
+ TensorTask * getWriteTask();
+
 private:
 
  //Private methods:
@@ -613,14 +618,16 @@ int Tensor::setValue(TensorTask * task_handle, //out: task handle associated wit
  this->completeWriteTask();
  talsh_tens_t * dtens = this->getTalshTensorPtr();
  if(task_handle != nullptr){ //asynchronous
-  assert(task_handle->isEmpty());
+  bool task_empty = task_handle->isEmpty(); assert(task_empty);
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   errc = talshTensorInit(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_M,task_hl);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::setValue): talshTensorInit error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
   if(errc == TALSH_SUCCESS){
-   pimpl_->write_task_ = task_handle;
+   task_handle->used_tensors_[0] = this;
+   task_handle->num_tensors_ = 1;
+   this->resetWriteTask(task_handle);
   }else{
    task_handle->clean();
   }
@@ -646,11 +653,12 @@ int Tensor::accumulate(TensorTask * task_handle,    //out: task handle associate
 {
  int errc = TALSH_SUCCESS;
  this->completeWriteTask();
+ left.completeWriteTask();
  const char * contr_ptrn = pattern.c_str();
  talsh_tens_t * dtens = this->getTalshTensorPtr();
  talsh_tens_t * ltens = left.getTalshTensorPtr();
  if(task_handle != nullptr){ //asynchronous
-  assert(task_handle->isEmpty());
+  bool task_empty = task_handle->isEmpty(); assert(task_empty);
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   //++left; ++right; ++(*this);
   errc = talshTensorAdd(contr_ptrn,dtens,ltens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MT,task_hl);
@@ -658,7 +666,10 @@ int Tensor::accumulate(TensorTask * task_handle,    //out: task handle associate
    std::cout << "#ERROR(talsh::Tensor::accumulate): talshTensorAdd error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
   if(errc == TALSH_SUCCESS){
-   pimpl_->write_task_ = task_handle;
+   task_handle->used_tensors_[0] = this;
+   task_handle->used_tensors_[1] = &left;
+   task_handle->num_tensors_ = 2;
+   this->resetWriteTask(task_handle);
   }else{
    task_handle->clean();
   }
@@ -686,13 +697,15 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
 {
  int errc = TALSH_SUCCESS;
  this->completeWriteTask();
+ left.completeWriteTask();
+ right.completeWriteTask();
  int accum = YEP; if(!accumulative) accum = NOPE;
  const char * contr_ptrn = pattern.c_str();
  talsh_tens_t * dtens = this->getTalshTensorPtr();
  talsh_tens_t * ltens = left.getTalshTensorPtr();
  talsh_tens_t * rtens = right.getTalshTensorPtr();
  if(task_handle != nullptr){ //asynchronous
-  assert(task_handle->isEmpty());
+  bool task_empty = task_handle->isEmpty(); assert(task_empty);
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
   //++left; ++right; ++(*this);
   errc = talshTensorContract(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,
@@ -701,7 +714,11 @@ int Tensor::contractAccumulate(TensorTask * task_handle,    //out: task handle a
    std::cout << "#ERROR(talsh::Tensor::contractAccumulate): talshTensorContract error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
   if(errc == TALSH_SUCCESS){
-   pimpl_->write_task_ = task_handle;
+   task_handle->used_tensors_[0] = this;
+   task_handle->used_tensors_[1] = &left;
+   task_handle->used_tensors_[2] = &right;
+   task_handle->num_tensors_ = 3;
+   this->resetWriteTask(task_handle);
   }else{
    task_handle->clean();
   }
@@ -730,13 +747,15 @@ int Tensor::contractAccumulateXL(TensorTask * task_handle,    //out: task handle
 {
  int errc = TALSH_SUCCESS;
  this->completeWriteTask();
+ left.completeWriteTask();
+ right.completeWriteTask();
  int accum = YEP; if(!accumulative) accum = NOPE;
  const char * contr_ptrn = pattern.c_str();
  talsh_tens_t * dtens = this->getTalshTensorPtr();
  talsh_tens_t * ltens = left.getTalshTensorPtr();
  talsh_tens_t * rtens = right.getTalshTensorPtr();
  if(task_handle != nullptr){ //asynchronous
-  assert(task_handle->isEmpty());
+  bool task_empty = task_handle->isEmpty(); assert(task_empty);
   //++left; ++right; ++(*this);
   errc = talshTensorContractXL(contr_ptrn,dtens,ltens,rtens,realPart(factor),imagPart(factor),device_id,device_kind,accum);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)

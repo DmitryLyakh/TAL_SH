@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/03/22
+REVISION: 2019/09/04
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -23,6 +23,8 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 
 #include "talsh_task.hpp"
 
+#include "talshxx.hpp"
+
 #include <iostream>
 
 #include <assert.h>
@@ -39,7 +41,7 @@ TensorTask::TensorTask():
 
 TensorTask::~TensorTask()
 {
- assert(this->wait());
+ this->wait();
  int errc = talshTaskDestruct(&talsh_task_);
  assert(errc == TALSH_SUCCESS);
 }
@@ -53,9 +55,14 @@ bool TensorTask::isEmpty()
 
 void TensorTask::clean()
 {
- if(talshTaskStatus(&talsh_task_) != TALSH_TASK_ERROR) assert(this->wait());
+ int status = talshTaskStatus(&talsh_task_);
+ if(status != TALSH_TASK_ERROR && status != TALSH_TASK_EMPTY && status != TALSH_TASK_COMPLETED) this->wait();
+ for(int i = 0; i < num_tensors_; ++i){
+  Tensor * tensor = used_tensors_[i];
+  if(tensor->getWriteTask() == this) tensor->resetWriteTask();
+ }
+ num_tensors_ = 0;
  int errc = talshTaskDestruct(&talsh_task_);
- num_tensors_=0;
  assert(errc == TALSH_SUCCESS);
  return;
 }
@@ -77,8 +84,10 @@ bool TensorTask::wait()
   if(stats != TALSH_TASK_COMPLETED){ //debug
    std::cout << "#ERROR(TAL-SH:TensorTask.wait): Task completed with error: Status " << stats << std::endl;
    talshTaskPrint(&talsh_task_);
+   assert(stats == TALSH_TASK_COMPLETED);
   }
  }
+ this->clean();
  return (stats == TALSH_TASK_COMPLETED);
 }
 
@@ -94,6 +103,7 @@ bool TensorTask::test(int * status)
  }else{ //empty task: Completed = TRUE
   *status = TALSH_TASK_EMPTY;
  }
+ if(res) this->clean();
  return res;
 }
 

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: C++ TAL-SH task
-REVISION: 2019/02/13
+REVISION: 2019/09/04
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)

@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
+#include <assert.h>
 
 #include "talsh.h"
 
@@ -686,7 +687,7 @@ void test_talsh_qc(int * ierr)
   std::cout << "  QC application started regular CPU execution" << std::endl;
   for(auto & contraction: contractions_cpu){
    int errc = contraction.execute(DEV_HOST,0); assert(errc == TALSH_SUCCESS);
-   assert(contraction.sync(DEV_HOST,0));
+   auto synced = contraction.sync(DEV_HOST,0); assert(synced);
   }
   std::cout << "  QC application executed " << NUM_CONTRACTIONS_CPU << " tensor contractions from the CPU queue" << std::endl;
 
