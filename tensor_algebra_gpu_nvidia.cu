@@ -3271,6 +3271,27 @@ __host__ size_t gpu_device_memory_size(int gpu_num)
  return bytes;
 }
 
+__host__ double gpu_get_flops(int gpu_num)
+/** Returns the current flop count executed by GPU #gpu_num,
+    or by all avaialble GPU devices if gpu_num = -1. **/
+{
+ int i,b,f;
+ double total_flops;
+
+ if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
+  b=gpu_num; f=gpu_num; //select a specific GPU
+ }else if(gpu_num == -1){
+  b=0; f=MAX_GPUS_PER_NODE-1; //select all GPUs
+ }else{
+  return -1.0; //invalid GPU number
+ }
+ total_flops=0.0;
+ for(i=b;i<=f;i++){
+  if(gpu_is_mine(i) != GPU_OFF) total_flops+=gpu_stats[i].flops;
+ }
+ return total_flops;
+}
+
 //NV-TAL INTERNAL CONTROL:
 __host__ int gpu_set_shmem_width(int width){
 /** Sets the GPU shared memory bank width:

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/05/09
+REVISION: 2019/09/11
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -943,6 +943,42 @@ size_t talshDeviceTensorSize(int dev_num,
 size_t talshDeviceTensorSize_(int dev_num, int dev_kind) //Fortran wrapper
 {
  return talshDeviceTensorSize(dev_num,dev_kind);
+}
+
+double talshDeviceGetFlops(int dev_kind, int dev_id)
+{
+ double total_flops=0.0;
+#pragma omp flush
+ if(talsh_on == 0) return -1.0;
+ switch(dev_kind){
+ case DEV_DEFAULT:
+  total_flops+=talshDeviceGetFlops(DEV_HOST);
+  total_flops+=talshDeviceGetFlops(DEV_NVIDIA_GPU);
+  total_flops+=talshDeviceGetFlops(DEV_INTEL_MIC);
+  total_flops+=talshDeviceGetFlops(DEV_AMD_GPU);
+  break;
+ case DEV_HOST:
+  total_flops=0.0;
+  break;
+ case DEV_NVIDIA_GPU:
+#ifndef NO_GPU
+  total_flops=gpu_get_flops(dev_id);
+#endif
+  break;
+ case DEV_INTEL_MIC:
+#ifndef NO_PHI
+  total_flops=0.0;
+#endif
+  break;
+ case DEV_AMD_GPU:
+#ifndef NO_AMD
+  total_flops=0.0;
+#endif
+  break;
+ default:
+  total_flops=0.0;
+ }
+ return total_flops;
 }
 
 int talshStats(int dev_id,   //in: device id (either flat or kind specific device id, see below)
