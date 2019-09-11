@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2019/06/12
+REVISION: 2019/09/11
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -3372,6 +3372,7 @@ __host__ int gpu_print_stats(int gpu_num)
     A negative return status means invalid <gpu_num>. **/
 {
  int i,b,f;
+ double total_flops,total_traffic_in,total_traffic_out;
  clock_t ctm;
 
  if(gpu_num >= 0 && gpu_num < MAX_GPUS_PER_NODE){
@@ -3381,10 +3382,14 @@ __host__ int gpu_print_stats(int gpu_num)
  }else{
   return -1; //invalid GPU number
  }
+ total_flops=0.0; total_traffic_in=0.0; total_traffic_out=0.0;
  for(i=b;i<=f;i++){
   if(gpu_is_mine(i) != GPU_OFF){
    ctm=clock();
    gpu_stats[i].time_active=((double)(ctm-gpu_stats[i].time_start))/CLOCKS_PER_SEC;
+   total_flops+=gpu_stats[i].flops;
+   total_traffic_in+=gpu_stats[i].traffic_in;
+   total_traffic_out+=gpu_stats[i].traffic_out;
    printf("\n#MSG(TAL-SH::NV-TAL): Statistics on GPU #%d:\n",i);
    printf(" Number of tasks submitted: %llu\n",gpu_stats[i].tasks_submitted);
    printf(" Number of tasks completed: %llu\n",gpu_stats[i].tasks_completed);
@@ -3398,6 +3403,14 @@ __host__ int gpu_print_stats(int gpu_num)
 //  }else{
 //   printf("\n#MSG(TAL-SH::NV-TAL): Statistics on GPU #%d: GPU is OFF\n",i);
   }
+ }
+ if(gpu_num == -1){
+  printf("\n#MSG(TAL-SH::NV-TAL): Statistics across all GPU devices:\n");
+  printf(" Number of Flops processed   : %G\n",total_flops);
+  printf(" Number of Bytes to GPUs     : %G\n",total_traffic_in);
+  printf(" Number of Bytes from GPUs   : %G\n",total_traffic_out);
+  printf(" Average arithmetic intensity: %G\n",total_flops/(total_traffic_in+total_traffic_out));
+  printf("#END_MSG\n");
  }
  return 0;
 }
