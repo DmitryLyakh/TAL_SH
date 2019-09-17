@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2019/09/11
+REVISION: 2019/09/17
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -3430,7 +3430,11 @@ __host__ int gpu_print_stats(int gpu_num)
   printf(" Number of Flops processed   : %G\n",total_flops);
   printf(" Number of Bytes to GPUs     : %G\n",total_traffic_in);
   printf(" Number of Bytes from GPUs   : %G\n",total_traffic_out);
-  printf(" Average arithmetic intensity: %G\n",total_flops/(total_traffic_in+total_traffic_out));
+  if(total_traffic_in+total_traffic_out > 0.0){
+   printf(" Average arithmetic intensity: %G\n",total_flops/(total_traffic_in+total_traffic_out));
+  }else{
+   printf(" Average arithmetic intensity: %G\n",0.0);
+  }
   printf("#END_MSG\n");
  }
  return 0;

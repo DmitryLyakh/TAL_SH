@@ -1,5 +1,5 @@
 /** TAL-SH: Tensor Method Interface
-REVISION: 2019/02/26
+REVISION: 2019/09/13
 
 Copyright (C) 2018-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2018-2019 Oak Ridge National Laboratory (UT-Battelle) **/
@@ -11,17 +11,24 @@ Copyright (C) 2018-2019 Oak Ridge National Laboratory (UT-Battelle) **/
 
 #include "byte_packet.h"
 
-//Dense tensor block view (interoperable):
-typedef struct{
- int num_dims;      //number of dimensions
- int data_kind;     //data kind
- void * body_ptr;   //non-owning pointer to the tensor data
- long long * bases; //non-owning pointer to dimension bases
- long long * dims;  //non-owning pointer to dimension extents
-} TensorDenseBlock;
+#include <vector>
 
-unsigned long long getDenseTensorVolume(const TensorDenseBlock &);
+//Dense locally stored tensor block for ExaTN:
+struct TensorDenseBlock{
+ std::vector<std::size_t> base;
+ std::vector<std::size_t> dims;
+ void * body;
+ int data_kind;
 
+ TensorDenseBlock(): body(nullptr), data_kind(NO_TYPE){}
+ ~TensorDenseBlock(){if(body) free(body); body = nullptr;}
+
+ inline std::size_t getVolume(){
+  std::size_t vol = 1;
+  for(unsigned int i = 0; i < dims.size(); ++i) vol *= dims[i];
+  return vol;
+ }
+};
 
 //External tensor method (identifiable):
 template <typename IdentifiableConcept>
@@ -36,7 +43,7 @@ public:
  virtual void unpack(BytePacket & packet) = 0;
 
  //Application-defined external tensor method:
- virtual int apply(const TensorDenseBlock & local_tensor) = 0;
+ virtual int apply(TensorDenseBlock & local_tensor) = 0;
 
 };
 

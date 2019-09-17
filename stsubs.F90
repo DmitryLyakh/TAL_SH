@@ -1,6 +1,6 @@
 !Standard procedures often used by me.
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISON: 2019/01/22
+!REVISON: 2019/09/17
 
 !Copyright (C) 2005-2019 Dmitry I. Lyakh (Liakh)
 
@@ -43,6 +43,10 @@
 	public:: ifcl        !calculates factorial
 	public:: is_it_letter!checks if the character is an ASCII letter
 	public:: is_it_number!checks if the character is an ASCII number
+	public:: is_nan_c4   !checks whether a complex(4) number is NaN
+	public:: is_nan_c8   !checks whether a complex(8) number is NaN
+	public:: is_nan_r4   !checks whether a real(4) number is NaN
+	public:: is_nan_r8   !checks whether a real(8) number is NaN
 	public:: itrsign     !determines a sign of a given transposition
 	public:: longnumchar !converts a long integer number to the character representation
 	public:: markchf     !counts how many non-blank fields a string contains
@@ -504,6 +508,34 @@
 	 endif
 	 return
 	end function is_it_number
+!--------------------------------------
+	logical function is_nan_c4(fpn)
+!Returns TRUE if the <fpn> number is NaN.
+	complex(4), intent(in):: fpn
+	is_nan_c4 = (fpn.ne.fpn)
+	return
+	end function is_nan_c4
+!--------------------------------------
+	logical function is_nan_c8(fpn)
+!Returns TRUE if the <fpn> number is NaN.
+	complex(8), intent(in):: fpn
+	is_nan_c8 = (fpn.ne.fpn)
+	return
+	end function is_nan_c8
+!--------------------------------------
+	logical function is_nan_r4(fpn)
+!Returns TRUE if the <fpn> number is NaN.
+	real(4), intent(in):: fpn
+	is_nan_r4 = (fpn.ne.fpn)
+	return
+	end function is_nan_r4
+!--------------------------------------
+	logical function is_nan_r8(fpn)
+!Returns TRUE if the <fpn> number is NaN.
+	real(8), intent(in):: fpn
+	is_nan_r8 = (fpn.ne.fpn)
+	return
+	end function is_nan_r8
 !--------------------------------
 	subroutine itrsign(N,ITR)
 !Reorders a given permutation into an ascending order and returns the permutation sign in ITR(0).

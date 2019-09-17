@@ -1,5 +1,5 @@
 /** TAL-SH: Byte packet
-REVISION: 2019/02/26
+REVISION: 2019/09/13
 
 Copyright (C) 2018-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2018-2019 Oak Ridge National Laboratory (UT-Battelle) **/
@@ -7,11 +7,8 @@ Copyright (C) 2018-2019 Oak Ridge National Laboratory (UT-Battelle) **/
 #ifndef BYTE_PACKET_H_
 #define BYTE_PACKET_H_
 
-#include <assert.h>
-
-#ifdef __cplusplus
 #include <cstddef>
-#endif
+#include <cassert>
 
 #define BYTE_PACKET_CAPACITY 1048576 //default byte packet capacity in bytes
 
@@ -23,17 +20,24 @@ typedef struct{
  unsigned long long position;   //current position inside the byte packet
 } BytePacket;
 
+/** Initializes the byte packet. **/
+void initBytePacket(BytePacket * packet,
+                    unsigned long long max_size = BYTE_PACKET_CAPACITY);
 
-void initBytePacket(BytePacket * packet);
+/** Destroys the byte packet. **/
 void clearBytePacket(BytePacket * packet);
-void resetBytePacket(BytePacket * packet);
 
-#ifdef __cplusplus
+/** Resets the position inside the byte packet. **/
+void resetBytePacket(BytePacket * packet,
+                     unsigned long long new_position = 0);
+
+/** Appends an arbitrary plain old data variable at the current packet
+    position, shifting it forward by the size of the variable. **/
 template <typename T>
 void appendToBytePacket(BytePacket * packet, const T & item)
 {
  char * dst_ptr = &(((char*)(packet->base_addr))[packet->position]);
- char * src_ptr = ((char*)(&item));
+ const char * src_ptr = ((const char *)(&item));
  unsigned long long type_size = sizeof(T);
  assert(packet->position + type_size <= packet->capacity);
  for(unsigned long long i = 0; i < type_size; ++i) dst_ptr[i] = src_ptr[i];
@@ -42,10 +46,12 @@ void appendToBytePacket(BytePacket * packet, const T & item)
  return;
 }
 
+/** Extracts an arbitrary plain old data variable at the current packet
+    position, shifting it forward by the size of the variable. **/
 template <typename T>
 void extractFromBytePacket(BytePacket * packet, T & item)
 {
- char * src_ptr = &(((char*)(packet->base_addr))[packet->position]);
+ const char * src_ptr = &(((const char *)(packet->base_addr))[packet->position]);
  char * dst_ptr = ((char*)(&item));
  unsigned long long type_size = sizeof(T);
  assert(packet->position + type_size <= packet->size_bytes);
@@ -53,6 +59,5 @@ void extractFromBytePacket(BytePacket * packet, T & item)
  packet->position += type_size;
  return;
 }
-#endif
 
 #endif //BYTE_PACKET_H_
