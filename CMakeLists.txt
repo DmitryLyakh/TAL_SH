@@ -78,7 +78,6 @@ set (TALSH_FORTRAN_SOURCES
 set (TALSH_CXX_SOURCES
 	timer.cpp
 	byte_packet.cpp
-	tensor_method.cpp
 	mem_manager.cpp
 	talshc.cpp
 	talsh_task.cpp
