@@ -28,6 +28,10 @@ else()
 	set(TALSH_GPU_DEFS NO_GPU)
 endif()
 
+if(WITH_CUTENSOR)
+    set(TALSH_GPU_DEFS USE_CUTENSOR)
+endif()
+
 set(TALSH_CXX_FLAGS ${CMAKE_CXX_FLAGS} -O3)
 set(TALSH_Fortran_FLAGS ${CMAKE_Fortran_FLAGS} -O3)
 
