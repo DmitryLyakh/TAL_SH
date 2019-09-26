@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2019/09/17
+REVISION: 2019/09/26
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -86,6 +86,10 @@ TO BE FIXED:
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+
+#ifdef USE_CUTENSOR
+#include <stdint.h>
+#endif
 
 #include "tensor_algebra.h" /*includes mem_manager.h*/
 
@@ -185,6 +189,9 @@ static cublasHandle_t cublas_handle[MAX_GPUS_PER_NODE]; //each GPU present on a 
 #ifdef USE_CUTENSOR
 // Infrastructure for cuTensor:
 static cutensorHandle_t cutensor_handle[MAX_GPUS_PER_NODE]; //each GPU present on a node obtains its own cuTensor context handle
+void * cutensor_workspace[MAX_GPUS_PER_NODE] = {NULL}; //cuTensor workspace (in GPU memory)
+size_t cutensor_worksize[MAX_GPUS_PER_NODE] = {0};     //cuTensor workspace size
+const size_t CUTENSOR_WORKSPACE_SIZE = 128 * 1048576;  //default cuTensor workspace size
 #endif /*USE_CUTENSOR*/
 // Slabs for the GPU asynchronous resources:
 //  CUDA stream handles:
@@ -3076,6 +3083,13 @@ no GPU will be initialized. **/
 //cuTensor context:
      err_cutensor=cutensorCreate(&(cutensor_handle[i]));
      if(err_cutensor != CUTENSOR_STATUS_SUCCESS) return -7;
+     err=cudaMalloc(&cutensor_workspace[i],CUTENSOR_WORKSPACE_SIZE);
+     if(err == cudaSuccess){
+      cutensor_worksize[i]=CUTENSOR_WORKSPACE_SIZE;
+     }else{
+      cutensor_workspace[i]=NULL;
+      cutensor_worksize[i]=0;
+     }
 #endif
     }
 //CUDA stream bank:
@@ -3163,6 +3177,9 @@ If <gpu_beg> > <gpu_end>, nothing wil be done. **/
     n++; err=cudaSetDevice(i);
     if(err == cudaSuccess){
 #ifdef USE_CUTENSOR
+     if(cutensor_workspace[i] != NULL) cudaFree(cutensor_workspace[i]);
+     cutensor_workspace[i]=NULL;
+     cutensor_worksize[i]=0;
      err_cutensor=cutensorDestroy(cutensor_handle[i]);
 #endif
 #ifndef NO_BLAS
@@ -6916,7 +6933,9 @@ NOTES:
                                       (const void*)&h_sgemm_beta_one,
                                       darg,cuda_task->tens_cudesc[0],cumod_d,
                                       darg,cuda_task->tens_cudesc[0],cumod_d,
-                                      CUTENSOR_OP_IDENTITY,CUDA_R_32F,CUTENSOR_ALGO_DEFAULT,NULL,(uint64_t)0,*cuda_stream);
+                                      CUTENSOR_OP_IDENTITY,CUDA_R_32F,CUTENSOR_ALGO_DEFAULT,
+                                      cutensor_workspace[gpu_num],(uint64_t)cutensor_worksize[gpu_num],
+                                      *cuda_stream);
      if(cuda_task->pref_ptr == &h_sgemm_beta_one) cuda_task->pref_ptr=NULL;
 #else
      err_cublas=cublasSgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
@@ -6933,7 +6952,9 @@ NOTES:
                                       (const void*)&h_dgemm_beta_one,
                                       darg,cuda_task->tens_cudesc[0],cumod_d,
                                       darg,cuda_task->tens_cudesc[0],cumod_d,
-                                      CUTENSOR_OP_IDENTITY,CUDA_R_64F,CUTENSOR_ALGO_DEFAULT,NULL,(uint64_t)0,*cuda_stream);
+                                      CUTENSOR_OP_IDENTITY,CUDA_R_64F,CUTENSOR_ALGO_DEFAULT,
+                                      cutensor_workspace[gpu_num],(uint64_t)cutensor_worksize[gpu_num],
+                                      *cuda_stream);
      if(cuda_task->pref_ptr == &h_dgemm_beta_one) cuda_task->pref_ptr=NULL;
 #else
      err_cublas=cublasDgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
@@ -6979,7 +7000,9 @@ NOTES:
                                        (const void*)&h_cgemm_beta_one,
                                        darg,cuda_task->tens_cudesc[0],cumod_d,
                                        darg,cuda_task->tens_cudesc[0],cumod_d,
-                                       CUTENSOR_OP_IDENTITY,CUDA_C_32F,CUTENSOR_ALGO_DEFAULT,NULL,(uint64_t)0,*cuda_stream);
+                                       CUTENSOR_OP_IDENTITY,CUDA_C_32F,CUTENSOR_ALGO_DEFAULT,
+                                       cutensor_workspace[gpu_num],(uint64_t)cutensor_worksize[gpu_num],
+                                       *cuda_stream);
       if(cuda_task->pref_ptr == &h_cgemm_beta_one) cuda_task->pref_ptr=NULL;
 #else
       if(conj_r){
@@ -7004,7 +7027,9 @@ NOTES:
                                       (const void*)&h_zgemm_beta_one,
                                       darg,cuda_task->tens_cudesc[0],cumod_d,
                                       darg,cuda_task->tens_cudesc[0],cumod_d,
-                                      CUTENSOR_OP_IDENTITY,CUDA_C_64F,CUTENSOR_ALGO_DEFAULT,NULL,(uint64_t)0,*cuda_stream);
+                                      CUTENSOR_OP_IDENTITY,CUDA_C_64F,CUTENSOR_ALGO_DEFAULT,
+                                      cutensor_workspace[gpu_num],(uint64_t)cutensor_worksize[gpu_num],
+                                      *cuda_stream);
      if(cuda_task->pref_ptr == &h_zgemm_beta_one) cuda_task->pref_ptr=NULL;
 #else
      if(conj_r){
