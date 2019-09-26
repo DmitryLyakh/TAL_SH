@@ -272,7 +272,7 @@ PIC_FLAG_GNU = -fPIC
 PIC_FLAG_PGI = -fpic
 PIC_FLAG_INTEL = -fpic
 PIC_FLAG_IBM = -qpic=large
-PIC_FLAG_CRAY = -hpic
+PIC_FLAG_CRAY = -fpic
 PIC_FLAG = $(PIC_FLAG_$(TOOLKIT))
 PIC_FLAG_CUDA = $(PIC_FLAG_GNU)
 
@@ -330,9 +330,9 @@ NO_PHI = -DNO_PHI
 CFLAGS_INTEL_DEV = -c -g -O0 -qopenmp -D_DEBUG
 CFLAGS_INTEL_OPT = -c -O3 -qopenmp
 CFLAGS_INTEL_PRF = -c -g -O3 -qopenmp
-CFLAGS_CRAY_DEV = -c -g -O0 -D_DEBUG
-CFLAGS_CRAY_OPT = -c -O3
-CFLAGS_CRAY_PRF = -c -g -O3
+CFLAGS_CRAY_DEV = -c -g -O0 -fopenmp -D_DEBUG
+CFLAGS_CRAY_OPT = -c -O3 -fopenmp
+CFLAGS_CRAY_PRF = -c -g -O3 -fopenmp
 CFLAGS_GNU_DEV = -c -g -O0 -fopenmp -D_DEBUG
 CFLAGS_GNU_OPT = -c -O3 -fopenmp
 CFLAGS_GNU_PRF = -c -g -O3 -fopenmp
@@ -360,19 +360,15 @@ CFLAGS += -DEXATN_SERVICE
 endif
 
 #CPP FLAGS:
-ifeq ($(TOOLKIT),CRAY)
-CPPFLAGS = $(CFLAGS) -h std=c++11
-else
 CPPFLAGS = $(CFLAGS) -std=c++11
-endif
 
 #FORTRAN FLAGS:
 FFLAGS_INTEL_DEV = -c -g -O0 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel $(LA_INC)
 FFLAGS_INTEL_OPT = -c -O3 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel $(LA_INC)
 FFLAGS_INTEL_PRF = -c -g -O3 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel $(LA_INC)
-FFLAGS_CRAY_DEV = -c -g $(LA_INC)
-FFLAGS_CRAY_OPT = -c -O3 $(LA_INC)
-FFLAGS_CRAY_PRF = -c -g -O3 $(LA_INC)
+FFLAGS_CRAY_DEV = -c -g -fopenmp -J OBJ $(LA_INC)
+FFLAGS_CRAY_OPT = -c -O3 -fopenmp -J OBJ $(LA_INC)
+FFLAGS_CRAY_PRF = -c -g -O3 -fopenmp -J OBJ $(LA_INC)
 FFLAGS_GNU_DEV = -c -fopenmp -g -Og -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -ffpe-trap=invalid,zero,overflow $(LA_INC)
 FFLAGS_GNU_OPT = -c -fopenmp -O3 $(LA_INC)
 FFLAGS_GNU_PRF = -c -fopenmp -g -O3 $(LA_INC)
@@ -388,7 +384,7 @@ FFLAGS = $(FFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(DF)$(NO_GPU) $(DF)$(NO_AMD) $(DF)$
 LTHREAD_GNU   = -lgomp
 LTHREAD_PGI   = -mp -lpthread
 LTHREAD_INTEL = -liomp5
-LTHREAD_CRAY  = -L.
+LTHREAD_CRAY  = -fopenmp
 LTHREAD_IBM   = -lxlsmp
 LTHREAD = $(LTHREAD_$(TOOLKIT))
 
