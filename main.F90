@@ -22,16 +22,16 @@
         use, intrinsic:: ISO_C_BINDING
         implicit none
         logical, parameter:: TEST_NVTAL=.FALSE.
-        logical, parameter:: TEST_C_TALSH=.TRUE.
-        logical, parameter:: TEST_CXX_TALSH=.TRUE.
-        logical, parameter:: TEST_XL_TALSH=.TRUE.
-        logical, parameter:: TEST_F_TALSH=.TRUE.
-        logical, parameter:: TEST_XLF_TALSH=.TRUE.
-        logical, parameter:: TEST_QC_TALSH=.TRUE.
+        logical, parameter:: TEST_C_TALSH=.FALSE.
+        logical, parameter:: TEST_CXX_TALSH=.FALSE.
+        logical, parameter:: TEST_XL_TALSH=.FALSE.
+        logical, parameter:: TEST_F_TALSH=.FALSE.
+        logical, parameter:: TEST_XLF_TALSH=.FALSE.
+        logical, parameter:: TEST_QC_TALSH=.FALSE.
         logical, parameter:: TEST_QC_TALSH_XL=.FALSE.
-        logical, parameter:: TEST_NWCHEM=.TRUE.
-        logical, parameter:: TEST_COMPLEX=.TRUE.
-        logical, parameter:: BENCH_TALSH_RND=.FALSE.
+        logical, parameter:: TEST_NWCHEM=.FALSE.
+        logical, parameter:: TEST_COMPLEX=.FALSE.
+        logical, parameter:: BENCH_TALSH_RND=.TRUE.
         logical, parameter:: BENCH_TALSH_CUSTOM=.FALSE.
 
         interface
@@ -627,9 +627,9 @@
          use combinatoric
          implicit none
          integer(C_INT), intent(out):: ierr
-         integer(C_SIZE_T), parameter:: BUF_SIZE=64_8*1024_8*1024_8 !desired Host argument buffer size in bytes, use >=5GiB for exhaustive benchmarking
+         integer(C_SIZE_T), parameter:: BUF_SIZE=15_8*1024_8*1024_8*1024_8 !desired Host argument buffer size in bytes, use >=5GiB for exhaustive benchmarking
          integer(C_INT), parameter:: TENS_DATA_KIND=R8 !tensor data kind (R4,R8,C4,C8)
-         integer, parameter:: MAX_TENS_RANK=4          !max tensor rank (<= MAX_TENSOR_RANK), use 8 for exhaustive benchmarking
+         integer, parameter:: MAX_TENS_RANK=8          !max tensor rank (<= MAX_TENSOR_RANK), use 8 for exhaustive benchmarking
          integer, parameter:: MAX_GEN_DIMS=4           !max number of large dimensions per tensor
          integer, parameter:: SMALL_DIM_EXT=8          !extent of small dimensions
          integer, parameter:: MAX_REPEATS=64           !number of repeated tensor contractions that differ in index mapping
@@ -672,7 +672,7 @@
          write(*,'("Status ",i11,": Size (Bytes) = ",i13,": Max args in HAB = ",i7)') ierr,host_buf_size,host_arg_max
          if(ierr.ne.TALSH_SUCCESS) then; ierr=2; return; endif
          if(talsh_valid_data_kind(TENS_DATA_KIND,n).eq.YEP) then
-          max_tens_vol=host_buf_size/9_C_SIZE_T/int(n,C_SIZE_T) !max tensor volume
+          max_tens_vol=host_buf_size/7_C_SIZE_T/int(n,C_SIZE_T) !max tensor volume
           write(*,'(" Max tensor volume (words) = ",i11," (word size = ",i2,")")') max_tens_vol,n
          else
           ierr=25; return

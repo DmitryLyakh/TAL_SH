@@ -16,9 +16,9 @@ export MPILIB ?= NONE
 #BLAS: [ATLAS|MKL|ACML|ESSL|NONE]:
 export BLASLIB ?= ATLAS
 #Nvidia GPU via CUDA: [CUDA|NOCUDA]:
-export GPU_CUDA ?= NOCUDA
+export GPU_CUDA ?= CUDA
 #Nvidia GPU architecture (two digits):
-export GPU_SM_ARCH ?= 35
+export GPU_SM_ARCH ?= 70
 #Operating system: [LINUX|NO_LINUX]:
 export EXA_OS ?= LINUX
 
