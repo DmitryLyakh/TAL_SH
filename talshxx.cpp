@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/09/04
+REVISION: 2019/10/14
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -89,6 +89,17 @@ Tensor::Tensor(const std::vector<int> & dims,              //tensor dimension ex
                talsh_tens_init_i init_func):               //user-defined tensor initialization function
  Tensor(std::vector<std::size_t>(dims.size(),0),dims,data_kind,init_func)
 {
+}
+
+
+/** Returns the tensor element data type: {REAL32,REAL64,COMPLEX32,COMPLEX64}. **/
+int Tensor::getElementType() const
+{
+ int num_images,data_kinds[TALSH_MAX_DEV_PRESENT];
+ int errc = talshTensorDataKind(&(pimpl_->tensor_),&num_images,data_kinds);
+ assert(errc == TALSH_SUCCESS);
+ assert(num_images > 0);
+ return data_kinds[0];
 }
 
 

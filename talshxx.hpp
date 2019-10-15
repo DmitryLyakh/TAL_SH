@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2019/09/04
+REVISION: 2019/10/14
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -44,6 +44,11 @@ static const std::size_t DEFAULT_HOST_BUFFER_SIZE = TALSH_NO_HOST_BUFFER; //smal
 
 
 //Tensor data kind (static type VS numeric data kind constant conversions):
+
+const int REAL32 = R4;
+const int REAL64 = R8;
+const int COMPLEX32 = C4;
+const int COMPLEX64 = C8;
 
 template <typename T>
 struct TensorData{
@@ -181,6 +186,9 @@ public:
 
  /** Dtor **/
  ~Tensor() = default;
+
+ /** Returns the tensor element data type: {REAL32,REAL64,COMPLEX32,COMPLEX64}. **/
+ int getElementType() const;
 
  /** Returns the tensor rank (order in math terms). **/
  int getRank() const;
