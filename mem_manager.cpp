@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2019/06/17
+REVISION: 2019/11/27
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -615,6 +615,10 @@ RETURN STATUS:
   err_code=ab_get_2d_pos(ab_conf,*entry_num,&i,&j);
   if(err_code == 0){num_args_host++; occ_size_host+=blck_sizes_host[i]; args_size_host+=bsize;}
  }
+ if(LOGGING && err_code == 0){
+  printf("\n#DEBUG(TALSH:mem_manager): Host Buffer alloc %lu B -> Entry %d: Buffer use = %lu B\n",bsize,*entry_num,occ_size_host);
+  fflush(stdout);
+ }
 #pragma omp flush
  omp_unset_nest_lock(&mem_lock);
  return err_code;
@@ -640,6 +644,10 @@ INPUT:
  if(err_code == 0){
   err_code=ab_get_2d_pos(ab_conf,entry_num,&i,&j);
   if(err_code == 0){num_args_host--; occ_size_host-=blck_sizes_host[i]; args_size_host=0;} //`args_size_host is not used (ignore it)
+ }
+ if(LOGGING && err_code == 0){
+  printf("\n#DEBUG(TALSH:mem_manager): Host Buffer free -> Entry %d: Buffer use = %lu B\n",entry_num,occ_size_host);
+  fflush(stdout);
  }
 #pragma omp flush
  omp_unset_nest_lock(&mem_lock);
@@ -678,6 +686,10 @@ RETURN STATUS:
     err_code=ab_get_2d_pos(ab_conf,*entry_num,&i,&j);
     if(err_code == 0){num_args_gpu[gpu_num]++; occ_size_gpu[gpu_num]+=blck_sizes_gpu[gpu_num][i]; args_size_gpu[gpu_num]+=bsize;}
    }
+   if(LOGGING && err_code == 0){
+    printf("\n#DEBUG(TALSH:mem_manager): GPU %d Buffer alloc %lu B -> Entry %d: Buffer use = %lu B\n",gpu_num,bsize,*entry_num,occ_size_gpu[gpu_num]);
+    fflush(stdout);
+   }
   }else{
    err_code=-2;
   }
@@ -711,6 +723,10 @@ INPUT:
    if(err_code == 0){
     err_code=ab_get_2d_pos(ab_conf,entry_num,&i,&j);
     if(err_code == 0){num_args_gpu[gpu_num]--; occ_size_gpu[gpu_num]-=blck_sizes_gpu[gpu_num][i]; args_size_gpu[gpu_num]=0;} //`args_size_gpu is not used here (ignore it)
+   }
+   if(LOGGING && err_code == 0){
+    printf("\n#DEBUG(TALSH:mem_manager): GPU %d Buffer free -> Entry %d: Buffer use = %lu B\n",gpu_num,entry_num,occ_size_gpu[gpu_num]);
+    fflush(stdout);
    }
   }else{
    err_code=-2;
@@ -886,6 +902,18 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
 #pragma omp flush
  omp_unset_nest_lock(&mem_lock);
  return ben; //flat buffer entry number [0..MAX], or -1 (not in buffer), or negative error code
+}
+
+void mem_log_start()
+{
+ LOGGING=1;
+ return;
+}
+
+void mem_log_finish()
+{
+ LOGGING=0;
+ return;
 }
 
 int mem_free_left(int dev_id, size_t * free_mem) //returns free buffer space in bytes

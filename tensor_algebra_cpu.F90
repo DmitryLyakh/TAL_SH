@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2019/09/17
+!REVISION: 2019/11/23
 
 !Copyright (C) 2013-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -231,6 +231,7 @@
         public tensor_block_copy           !makes a copy of a tensor block (with an optional index permutation)
         public tensor_block_add            !adds one tensor block to another
         public tensor_block_contract       !inter-tensor index contraction (accumulative contraction)
+        public tensor_block_decompose_svd  !decomposes a given tensor block using a full or partial SVD
         public tensor_block_scalar_value   !returns the scalar value component of <tensor_block_t>
         public tensor_block_has_nan        !returns TRUE if the tensor block has a NaN element
         public get_mlndx_addr              !generates an array of addressing increments for the linearization map for symmetric multi-indices
@@ -3686,7 +3687,7 @@
 !------------------------------------------------
         integer:: i,j,k,l,m,n,k0,k1,k2,k3,ks,kf
         integer(LONGINT):: l0,l1,l2,l3,lld,lrd,lcd
-        integer:: ltb,rtb,dtb,lrank,nthr,rrank,drank,nlu,nru,ncd,tst,contr_case,conj,dn2o(0:max_tensor_rank)
+        integer:: nthr,ltb,rtb,dtb,lrank,rrank,drank,nlu,nru,ncd,tst,contr_case,conj,dn2o(0:max_tensor_rank)
         integer, target:: lo2n(0:max_tensor_rank),ro2n(0:max_tensor_rank),do2n(0:max_tensor_rank)
         integer, pointer:: trn(:)
         type(tensor_block_t), pointer:: tens_in,tens_out,ltp,rtp,dtp
@@ -4237,6 +4238,272 @@
 	 end function ord_rest_ok
 
 	end subroutine tensor_block_contract
+!------------------------------------------------------------------------------------
+        subroutine tensor_block_decompose_svd(dtens,ltens,rtens,stens,ierr,data_kind)
+        implicit none
+        type(tensor_block_t), intent(inout), target:: dtens !inout: tensor to be decomposed (destroyed on exit)
+        type(tensor_block_t), intent(inout), target:: ltens !out: left singular tensor
+        type(tensor_block_t), intent(inout), target:: rtens !out: right singular tensor (transposed)
+        type(tensor_block_t), intent(inout), target:: stens !out: singular value tensor
+        integer, intent(inout):: ierr                       !out: error code
+        character(2), intent(in), optional:: data_kind      !in: preferred data kind
+        integer:: i,nfound,lwork,info
+        integer:: dtb,ltb,rtb,stb,drank,lrank,rrank,srank,lr,rr,cr
+        integer(LONGINT):: lu,ru,nv,mlr,lrwork
+        character(2):: dtk
+        real(4):: wr4(1)
+        real(8):: wr8(1)
+        complex(4):: wc4(1)
+        complex(8):: wc8(1)
+        real(4), pointer, contiguous:: dmr4(:,:),lmr4(:,:),rmr4(:,:),wrkr4(:),rwrk4(:),sv4(:)
+        real(8), pointer, contiguous:: dmr8(:,:),lmr8(:,:),rmr8(:,:),wrkr8(:),rwrk8(:),sv8(:)
+        complex(4), pointer, contiguous:: dmc4(:,:),lmc4(:,:),rmc4(:,:),wrkc4(:)
+        complex(8), pointer, contiguous:: dmc8(:,:),lmc8(:,:),rmc8(:,:),wrkc8(:)
+        integer, allocatable:: iwork(:)
+
+        ierr=0
+ !Get tensor ranks:
+        drank=dtens%tensor_shape%num_dim
+        lrank=ltens%tensor_shape%num_dim
+        rrank=rtens%tensor_shape%num_dim
+        srank=stens%tensor_shape%num_dim
+        if(lrank.gt.0.and.lrank.le.max_tensor_rank.and.rrank.gt.0.and.rrank.le.max_tensor_rank.and.&
+          &srank.gt.0.and.srank.le.max_tensor_rank.and.drank.gt.0.and.drank.le.max_tensor_rank.and.&
+          &lrank.gt.srank.and.rrank.gt.srank.and.lrank+rrank.eq.drank+2*srank) then
+ !Check argument storage layout:
+         dtb=tensor_block_layout(dtens,ierr); if(ierr.ne.0) then; ierr=1; return; endif
+         ltb=tensor_block_layout(ltens,ierr); if(ierr.ne.0) then; ierr=2; return; endif
+         rtb=tensor_block_layout(rtens,ierr); if(ierr.ne.0) then; ierr=3; return; endif
+         stb=tensor_block_layout(stens,ierr); if(ierr.ne.0) then; ierr=4; return; endif
+         if(dtb.eq.dimension_led.and.ltb.eq.dimension_led.and.rtb.eq.dimension_led.and.stb.eq.dimension_led) then
+ !Determine computational data kind:
+          if(present(data_kind)) then
+           dtk=data_kind
+          else
+           call determine_data_kind(dtk,ierr); if(ierr.ne.0) return
+          endif
+ !Determine input parameters: D(lr,rr) = L(lr,cr) * S(cr) * R(cr,rr):
+          cr=(lrank+rrank-drank)/2 !number of contracted dimensions
+          lr=lrank-cr              !number of left uncontracted dimensions
+          rr=rrank-cr              !number of right uncontracted dimensions
+          if(cr.eq.srank) then
+           nv=1; do i=1,cr; nv=nv*stens%tensor_shape%dim_extent(i); enddo
+           lu=1; do i=1,lr; lu=lu*ltens%tensor_shape%dim_extent(i); enddo
+           ru=1; do i=cr+1,rrank; ru=ru*rtens%tensor_shape%dim_extent(i); enddo
+           mlr=min(lu,ru)
+           lrwork=mlr*mlr*2+15*mlr
+ !Associate matrices and perform SVD:
+           select case(dtk)
+           case('r4','R4')
+            dmr4(1:lu,1:ru)=>dtens%data_real4
+            lmr4(1:lu,1:nv)=>ltens%data_real4
+            rmr4(1:nv,1:ru)=>rtens%data_real4
+            ierr=array_alloc(sv4,mlr,in_buffer=.TRUE.,fallback=.TRUE.)
+            if(ierr.eq.0) then
+             allocate(iwork(12*mlr),STAT=ierr)
+             if(ierr.eq.0) then
+#ifdef WITH_LAPACK
+              call sgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmr4,int(lu,kind=4),&
+                          &0d0,0d0,1,int(nv,kind=4),nfound,sv4,lmr4,int(lu,kind=4),&
+                          &rmr4,int(nv,kind=4),wr4,-1,iwork,info)
+              if(info.eq.0) then
+               lwork=int(wr4(1))+1
+               ierr=array_alloc(wrkr4,int(lwork,kind=LONGINT),in_buffer=.TRUE.,fallback=.TRUE.)
+               if(ierr.eq.0) then
+                call sgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmr4,int(lu,kind=4),&
+                            &0d0,0d0,1,int(nv,kind=4),nfound,sv4,lmr4,int(lu,kind=4),&
+                            &rmr4,int(nv,kind=4),wrkr4,lwork,iwork,info)
+                if(info.ne.0) ierr=6
+                call array_free(wrkr4)
+               else
+                ierr=7
+               endif
+              else
+               ierr=8
+              endif
+#else
+              ierr=-1
+#endif
+              deallocate(iwork)
+             else
+              ierr=9
+             endif
+             call array_free(sv4)
+            else
+             ierr=10
+            endif
+           case('r8','R8')
+            dmr8(1:lu,1:ru)=>dtens%data_real8
+            lmr8(1:lu,1:nv)=>ltens%data_real8
+            rmr8(1:nv,1:ru)=>rtens%data_real8
+            ierr=array_alloc(sv8,mlr,in_buffer=.TRUE.,fallback=.TRUE.)
+            if(ierr.eq.0) then
+             allocate(iwork(12*mlr),STAT=ierr)
+             if(ierr.eq.0) then
+#ifdef WITH_LAPACK
+              call dgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmr8,int(lu,kind=4),&
+                          &0d0,0d0,1,int(nv,kind=4),nfound,sv8,lmr8,int(lu,kind=4),&
+                          &rmr8,int(nv,kind=4),wr8,-1,iwork,info)
+              if(info.eq.0) then
+               lwork=int(wr8(1))+1
+               ierr=array_alloc(wrkr8,int(lwork,kind=LONGINT),in_buffer=.TRUE.,fallback=.TRUE.)
+               if(ierr.eq.0) then
+                call dgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmr8,int(lu,kind=4),&
+                            &0d0,0d0,1,int(nv,kind=4),nfound,sv8,lmr8,int(lu,kind=4),&
+                            &rmr8,int(nv,kind=4),wrkr8,lwork,iwork,info)
+                if(info.ne.0) ierr=11
+                call array_free(wrkr8)
+               else
+                ierr=12
+               endif
+              else
+               ierr=13
+              endif
+#else
+              ierr=-2
+#endif
+              deallocate(iwork)
+             else
+              ierr=14
+             endif
+             call array_free(sv8)
+            else
+             ierr=15
+            endif
+           case('c4','C4')
+            dmc4(1:lu,1:ru)=>dtens%data_cmplx4
+            lmc4(1:lu,1:nv)=>ltens%data_cmplx4
+            rmc4(1:nv,1:ru)=>rtens%data_cmplx4
+            ierr=array_alloc(rwrk4,lrwork,in_buffer=.TRUE.,fallback=.TRUE.)
+            if(ierr.eq.0) then
+             ierr=array_alloc(sv4,mlr,in_buffer=.TRUE.,fallback=.TRUE.)
+             if(ierr.eq.0) then
+              allocate(iwork(12*mlr),STAT=ierr)
+              if(ierr.eq.0) then
+#ifdef WITH_LAPACK
+               call cgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmc4,int(lu,kind=4),&
+                           &0d0,0d0,1,int(nv,kind=4),nfound,sv4,lmc4,int(lu,kind=4),&
+                           &rmc4,int(nv,kind=4),wc4,-1,rwrk4,iwork,info)
+               if(info.eq.0) then
+                lwork=int(real(wc4(1)))+1
+                ierr=array_alloc(wrkc4,int(lwork,kind=LONGINT),in_buffer=.TRUE.,fallback=.TRUE.)
+                if(ierr.eq.0) then
+                 call cgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmc4,int(lu,kind=4),&
+                             &0d0,0d0,1,int(nv,kind=4),nfound,sv4,lmc4,int(lu,kind=4),&
+                             &rmc4,int(nv,kind=4),wrkc4,lwork,rwrk4,iwork,info)
+                 if(info.ne.0) ierr=16
+                 call array_free(wrkc4)
+                else
+                 ierr=17
+                endif
+               else
+                ierr=18
+               endif
+#else
+               ierr=-3
+#endif
+               deallocate(iwork)
+              else
+               ierr=19
+              endif
+              call array_free(sv4)
+             else
+              ierr=20
+             endif
+             call array_free(rwrk4)
+            else
+             ierr=21
+            endif
+           case('c8','C8')
+            dmc8(1:lu,1:ru)=>dtens%data_cmplx8
+            lmc8(1:lu,1:nv)=>ltens%data_cmplx8
+            rmc8(1:nv,1:ru)=>rtens%data_cmplx8
+            ierr=array_alloc(rwrk8,lrwork,in_buffer=.TRUE.,fallback=.TRUE.)
+            if(ierr.eq.0) then
+             ierr=array_alloc(sv8,mlr,in_buffer=.TRUE.,fallback=.TRUE.)
+             if(ierr.eq.0) then
+              allocate(iwork(12*mlr),STAT=ierr)
+              if(ierr.eq.0) then
+#ifdef WITH_LAPACK
+               call zgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmc8,int(lu,kind=4),&
+                           &0d0,0d0,1,int(nv,kind=4),nfound,sv8,lmc8,int(lu,kind=4),&
+                           &rmc8,int(nv,kind=4),wc8,-1,rwrk8,iwork,info)
+               if(info.eq.0) then
+                lwork=int(real(wc8(1)))+1
+                ierr=array_alloc(wrkc8,int(lwork,kind=LONGINT),in_buffer=.TRUE.,fallback=.TRUE.)
+                if(ierr.eq.0) then
+                 call zgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmc8,int(lu,kind=4),&
+                             &0d0,0d0,1,int(nv,kind=4),nfound,sv8,lmc8,int(lu,kind=4),&
+                             &rmc8,int(nv,kind=4),wrkc8,lwork,rwrk8,iwork,info)
+                 if(info.ne.0) ierr=22
+                 call array_free(wrkc8)
+                else
+                 ierr=23
+                endif
+               else
+                ierr=24
+               endif
+#else
+               ierr=-4
+#endif
+               deallocate(iwork)
+              else
+               ierr=25
+              endif
+              call array_free(sv8)
+             else
+              ierr=26
+             endif
+             call array_free(rwrk8)
+            else
+             ierr=27
+            endif
+           case default
+            ierr=28
+           end select
+          else
+           ierr=29
+          endif
+         else
+          ierr=30
+         endif
+        else
+         ierr=31
+        endif
+        return
+
+        contains
+
+         subroutine determine_data_kind(dtkd,ier)
+         character(2), intent(out):: dtkd
+         integer, intent(out):: ier
+
+         ier=0
+         if(associated(ltens%data_cmplx8).and.associated(rtens%data_cmplx8).and.associated(dtens%data_cmplx8)) then
+          dtkd='c8'
+          if(.not.associated(stens%data_real8)) then; dtkd='  '; ier=101; endif
+         else
+          if(associated(ltens%data_cmplx4).and.associated(rtens%data_cmplx4).and.associated(dtens%data_cmplx4)) then
+           dtkd='c4'
+           if(.not.associated(stens%data_real4)) then; dtkd='  '; ier=102; endif
+          else
+           if(associated(ltens%data_real8).and.associated(rtens%data_real8).and.associated(dtens%data_real8)) then
+            dtkd='r8'
+            if(.not.associated(stens%data_real8)) then; dtkd='  '; ier=103; endif
+           else
+            if(associated(ltens%data_real4).and.associated(rtens%data_real4).and.associated(dtens%data_real4)) then
+             dtkd='r4'
+             if(.not.associated(stens%data_real4)) then; dtkd='  '; ier=104; endif
+            else
+             ier=105
+            endif
+           endif
+          endif
+         endif
+         return
+         end subroutine determine_data_kind
+
+        end subroutine tensor_block_decompose_svd
 !----------------------------------------------------------
         complex(8) function tensor_block_scalar_value(tens) !SERIAL
 !Returns the .scalar_value component of <tensor_block_t>.

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/09/11
+REVISION: 2019/11/27
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -945,6 +945,31 @@ size_t talshDeviceTensorSize_(int dev_num, int dev_kind) //Fortran wrapper
  return talshDeviceTensorSize(dev_num,dev_kind);
 }
 
+size_t talshDeviceBufferFreeSize(int dev_num,
+                                 int dev_kind)
+/** Returns the amount of free memory (bytes)
+    available in an argument buffer on a given device. **/
+{
+ int dev_id,errc;
+ size_t bytes;
+
+ bytes=0;
+ if(talsh_on != 0){
+  if(dev_kind != DEV_NULL){
+   dev_id=talshFlatDevId(dev_kind,dev_num);
+  }else{
+   dev_id=dev_num;
+  }
+  errc=mem_free_left(dev_id,&bytes); if(errc != 0) bytes=0;
+ }
+ return bytes;
+}
+
+size_t talshDeviceBufferFreeSize_(int dev_num, int dev_kind) //Fortran wrapper
+{
+ return talshDeviceBufferFreeSize(dev_num,dev_kind);
+}
+
 double talshDeviceGetFlops(int dev_kind, int dev_id)
 {
  double total_flops=0.0;
@@ -979,6 +1004,16 @@ double talshDeviceGetFlops(int dev_kind, int dev_id)
   total_flops=0.0;
  }
  return total_flops;
+}
+
+void talshMemManagerLogStart()
+{
+ return mem_log_start();
+}
+
+void talshMemManagerLogFinish()
+{
+ return mem_log_finish();
 }
 
 int talshStats(int dev_id,   //in: device id (either flat or kind specific device id, see below)

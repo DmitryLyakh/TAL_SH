@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/10/14
+REVISION: 2019/11/27
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -123,7 +123,14 @@ std::size_t Tensor::getVolume() const
 }
 
 
-/** Returns tensor dimension extents (and tensor order). **/
+/** Returns tensor dimension base offsets. **/
+const std::vector<std::size_t> & Tensor::getDimOffsets() const
+{
+ return pimpl_->signature_;
+}
+
+
+/** Returns tensor dimension extents (and tensor order in num_dims). **/
 const int * Tensor::getDimExtents(unsigned int & num_dims) const
 {
  num_dims = static_cast<unsigned int>((pimpl_->tensor_).shape_p->num_dim);

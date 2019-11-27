@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2019/06/06
+!REVISION: 2019/11/27
 
 !Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -192,6 +192,19 @@
           integer(C_INT), value, intent(in):: dev_num
           integer(C_INT), value, intent(in):: dev_kind
          end function talshDeviceTensorSize_
+  !Query the amount of free memory in the argument buffer of a given device:
+         integer(C_SIZE_T) function talshDeviceBufferFreeSize_(dev_num,dev_kind) bind(c,name='talshDeviceBufferFreeSize_')
+          import
+          implicit none
+          integer(C_INT), value, intent(in):: dev_num
+          integer(C_INT), value, intent(in):: dev_kind
+         end function talshDeviceBufferFreeSize_
+  !Start memory manager log:
+         subroutine talsh_mem_manager_log_start() bind(c,name='talshMemManagerLogStart')
+         end subroutine talsh_mem_manager_log_start
+  !Finish memory manager log:
+         subroutine talsh_mem_manager_log_finish() bind(c,name='talshMemManagerLogFinish')
+         end subroutine talsh_mem_manager_log_finish
   !Print run-time TAL-SH statistics for chosen devices:
          integer(C_INT) function talshStats_(dev_id,dev_kind) bind(c,name='talshStats_')
           import
@@ -550,7 +563,10 @@
         public talsh_device_busy_least
         public talsh_device_memory_size
         public talsh_device_tensor_size
+        public talsh_device_buffer_free_size
         public talsh_enforce_execution_device
+        public talsh_mem_manager_log_start
+        public talsh_mem_manager_log_finish
         public talsh_stats
  !TAL-SH tensor block API:
         public talsh_tensor_is_empty
@@ -981,6 +997,18 @@
          tens_size=talshDeviceTensorSize_(dev_num,devk)
          return
         end function talsh_device_tensor_size
+!---------------------------------------------------------------------------------
+        function talsh_device_buffer_free_size(dev_num,dev_kind) result(free_size)
+         implicit none
+         integer(C_SIZE_T):: free_size                   !out: free memory (bytes) available in the argument buffer of a given device
+         integer(C_INT), intent(in):: dev_num            !in: either a flat or kind specific (when <dev_kind> is present) device id
+         integer(C_INT), intent(in), optional:: dev_kind !in: device kind (note that it changes the meaning of the <dev_num> argument)
+         integer(C_INT):: devk
+
+         if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_NULL; endif
+         free_size=talshDeviceBufferFreeSize_(dev_num,devk)
+         return
+        end function talsh_device_buffer_free_size
 !-----------------------------------------------------------------------------
         function talsh_enforce_execution_device(dev_kind,dev_num) result(ierr)
          implicit none

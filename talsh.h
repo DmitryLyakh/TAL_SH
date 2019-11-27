@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2019/09/11
+REVISION: 2019/11/27
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -212,9 +212,17 @@ extern "C"{
  size_t talshDeviceTensorSize(int dev_num,
                               int dev_kind = DEV_NULL);
  size_t talshDeviceTensorSize_(int dev_num, int dev_kind);
+//  Query the amount of free memory in an argument buffer on a given device (bytes):
+ size_t talshDeviceBufferFreeSize(int dev_num,
+                                  int dev_kind = DEV_NULL);
+ size_t talshDeviceBufferFreeSize_(int dev_num, int dev_kind);
 //  Query the current executed flop count:
  double talshDeviceGetFlops(int dev_kind = DEV_DEFAULT,
                             int dev_id = DEV_DEFAULT);
+//  Start memory manager log:
+ void talshMemManagerLogStart();
+//  Finish memory manager log:
+ void talshMemManagerLogFinish();
 //  Print TAL-SH statistics for specific devices:
  int talshStats(int dev_id = -1,
                 int dev_kind = DEV_NULL);
