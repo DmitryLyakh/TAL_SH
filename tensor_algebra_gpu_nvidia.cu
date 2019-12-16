@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2019/09/26
+REVISION: 2019/12/16
 
 Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -5262,10 +5262,10 @@ __host__ int gpu_tensor_block_insert(tensBlck_t *ltens, tensBlck_t *dtens, const
  printf("\n#FATAL(tensor_algebra_gpu_nvidia:gpu_tensor_block_insert): Operation not implemented!\n");
  return -1;
 }
-//----------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------------------------
 // TENSOR COPY/PERMUTATION (non-blocking):
-__host__ int gpu_tensor_block_copy(tensBlck_t *ltens, tensBlck_t *dtens, const int *permutation,
-                                   unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id)
+__host__ int gpu_tensor_block_copy(const int *cptrn, tensBlck_t *ltens, tensBlck_t *dtens, unsigned int coh_ctrl,
+                                   cudaTask_t *cuda_task, int gpu_id, int conj_bits)
 {
  //`Implement
  printf("\n#FATAL(tensor_algebra_gpu_nvidia:gpu_tensor_block_copy): Operation not implemented!\n");

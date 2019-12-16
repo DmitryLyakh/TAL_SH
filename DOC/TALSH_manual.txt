@@ -1,9 +1,9 @@
 *** TAL-SH: Tensor Algebra Library for Shared Memory Computers ***
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2018/09/21
+REVISION: 2019/12/16
 
-Copyright (C) 2014-2017 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2017 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -931,12 +931,11 @@ API: Compute the 2-norm of a tensor block:
 API: Copy a tensor block with an optional dimension reordering:
 
  Fortran 2003:
-  function talsh_tensor_copy(dtens,ltens,prmn,scale,dev_id,dev_kind,copy_ctrl,talsh_task) result(ierr)
+  function talsh_tensor_copy(cptrn,dtens,ltens,dev_id,dev_kind,copy_ctrl,talsh_task) result(ierr)
    integer(C_INT):: ierr                              !out: error code (0:success)
+   character(*), intent(in):: cptrn                   !in: symbolic copy pattern, e.g. "D(a,b,c,d)=L(c,d,b,a)"
    type(talsh_tens_t), intent(inout):: dtens          !inout: destination tensor block
    type(talsh_tens_t), intent(inout):: ltens          !inout: source tensor block
-   integer(C_INT), intent(in), optional:: prmn(1:)    !in: dimension permutation, defaults to trivial
-   complex(8), intent(in), optional:: scale           !in: scaling value, defaults to 1
    integer(C_INT), intent(in), optional:: dev_id      !in: device id (flat or kind-specific)
    integer(C_INT), intent(in), optional:: dev_kind    !in: device kind (if present, <dev_id> is kind-specific)
    integer(C_INT), intent(in), optional:: copy_ctrl   !in: copy control (COPY_XX), defaults to COPY_MT
@@ -944,11 +943,9 @@ API: Copy a tensor block with an optional dimension reordering:
 
  C/C++:
   int talshTensorCopy(               //out: error code (0:success)
+   const char * cptrn,               //in: C-string: symbolic copy pattern, e.g. "D(a,b,c,d)=L(c,d,b,a)"
    talsh_tens_t * dtens,             //inout: destination tensor block
    talsh_tens_t * ltens,             //inout: source tensor block
-   int * prmn = NULL,                //in: dimension permutation, defaults to trivial
-   double scale_real = 1.0,          //in: scaling value (real part), defaults to 1
-   double scale_imag = 0.0,          //in: scaling value (imaginary part), defaults to 0
    int dev_id = DEV_DEFAULT,         //in: device id (flat or kind-specific)
    int dev_kind = DEV_DEFAULT,       //in: device kind (if present, <dev_id> is kind-specific)
    int copy_ctrl = COPY_MT,          //in: copy control (COPY_XX), defaults to COPY_MT
@@ -991,7 +988,7 @@ API: Add a tensor block to another tensor block:
 API: Contract two tensor blocks and add the result to another tensor block:
 
  Fortran 2003:
-  function talsh_tensor_contract(cptrn,dtens,ltens,rtens,scale,dev_id,dev_kind,copy_ctrl,talsh_task) result(ierr)
+  function talsh_tensor_contract(cptrn,dtens,ltens,rtens,scale,dev_id,dev_kind,copy_ctrl,accumulative,talsh_task) result(ierr)
    integer(C_INT):: ierr                              !out: error code (0:success)
    character(*), intent(in):: cptrn                   !in: symbolic contraction pattern, e.g. "D(a,b,c,d)+=L(c,i,j,a)*R(b,j,d,i)"
    type(talsh_tens_t), intent(inout):: dtens          !inout: destination tensor block
@@ -1001,6 +998,7 @@ API: Contract two tensor blocks and add the result to another tensor block:
    integer(C_INT), intent(in), optional:: dev_id      !in: device id (flat or kind-specific)
    integer(C_INT), intent(in), optional:: dev_kind    !in: device kind (if present, <dev_id> is kind-specific)
    integer(C_INT), intent(in), optional:: copy_ctrl   !in: copy control (COPY_XXX), defaults to COPY_MTT
+   logical, intent(in), optional:: accumulative       !in: accumulate in (default) VS overwrite destination tensor
    type(talsh_task_t), intent(inout), optional:: talsh_task !inout: TAL-SH task (must be clean)
 
  C/C++:
@@ -1014,7 +1012,8 @@ API: Contract two tensor blocks and add the result to another tensor block:
    int dev_id = DEV_DEFAULT,   //in: device id (flat or kind-specific)
    int dev_kind = DEV_DEFAULT, //in: device kind (if present, <dev_id> is kind-specific)
    int copy_ctrl = COPY_MTT,   //in: copy control (COPY_XXX), defaults to COPY_MTT
-   talsh_task_t * talsh_task = NULL //inout: TAL-SH task (must be clean)
+   int accumulative = YEP,     //in: accumulate in (default) VS overwrite destination tensor: [YEP|NOPE]
+   talsh_task_t * talsh_task = NULL //inout: TAL-SH task (must be clean on entrance)
   )
 
  Note: If no device is specified, the execution device will be automatically
