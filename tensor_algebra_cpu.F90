@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2019/11/23
+!REVISION: 2019/11/30
 
 !Copyright (C) 2013-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -3804,7 +3804,6 @@
          nullify(ltp); nullify(rtp); nullify(dtp)
          do k=1,2 !left/right tensor argument switch
           if(k.eq.1) then
-           tst=ltb; transp=ltransp; tens_in=>ltens
 #ifdef NO_BLAS
            if(lconj.and.(contr_case.eq.PARTIAL_CONTRACTION.or.contr_case.eq.FULL_CONTRACTION)) then
 #else
@@ -3814,8 +3813,9 @@
            else
             conj=0 !all bits are zero => no argument conjugation
            endif
+           ltransp=(ltransp.or.(conj.ne.0))
+           tst=ltb; transp=ltransp; tens_in=>ltens
           else
-           tst=rtb; transp=rtransp; tens_in=>rtens
 #ifdef NO_BLAS
            if(rconj.and.(contr_case.eq.PARTIAL_CONTRACTION.or.contr_case.eq.FULL_CONTRACTION)) then
 #else
@@ -3825,8 +3825,10 @@
            else
             conj=0 !all bits are zero => no argument conjugation
            endif
+           rtransp=(rtransp.or.(conj.ne.0))
+           tst=rtb; transp=rtransp; tens_in=>rtens
           endif
-          if(tens_in%tensor_shape%num_dim.gt.0.and.(transp.or.(conj.ne.0))) then !true tensor which requires a transpose
+          if(tens_in%tensor_shape%num_dim.gt.0.and.transp) then !true tensor which requires a transpose
 !          write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): permutation to be performed for ",i2)') k !debug
            if(k.eq.1) then; trn=>lo2n; tens_out=>lta; else; trn=>ro2n; tens_out=>rta; endif
            select case(tst)
