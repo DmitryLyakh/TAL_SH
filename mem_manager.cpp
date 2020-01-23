@@ -2,10 +2,10 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2019/11/27
+REVISION: 2020/01/23
 
-Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -38,7 +38,9 @@ FOR DEVELOPERS ONLY:
 
 #include <omp.h>
 
-#include "tensor_algebra.h" //includes mem_manager.h
+#include "tensor_algebra.h"
+#include "device_algebra.h"
+#include "mem_manager.h"
 
 #define GPU_MEM_PART_USED 90         //percentage of free GPU global memory to be actually allocated for GPU argument buffers
 #define MEM_ALIGN GPU_CACHE_LINE_LEN //memory alignment (in bytes) for argument buffers

@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2019/12/16
+REVISION: 2020/01/23
 
-Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -26,6 +26,7 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 
 #include <math.h>
 #include "timer.h"
+
 #include "tensor_algebra.h"
 
 //TAL-SH PARAMETERS:
@@ -140,7 +141,8 @@ typedef struct{
  unsigned int num_args;                              //number of tensor operands: [0..MAX_TENSOR_OPERANDS]
  talsh_tens_slice_t tens_slice[MAX_TENSOR_OPERANDS]; //formal tensor operands (tensor slice views)
  const char * symb_pattern;                          //symbolic index pattern specification (non-owning pointer to a C-string)
- talshComplex8 alpha;                                //alpha prefactor (scalar factor)
+ double alpha_real;                                  //alpha prefactor (scalar factor), real part
+ double alpha_imag;                                  //alpha prefactor (scalar factor), imaginary part
  talsh_tens_t tens_arg[MAX_TENSOR_OPERANDS];         //actual tensor operands (actual TAL-SH tensors)
  talsh_task_t task_handle;                           //task handle
  int exec_dev_id;                                    //execution device id (flat device id)
@@ -300,8 +302,8 @@ extern "C"{
                                    int dev_kind = DEV_NULL);
 //  Get the scalar value of the rank-0 tensor:
  int talshTensorGetScalar(talsh_tens_t * tens_block,
-                          talshComplex8 * scalar_complex);
- int talshTensorGetScalar_(talsh_tens_t * tens_block, double * scalar_real, double * scalar_imag);
+                          double * scalar_real,
+                          double * scalar_imag);
 //  Print the information on a tensor block:
  void talshTensorPrintInfo(const talsh_tens_t * tens_block);
 //  Print tensor elements larger by absolute value than some threshold:

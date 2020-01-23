@@ -1,8 +1,8 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2019/12/16
+!REVISION: 2020/01/23
 
-!Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -300,14 +300,14 @@
           integer(C_INT), intent(in), value:: dev_kind
          end function talshTensorGetBodyAccess_
   !Get the scalar value of the rank-0 tensor:
-         integer(C_INT) function talshTensorGetScalar_(tens_block,scalar_real,scalar_imag)&
-                                 &bind(c,name='talshTensorGetScalar_')
+         integer(C_INT) function talshTensorGetScalar(tens_block,scalar_real,scalar_imag)&
+                                 &bind(c,name='talshTensorGetScalar')
           import
           implicit none
           type(talsh_tens_t), intent(inout):: tens_block
           real(C_DOUBLE), intent(out):: scalar_real
           real(C_DOUBLE), intent(out):: scalar_imag
-         end function talshTensorGetScalar_
+         end function talshTensorGetScalar
   !Print information about a TAL-SH tensor:
          subroutine talsh_tensor_print_info(tens_block) bind(c,name='talshTensorPrintInfo')
           import
@@ -1276,7 +1276,7 @@
          complex(8), intent(out):: scalar_complex       !out: complex scalar value
          real(C_DOUBLE):: sreal,simag
 
-         ierr=talshTensorGetScalar_(tens_block,sreal,simag)
+         ierr=talshTensorGetScalar(tens_block,sreal,simag)
          if(ierr.eq.TALSH_SUCCESS) scalar_complex=cmplx(sreal,simag,8)
          return
         end function talsh_tensor_get_scalar

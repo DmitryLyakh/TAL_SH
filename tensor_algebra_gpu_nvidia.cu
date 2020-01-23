@@ -1,9 +1,9 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2019/12/16
+REVISION: 2020/01/23
 
-Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -91,7 +91,10 @@ TO BE FIXED:
 #include <stdint.h>
 #endif
 
-#include "tensor_algebra.h" /*includes mem_manager.h*/
+#include "tensor_algebra.h"
+#include "device_algebra.h"
+#include "mem_manager.h"
+#include "talsh_complex.h"
 
 #ifndef NO_GPU
 //PARAMETERS:

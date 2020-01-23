@@ -2,22 +2,23 @@ NAME = talsh
 
 #ADJUST THE FOLLOWING ENVIRONMENT VARIABLES ACCORDINGLY (choices are given)
 #until you see "YOU ARE DONE!". The comments will guide you through (read them).
-#Alternatively, you can export all relevant environment variables such that this
+#Alternatively you can export all relevant environment variables such that this
 #Makefile will pick their values, so you will not need to update anything here.
+#However you will still need to read the meaning of those variables below.
 
-#Cross-compiling wrappers (only for Cray): [WRAP|NOWRAP]:
+#Cray cross-compiling wrappers (only for Cray): [WRAP|NOWRAP]:
 export WRAP ?= NOWRAP
-#Compiler: [GNU|PGI|INTEL|CRAY|IBM]:
+#Compiler: [GNU|INTEL|CRAY|IBM|PGI]:
 export TOOLKIT ?= GNU
 #Optimization: [DEV|OPT|PRF]:
 export BUILD_TYPE ?= OPT
-#MPI Library: [NONE|MPICH|OPENMPI]:
+#MPI library base: [NONE]:
 export MPILIB ?= NONE
-#BLAS: [ATLAS|MKL|ACML|ESSL|NONE]:
+#BLAS: [ATLAS|MKL|OPENBLAS|ACML|LIBSCI|ESSL|NONE]:
 export BLASLIB ?= ATLAS
-#Nvidia GPU via CUDA: [CUDA|NOCUDA]:
+#NVIDIA GPU via CUDA: [CUDA|NOCUDA]:
 export GPU_CUDA ?= NOCUDA
-#Nvidia GPU architecture (two digits):
+#NVIDIA GPU architecture (two digits, >=35):
 export GPU_SM_ARCH ?= 35
 #Operating system: [LINUX|NO_LINUX]:
 export EXA_OS ?= LINUX
@@ -29,28 +30,28 @@ export EXA_OS ?= LINUX
 export WITH_LAPACK ?= NO
 #Fast GPU tensor transpose (cuTT library): [YES|NO]:
 export WITH_CUTT ?= NO
-#In-place GPU tensor contractions (cuTensor library): [YES|NO]
+#In-place GPU tensor contraction (cuTensor library): [YES|NO]
 export WITH_CUTENSOR ?= NO
 
 #GPU fine timing [YES|NO]:
 export GPU_FINE_TIMING ?= YES
 
-#The build is part of ExaTN [YES|NO]:
+#The build is part of the ExaTN library build [YES|NO]:
 export EXATN_SERVICE ?= NO
 
 
-#SET YOUR LOCAL PATHS (for unwrapped builds):
+#SET YOUR LOCAL PATHS (for direct builds without Cray compiler wrappers):
 
-#MPI library (only if you use MPI, set whichever you have chosen above):
-# Set this if you have chosen MPICH (or its derivative, e.g. Cray-MPICH):
+#MPI library base (whichever you have, set one):
+# Set this if you use MPICH or its derivative (e.g. Cray-MPICH):
 export PATH_MPICH ?= /usr/local/mpi/mpich/3.2.1
-#  Only reset these if MPI files are spread in system directories:
+#  Only reset these if MPICH files are spread in system directories:
  export PATH_MPICH_INC ?= $(PATH_MPICH)/include
  export PATH_MPICH_LIB ?= $(PATH_MPICH)/lib
  export PATH_MPICH_BIN ?= $(PATH_MPICH)/bin
-# Set this if you have chosen OPENMPI (or its derivative, e.g. IBM Spectrum MPI):
+# Set this if you use OPENMPI or its derivative (e.g. IBM Spectrum MPI):
 export PATH_OPENMPI ?= /usr/local/mpi/openmpi/3.1.0
-#  Only reset these if MPI files are spread in system directories:
+#  Only reset these if OPENMPI files are spread in system directories:
  export PATH_OPENMPI_INC ?= $(PATH_OPENMPI)/include
  export PATH_OPENMPI_LIB ?= $(PATH_OPENMPI)/lib
  export PATH_OPENMPI_BIN ?= $(PATH_OPENMPI)/bin
@@ -64,30 +65,35 @@ export PATH_INTEL ?= /opt/intel
 export PATH_BLAS_MKL ?= $(PATH_INTEL)/mkl/lib/intel64
 export PATH_BLAS_MKL_DEP ?= $(PATH_INTEL)/compilers_and_libraries/linux/lib/intel64_lin
 export PATH_BLAS_MKL_INC ?= $(PATH_INTEL)/mkl/include/intel64/lp64
+# Set this path if you have chosen OpenBLAS:
+export PATH_BLAS_OPENBLAS ?= /usr/lib/x86_64-linux-gnu
 # Set this path if you have chosen ACML:
 export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
+# Set this path if you have chosen Cray LibSci:
+export PATH_BLAS_LIBSCI ?= /opt/cray/pe/libsci/19.06.1/CRAY/8.5/x86_64/lib
 # Set this path if you have chosen ESSL (also set PATH_IBM_XL_CPP, PATH_IBM_XL_FOR, PATH_IBM_XL_SMP below):
 export PATH_BLAS_ESSL ?= /sw/summit/essl/6.1.0-2/essl/6.1/lib64
 
-#IBM XL (only set these if you use IBM XL and/or ESSL):
+#IBM XL (only set these if you use IBM XL compiler and/or ESSL library):
 export PATH_IBM_XL_CPP ?= /sw/summit/xl/16.1.1-3/xlC/16.1.1/lib
 export PATH_IBM_XL_FOR ?= /sw/summit/xl/16.1.1-3/xlf/16.1.1/lib
 export PATH_IBM_XL_SMP ?= /sw/summit/xl/16.1.1-3/xlsmp/5.1.1/lib
 
-#LAPACK (only set these if you have chosen WITH_LAPACK=YES):
+#LAPACK (only set these if you have chosen WITH_LAPACK=YES above):
 export PATH_LAPACK_LIB ?= /usr/lib/x86_64-linux-gnu
 export LAPACK_LIBS ?= -llapack
 
-#CUDA (only if you build with CUDA):
+#CUDA (set these only if you build with CUDA):
 export PATH_CUDA ?= /usr/local/cuda
 # Only reset these if CUDA files are spread in system directories:
  export PATH_CUDA_INC ?= $(PATH_CUDA)/include
  export PATH_CUDA_LIB ?= $(PATH_CUDA)/lib64
  export PATH_CUDA_BIN ?= $(PATH_CUDA)/bin
+# Reset your CUDA Host compiler if needed:
  export CUDA_HOST_COMPILER ?= /usr/bin/g++
-# cuTT path (only set this if you use cuTT library):
+# cuTT path (only if you use cuTT library):
 export PATH_CUTT ?= /home/dima/src/cutt
-# cuTensor path (only set this if you use cuTensor library):
+# cuTensor path (only if you use cuTensor library):
 export PATH_CUTENSOR ?= /home/dima/src/cutensor
 
 #YOU ARE DONE! MAKE IT!
@@ -219,6 +225,8 @@ MPI_LINK = $(MPI_LINK_$(WRAP))
 
 #LINEAR ALGEBRA FLAGS:
 LA_LINK_ATLAS = -L$(PATH_BLAS_ATLAS) -lblas
+LA_LINK_OPENBLAS = -L$(PATH_BLAS_OPENBLAS) -lopenblas
+LA_LINK_LIBSCI = -L$(PATH_BLAS_LIBSCI) -lsci_cray_mp
 ifeq ($(TOOLKIT),GNU)
 LA_LINK_MKL = -L$(PATH_BLAS_MKL) -lmkl_intel_lp64 -lmkl_gnu_thread -lmkl_core -lpthread -lm -ldl
 else
@@ -475,10 +483,10 @@ endif
 ./OBJ/tensor_dil_omp.o: tensor_dil_omp.F90 ./OBJ/timers.o
 	$(FCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(FFLAGS) tensor_dil_omp.F90 -o ./OBJ/tensor_dil_omp.o
 
-./OBJ/mem_manager.o: mem_manager.cpp mem_manager.h tensor_algebra.h
+./OBJ/mem_manager.o: mem_manager.cpp mem_manager.h tensor_algebra.h device_algebra.h
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) mem_manager.cpp -o ./OBJ/mem_manager.o
 
-./OBJ/tensor_algebra_gpu_nvidia.o: tensor_algebra_gpu_nvidia.cu talsh_complex.h tensor_algebra.h
+./OBJ/tensor_algebra_gpu_nvidia.o: tensor_algebra_gpu_nvidia.cu talsh_complex.h tensor_algebra.h device_algebra.h
 ifeq ($(GPU_CUDA),CUDA)
 	$(CUDA_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) --ptx --source-in-ptx tensor_algebra_gpu_nvidia.cu -o ./OBJ/tensor_algebra_gpu_nvidia.ptx
 	$(CUDA_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) tensor_algebra_gpu_nvidia.cu -o ./OBJ/tensor_algebra_gpu_nvidia.o
@@ -491,7 +499,7 @@ endif
 ./OBJ/talshf.o: talshf.F90 ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/mem_manager.o
 	$(FCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(FFLAGS) talshf.F90 -o ./OBJ/talshf.o
 
-./OBJ/talshc.o: talshc.cpp talsh.h tensor_algebra.h ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/mem_manager.o
+./OBJ/talshc.o: talshc.cpp talsh.h talsh_complex.h tensor_algebra.h device_algebra.h ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/mem_manager.o
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) talshc.cpp -o ./OBJ/talshc.o
 
 ./OBJ/talsh_task.o: talsh_task.cpp talsh.h ./OBJ/talshc.o
@@ -500,7 +508,7 @@ endif
 ./OBJ/talshxx.o: talshxx.cpp talshxx.hpp ./OBJ/talshc.o
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) talshxx.cpp -o ./OBJ/talshxx.o
 
-./OBJ/test.o: test.cpp talshxx.hpp talsh_task.hpp talsh.h tensor_algebra.h lib$(NAME).a
+./OBJ/test.o: test.cpp talshxx.hpp talsh_task.hpp talsh.h tensor_algebra.h device_algebra.h lib$(NAME).a
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) test.cpp -o ./OBJ/test.o
 
 ./OBJ/main.o: main.F90 ./OBJ/test.o ./OBJ/talshf.o lib$(NAME).a

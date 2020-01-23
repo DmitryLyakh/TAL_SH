@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/09/04
+REVISION: 2020/01/23
 
-Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -22,12 +22,10 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 **/
 
 #include "talsh_task.hpp"
-
 #include "talshxx.hpp"
 
 #include <iostream>
-
-#include <assert.h>
+#include <cassert>
 
 namespace talsh{
 

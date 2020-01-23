@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2019/12/16
+REVISION: 2020/01/23
 
-Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -61,6 +61,9 @@ FOR DEVELOPER(s):
 #include <omp.h>
 
 #include "timer.h"
+#include "device_algebra.h"
+#include "mem_manager.h"
+#include "talsh_complex.h"
 #include "talsh.h"
 
 //PARAMETERS:
@@ -1579,17 +1582,7 @@ int talshTensorGetBodyAccessConst(const talsh_tens_t * tens_block,
  return TALSH_NOT_FOUND;
 }
 
-int talshTensorGetScalar(talsh_tens_t * tens_block, talshComplex8 * scalar_complex)
-{
- int errc;
- double sreal,simag;
-
- errc=talshTensorGetScalar_(tens_block,&sreal,&simag);
- if(errc == TALSH_SUCCESS) *scalar_complex = talshComplex8Set(sreal,simag);
- return errc;
-}
-
-int talshTensorGetScalar_(talsh_tens_t * tens_block, double * scalar_real, double * scalar_imag)
+int talshTensorGetScalar(talsh_tens_t * tens_block, double * scalar_real, double * scalar_imag)
 {
  int errc,i,j,n,dh,dev[TALSH_MAX_DEV_PRESENT],dtk[TALSH_MAX_DEV_PRESENT];
  void * body_p;
@@ -2539,7 +2532,8 @@ int talshTensorOpClean(talsh_tens_op_t * tens_op)
   tens_op->data_kind = NO_TYPE;
   tens_op->num_args = 0;
   tens_op->symb_pattern = NULL;
-  tens_op->alpha = talshComplex8Set(0.0,0.0);
+  tens_op->alpha_real = 0.0;
+  tens_op->alpha_imag = 0.0;
   tens_op->exec_dev_id = DEV_NULL;
   errc = talshTaskClean(&(tens_op->task_handle));
   if(errc == TALSH_SUCCESS){
@@ -2593,7 +2587,8 @@ int talshTensorOpSpecify(talsh_tens_op_t * tens_op, int operation_kind, int data
  if(talshValidDataKind(data_kind,&dks) == YEP){
   if(tens_op->opkind == TALSH_TENSOR_NOOP){
    tens_op->symb_pattern = symbolic_pattern;
-   tens_op->alpha = talshComplex8Set(prefactor_real,prefactor_imag);
+   tens_op->alpha_real = prefactor_real;
+   tens_op->alpha_imag = prefactor_imag;
    tens_op->data_kind = data_kind;
    tens_op->opkind = operation_kind;
    tens_op->stage = TALSH_OP_DEFINED;
@@ -2702,7 +2697,7 @@ int talshTensorOpExecute(talsh_tens_op_t * tens_op, int dev_id, int dev_kind)
    case TALSH_TENSOR_CONTRACT:
     errc = talshTensorContract(tens_op->symb_pattern,
                                &(tens_op->tens_arg[0]),&(tens_op->tens_arg[1]),&(tens_op->tens_arg[2]),
-                               talshComplex8Real(tens_op->alpha),talshComplex8Imag(tens_op->alpha),
+                               tens_op->alpha_real,tens_op->alpha_imag,
                                dev_id,dev_kind,COPY_TTT,NOPE,&(tens_op->task_handle));
     if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE){
      if(VERBOSE) printf("#ERROR(talshTensorOpExecute): talshTensorContract error %d\n",errc);
@@ -3188,11 +3183,9 @@ int talshTensorOpDecompose2(         //out: error code
          }
          // Finalize operation specification:
          if(errc == TALSH_SUCCESS) errc = talshTensorOpSpecify(child_op1,tens_op->opkind,tens_op->data_kind,
-                                           tens_op->symb_pattern,
-                                           talshComplex8Real(tens_op->alpha),talshComplex8Imag(tens_op->alpha));
+                                           tens_op->symb_pattern,tens_op->alpha_real,tens_op->alpha_imag);
          if(errc == TALSH_SUCCESS) errc = talshTensorOpSpecify(child_op2,tens_op->opkind,tens_op->data_kind,
-                                           tens_op->symb_pattern,
-                                           talshComplex8Real(tens_op->alpha),talshComplex8Imag(tens_op->alpha));
+                                           tens_op->symb_pattern,tens_op->alpha_real,tens_op->alpha_imag);
         }
        }
       }

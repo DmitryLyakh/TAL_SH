@@ -25,14 +25,18 @@
 #include <time.h>
 #include <assert.h>
 
+#include "device_algebra.h"
 #include "talsh.h"
 
 #ifdef __cplusplus
+
 #include <iostream>
 #include <memory>
 #include <string>
 #include <complex>
+
 #include "talshxx.hpp"
+
 #endif
 
 #ifdef __cplusplus
