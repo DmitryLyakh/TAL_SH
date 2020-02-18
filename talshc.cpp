@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/01/23
+REVISION: 2020/02/18
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -67,7 +67,8 @@ FOR DEVELOPER(s):
 #include "talsh.h"
 
 //PARAMETERS:
-static int VERBOSE=1; //verbosity for errors
+static int VERBOSE=1;     //verbosity for errors
+static int LOGGING_OPS=0; //logging tensor operations
 
 //GLOBALS:
 // General:
@@ -4503,6 +4504,9 @@ int talshTensorAdd(const char * cptrn,   //in: tensor addition pattern
 #endif
 
 #pragma omp flush
+ if(LOGGING_OPS > 0){
+  printf("%s %p %p\n",cptrn,dtens,ltens);
+ }
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  //Create a TAL-SH task:
  if(talsh_task == NULL){
@@ -4772,6 +4776,9 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
 #endif
 
 #pragma omp flush
+ if(LOGGING_OPS > 0){
+  printf("%s %p %p %p\n",cptrn,dtens,ltens,rtens);
+ }
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  //Create a TAL-SH task:
  if(talsh_task == NULL){
