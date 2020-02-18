@@ -68,7 +68,7 @@ FOR DEVELOPER(s):
 
 //PARAMETERS:
 static int VERBOSE=1;     //verbosity for errors
-static int LOGGING_OPS=0; //logging tensor operations
+static int LOGGING_OPS=0; //logging basic tensor operations
 
 //GLOBALS:
 // General:
@@ -4498,6 +4498,7 @@ int talshTensorAdd(const char * cptrn,   //in: tensor addition pattern
  host_task_t * host_task;
  void *dftr,*lftr;
  clock_t ctm;
+ double tms;
 #ifndef NO_GPU
  cudaTask_t * cuda_task;
  tensBlck_t *dctr,*lctr;
@@ -4505,7 +4506,8 @@ int talshTensorAdd(const char * cptrn,   //in: tensor addition pattern
 
 #pragma omp flush
  if(LOGGING_OPS > 0){
-  printf("%s %p %p\n",cptrn,dtens,ltens);
+  printf("%s %p %p: Flop volume = %llu: Time (s) = ",cptrn,dtens,ltens,talshTensorVolume(dtens));
+  tms=time_high_sec();
  }
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  //Create a TAL-SH task:
@@ -4741,6 +4743,9 @@ int talshTensorAdd(const char * cptrn,   //in: tensor addition pattern
   tsk->task_error=129; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
  }
 #pragma omp flush
+ if(LOGGING_OPS > 0){
+  printf("%f\n",time_high_sec()-tms);
+ }
  return errc;
 }
 
@@ -4770,6 +4775,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
  host_task_t * host_task;
  void *dftr,*lftr,*rftr;
  clock_t ctm;
+ double tms;
 #ifndef NO_GPU
  cudaTask_t * cuda_task;
  tensBlck_t *dctr,*lctr,*rctr;
@@ -4777,7 +4783,9 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
 
 #pragma omp flush
  if(LOGGING_OPS > 0){
-  printf("%s %p %p %p\n",cptrn,dtens,ltens,rtens);
+  printf("%s %p %p %p: Flop volume = %llu: Time (s) = ",cptrn,dtens,ltens,rtens,
+         ((size_t)sqrt((double)(talshTensorVolume(dtens)*talshTensorVolume(ltens)*talshTensorVolume(rtens)))));
+  tms=time_high_sec();
  }
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
  //Create a TAL-SH task:
@@ -5051,6 +5059,9 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
   tsk->task_error=133; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
  }
 #pragma omp flush
+ if(LOGGING_OPS > 0){
+  printf("%f\n",time_high_sec()-tms);
+ }
  return errc;
 }
 
