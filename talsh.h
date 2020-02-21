@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2020/01/23
+REVISION: 2020/02/19
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -304,6 +304,8 @@ extern "C"{
  int talshTensorGetScalar(talsh_tens_t * tens_block,
                           double * scalar_real,
                           double * scalar_imag);
+//  Print the shape of a tensor block:
+ void talshTensorPrint(const talsh_tens_t * tens_block);
 //  Print the information on a tensor block:
  void talshTensorPrintInfo(const talsh_tens_t * tens_block);
 //  Print tensor elements larger by absolute value than some threshold:

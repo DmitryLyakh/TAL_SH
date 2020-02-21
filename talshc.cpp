@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/02/18
+REVISION: 2020/02/19
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -1650,6 +1650,17 @@ static int talshTensorIsHealthy(const talsh_tens_t * talsh_tens)
   return NOPE;
  }
  return YEP;
+}
+
+void talshTensorPrint(const talsh_tens_t * tens_block)
+/** Prints the shape of a TAL-SH tensor. **/
+{
+#pragma omp flush
+ if(tens_block != NULL){
+  printf("%p",tens_block);
+  if(tens_block->shape_p != NULL) tensShape_print(tens_block->shape_p);
+ }
+ return;
 }
 
 void talshTensorPrintInfo(const talsh_tens_t * tens_block)
@@ -4506,7 +4517,10 @@ int talshTensorAdd(const char * cptrn,   //in: tensor addition pattern
 
 #pragma omp flush
  if(LOGGING_OPS > 0){
-  printf("%s %p %p: Flop volume = %llu: Time (s) = ",cptrn,dtens,ltens,talshTensorVolume(dtens));
+  printf("%s",cptrn); printf(" ");
+  talshTensorPrint(dtens); printf(" ");
+  talshTensorPrint(ltens); printf(" ");
+  printf(": Flop volume = %llu: Time (s) = ",talshTensorVolume(dtens));
   tms=time_high_sec();
  }
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
@@ -4783,7 +4797,11 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
 
 #pragma omp flush
  if(LOGGING_OPS > 0){
-  printf("%s %p %p %p: Flop volume = %llu: Time (s) = ",cptrn,dtens,ltens,rtens,
+  printf("%s",cptrn); printf(" ");
+  talshTensorPrint(dtens); printf(" ");
+  talshTensorPrint(ltens); printf(" ");
+  talshTensorPrint(rtens); printf(" ");
+  printf(": Flop volume = %llu: Time (s) = ",
          ((size_t)sqrt((double)(talshTensorVolume(dtens)*talshTensorVolume(ltens)*talshTensorVolume(rtens)))));
   tms=time_high_sec();
  }

@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2020/01/23
+REVISION: 2020/02/19
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -3715,6 +3715,23 @@ int tensShape_reshape(talsh_tens_shape_t * tshape, int rank, const int * dims, c
   if(dims != NULL || divs != NULL || grps != NULL) errc=-4;
  }
  return errc;
+}
+
+void tensShape_print(const talsh_tens_shape_t * tshape)
+/** Prints the tensor shape (dimension extents). **/
+{
+ int i;
+
+ printf("[");
+ for(i=0;i<(tshape->num_dim);++i){
+  if(i == (tshape->num_dim)-1){
+   printf("%d",tshape->dims[i]);
+  }else{
+   printf("%d,",tshape->dims[i]);
+  }
+ }
+ printf("]");
+ return;
 }
 
 int tensBlck_create(tensBlck_t **ctens)

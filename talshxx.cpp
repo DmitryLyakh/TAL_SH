@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2019/11/27
+REVISION: 2020/02/19
 
-Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -427,6 +427,15 @@ int shutdown()
  int errc = talshShutdown();
  //assert(errc == TALSH_SUCCESS);
  return errc;
+}
+
+
+int getDeviceCount(int dev_kind)
+{
+ int dev_count = 0;
+ int errc = talshDeviceCount(dev_kind,&dev_count);
+ assert(errc == TALSH_SUCCESS);
+ return dev_count;
 }
 
 

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2020/02/18
+REVISION: 2020/02/19
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -406,6 +406,9 @@ int unpinHostMemory(T * host_ptr)
 {
  return host_mem_unregister((void*)host_ptr);
 }
+
+// Query device count of a given kind:
+int getDeviceCount(int dev_kind); //in: device kind
 
 // Max allocatable tensor size (bytes) in the device buffer per specified device:
 std::size_t getDeviceMaxTensorSize(const int device_kind = DEV_HOST, //in: device kind

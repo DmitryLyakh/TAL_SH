@@ -1,7 +1,7 @@
 /** ExaTensor::TAL-SH: Lower-level header:
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device agnostic).
-REVISION: 2020/01/23
+REVISION: 2020/02/19
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -326,6 +326,7 @@ extern "C"{
  int tensShape_rank(const talsh_tens_shape_t * tshape);
  int tensShape_reshape(talsh_tens_shape_t * tshape,
                        int rank, const int * dims = NULL, const int * divs = NULL, const int * grps = NULL);
+ void tensShape_print(const talsh_tens_shape_t * tshape);
 #ifdef __cplusplus
 }
 template <typename T> int gpu_matrix_multiply_tn(size_t ll, size_t lr, size_t lc, const T * lmat, const T * rmat, T * dmat);
