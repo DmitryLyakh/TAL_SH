@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/02/19
+REVISION: 2020/02/21
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -1018,6 +1018,18 @@ void talshMemManagerLogStart()
 void talshMemManagerLogFinish()
 {
  return mem_log_finish();
+}
+
+void talshTensorOpLogStart()
+{
+ LOGGING_OPS=1;
+ return;
+}
+
+void talshTensorOpLogFinish()
+{
+ LOGGING_OPS=0;
+ return;
 }
 
 int talshStats(int dev_id,   //in: device id (either flat or kind specific device id, see below)

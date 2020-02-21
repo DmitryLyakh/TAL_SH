@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2020/02/19
+REVISION: 2020/02/21
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -454,6 +454,18 @@ std::size_t getDeviceMaxBufferSize(const int device_kind, const int device_id)
 bool enableFastMath(int device_kind, int device_id)
 {
  return (talshEnableFastMath(device_kind,device_id) == TALSH_SUCCESS);
+}
+
+
+void startTensorOpLog()
+{
+ return talshTensorOpLogStart();
+}
+
+
+void finishTensorOpLog()
+{
+ return talshTensorOpLogFinish();
 }
 
 } //namespace talsh
