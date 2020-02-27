@@ -1,7 +1,7 @@
 /** ExaTensor::TAL-SH: Lower-level header:
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device agnostic).
-REVISION: 2020/02/19
+REVISION: 2020/02/26
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -62,6 +62,10 @@ FOR DEVELOPERS ONLY:
 
 #ifndef TENSOR_ALGEBRA_H_
 #define TENSOR_ALGEBRA_H_
+
+#ifdef USE_CUTENSOR
+#include <stdint.h>
+#endif
 
 //GLOBAL PARAMETERS:
 #define MAX_TENSOR_RANK 32 //max allowed tensor rank: Must be multiple of 4
@@ -283,7 +287,9 @@ extern "C"{
  int tens_valid_data_kind(int datk, int * datk_size = NULL);
  int tens_valid_data_kind_(int datk, int * datk_size);
  void get_contr_pattern_sym(const int * rank_left, const int * rank_right, const int * conj_bits, const int * cptrn_dig, char * cptrn_sym, int * cpl, int * ierr);
- int get_contr_pattern_cutensor(const int * dig_ptrn, int drank, int * ptrn_d, int lrank, int * ptrn_l, int rrank, int * ptrn_r);
+#ifdef USE_CUTENSOR
+ int get_contr_pattern_cutensor(const int * dig_ptrn, int drank, int32_t * ptrn_d, int lrank, int32_t * ptrn_l, int rrank, int32_t * ptrn_r);
+#endif
  size_t tens_elem_offset_f(unsigned int num_dim, const unsigned int * dims, const unsigned int * mlndx);
  void tens_elem_mlndx_f(size_t offset, unsigned int num_dim, const unsigned int * dims, unsigned int * mlndx);
  unsigned int argument_coherence_get_value(unsigned int coh_ctrl, unsigned int tot_args, unsigned int arg_num);

@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2020/02/19
+REVISION: 2020/02/26
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -86,10 +86,6 @@ TO BE FIXED:
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-
-#ifdef USE_CUTENSOR
-#include <stdint.h>
-#endif
 
 #include "tensor_algebra.h"
 #include "device_algebra.h"
@@ -191,10 +187,10 @@ static cublasHandle_t cublas_handle[MAX_GPUS_PER_NODE]; //each GPU present on a 
 #endif /*NO_BLAS*/
 #ifdef USE_CUTENSOR
 // Infrastructure for cuTensor:
-static cutensorHandle_t cutensor_handle[MAX_GPUS_PER_NODE]; //each GPU present on a node obtains its own cuTensor context handle
-void * cutensor_workspace[MAX_GPUS_PER_NODE] = {NULL}; //cuTensor workspace (in GPU memory)
-size_t cutensor_worksize[MAX_GPUS_PER_NODE] = {0};     //cuTensor workspace size
-const size_t CUTENSOR_WORKSPACE_SIZE = 128 * 1048576;  //default cuTensor workspace size
+static cutensorHandle_t cutensor_handle[MAX_GPUS_PER_NODE];   //each GPU present on a node obtains its own cuTensor context handle
+static void * cutensor_workspace[MAX_GPUS_PER_NODE] = {NULL}; //cuTensor workspace (in GPU memory)
+static size_t cutensor_worksize[MAX_GPUS_PER_NODE] = {0};     //cuTensor workspace size
+static const size_t CUTENSOR_WORKSPACE_SIZE = 128 * 1048576;  //default cuTensor workspace size
 #endif /*USE_CUTENSOR*/
 // Slabs for the GPU asynchronous resources:
 //  CUDA stream handles:
@@ -2361,7 +2357,11 @@ int tens_valid_data_kind_(int datk, int * datk_size) //Fortran binding
  return tens_valid_data_kind(datk,datk_size);
 }
 
-int get_contr_pattern_cutensor(const int * dig_ptrn, int drank, int * ptrn_d, int lrank, int * ptrn_l, int rrank, int * ptrn_r)
+#ifdef USE_CUTENSOR
+int get_contr_pattern_cutensor(const int * dig_ptrn,
+                               int drank, int32_t * ptrn_d,
+                               int lrank, int32_t * ptrn_l,
+                               int rrank, int32_t * ptrn_r)
 /** Converts a digital tensor contraction pattern used by TAL-SH into the cuTensor digital format. **/
 {
  int errc = 0;
@@ -2407,6 +2407,7 @@ int get_contr_pattern_cutensor(const int * dig_ptrn, int drank, int * ptrn_d, in
  }
  return errc;
 }
+#endif /*USE_CUTENSOR*/
 
 size_t tens_elem_offset_f(unsigned int num_dim, const unsigned int * dims, const unsigned int * mlndx)
 /** Returns the offset of a tensor element specified by its multi-index with Fortran storage layout.
@@ -3084,9 +3085,9 @@ no GPU will be initialized. **/
 #endif
 #ifdef USE_CUTENSOR
 //cuTensor context:
-     err_cutensor=cutensorCreate(&(cutensor_handle[i]));
+     err_cutensor=cutensorInit(&(cutensor_handle[i]));
      if(err_cutensor != CUTENSOR_STATUS_SUCCESS) return -7;
-     err=cudaMalloc(&cutensor_workspace[i],CUTENSOR_WORKSPACE_SIZE);
+     err=cudaMalloc(&(cutensor_workspace[i]),CUTENSOR_WORKSPACE_SIZE);
      if(err == cudaSuccess){
       cutensor_worksize[i]=CUTENSOR_WORKSPACE_SIZE;
      }else{
@@ -3164,9 +3165,7 @@ If <gpu_beg> > <gpu_end>, nothing wil be done. **/
 #ifndef NO_BLAS
  cublasStatus_t err_cublas;
 #endif
-#ifdef USE_CUTENSOR
- cutensorStatus_t err_cutensor;
-#endif
+
  failure=0; n=0;
  if(gpu_beg >= 0 && gpu_end >= gpu_beg){
   err=cudaGetDeviceCount(&i); if(err != cudaSuccess) return -1;
@@ -3183,7 +3182,6 @@ If <gpu_beg> > <gpu_end>, nothing wil be done. **/
      if(cutensor_workspace[i] != NULL) cudaFree(cutensor_workspace[i]);
      cutensor_workspace[i]=NULL;
      cutensor_worksize[i]=0;
-     err_cutensor=cutensorDestroy(cutensor_handle[i]);
 #endif
 #ifndef NO_BLAS
      if(gpu_up[i] >= GPU_MINE_CUBLAS){err_cublas=cublasDestroy(cublas_handle[i]); if(err_cublas == CUBLAS_STATUS_SUCCESS) gpu_up[i]=GPU_MINE;}
@@ -4578,23 +4576,31 @@ __host__ static int cuda_task_set_arg(cudaTask_t *cuda_task, unsigned int arg_nu
    return TRY_LATER;
   }
 #ifdef USE_CUTENSOR
-//Acquire cuTensor descriptor:
+//Acquire cuTensor tensor descriptor:
   n=tens_p->shape.num_dim; for(i=0;i<n;++i) exts[i]=(tens_p->shape.dims)[i];
   switch(tens_p->data_kind){
    case R4:
-    err_cutensor=cutensorCreateTensorDescriptor(&((cuda_task->tens_cudesc)[arg_num]),(uint32_t)n,exts,NULL,CUDA_R_32F,CUTENSOR_OP_IDENTITY,1,0);
+    err_cutensor=cutensorInitTensorDescriptor(&(cutensor_handle[cuda_task->gpu_id]),
+                                              &((cuda_task->tens_cudesc)[arg_num]),(uint32_t)n,exts,NULL,
+                                              CUDA_R_32F,CUTENSOR_OP_IDENTITY);
     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) return 5;
     break;
    case R8:
-    err_cutensor=cutensorCreateTensorDescriptor(&((cuda_task->tens_cudesc)[arg_num]),(uint32_t)n,exts,NULL,CUDA_R_64F,CUTENSOR_OP_IDENTITY,1,0);
+    err_cutensor=cutensorInitTensorDescriptor(&(cutensor_handle[cuda_task->gpu_id]),
+                                              &((cuda_task->tens_cudesc)[arg_num]),(uint32_t)n,exts,NULL,
+                                              CUDA_R_64F,CUTENSOR_OP_IDENTITY);
     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) return 4;
     break;
    case C4:
-    err_cutensor=cutensorCreateTensorDescriptor(&((cuda_task->tens_cudesc)[arg_num]),(uint32_t)n,exts,NULL,CUDA_C_32F,CUTENSOR_OP_IDENTITY,1,0);
+    err_cutensor=cutensorInitTensorDescriptor(&(cutensor_handle[cuda_task->gpu_id]),
+                                              &((cuda_task->tens_cudesc)[arg_num]),(uint32_t)n,exts,NULL,
+                                              CUDA_C_32F,CUTENSOR_OP_IDENTITY);
     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) return 3;
     break;
    case C8:
-    err_cutensor=cutensorCreateTensorDescriptor(&((cuda_task->tens_cudesc)[arg_num]),(uint32_t)n,exts,NULL,CUDA_C_64F,CUTENSOR_OP_IDENTITY,1,0);
+    err_cutensor=cutensorInitTensorDescriptor(&(cutensor_handle[cuda_task->gpu_id]),
+                                              &((cuda_task->tens_cudesc)[arg_num]),(uint32_t)n,exts,NULL,
+                                              CUDA_C_64F,CUTENSOR_OP_IDENTITY);
     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) return 2;
     break;
    default:
@@ -4681,9 +4687,6 @@ __host__ static int cuda_task_finalize(cudaTask_t *cuda_task) //do not call this
  unsigned int bts,coh,s_d_same;
  int i,ret_stat,errc;
  cudaTensArg_t *tens_arg;
-#ifdef USE_CUTENSOR
- cutensorStatus_t err_cutensor;
-#endif
 
  if(cuda_task == NULL) return -1;
  if(cuda_task->task_error < 0) return 1; //unfinished or empty CUDA task cannot be finalized
@@ -4765,11 +4768,6 @@ __host__ static int cuda_task_finalize(cudaTask_t *cuda_task) //do not call this
     }
     tens_arg->const_mem_entry=0;
    }
-#ifdef USE_CUTENSOR
-// Release cuTensor descriptor:
-   err_cutensor=cutensorDestroyTensorDescriptor((cuda_task->tens_cudesc)[i]);
-   if(err_cutensor != CUTENSOR_STATUS_SUCCESS) ret_stat=NOT_CLEAN;
-#endif
    //printf("\n#DEBUG(NV-TAL::cuda_task_finalize): tensBlck_t argument %d end state:\n",i); tensBlck_print(tens_arg->tens_p); //debug
   }else{
    if(cuda_task->task_error == 0) return -4; //successfully completed CUDA tasks must have all tensor arguments associated
@@ -5996,7 +5994,11 @@ NOTES:
 #endif
 #ifdef USE_CUTENSOR
  cutensorStatus_t err_cutensor;
- int cumod_d[MAX_TENSOR_RANK],cumod_l[MAX_TENSOR_RANK],cumod_r[MAX_TENSOR_RANK];
+ cutensorContractionPlan_t plan_cudesc;
+ cutensorContractionFind_t find_cudesc;
+ cutensorContractionDescriptor_t contr_cudesc;
+ uint32_t align_d,align_l,align_r;
+ int32_t cumod_d[MAX_TENSOR_RANK],cumod_l[MAX_TENSOR_RANK],cumod_r[MAX_TENSOR_RANK];
 #endif
 
  //if(DEBUG) printf("\n#DEBUG(tensor_algebra_gpu_nvidia:gpu_tensor_block_contract_dlf): GPU Tensor Contraction:\n"); //debug
@@ -6198,7 +6200,7 @@ NOTES:
 #ifdef USE_CUTENSOR
  if(DISABLE_BLAS == 0 && gpu_is_mine(gpu_num) >= GPU_MINE_CUBLAS){
   if(drank > 0 && lrank > 0 && rrank > 0){ //`Remove this restriction
-   perm_d=NOPE; perm_l=NOPE; perm_r=NOPE; //cuTensor does not require permutations
+   perm_d=NOPE; perm_l=NOPE; perm_r=NOPE; //cuTensor does not need tensor permutations
   }
  }
 #else
@@ -6942,20 +6944,47 @@ NOTES:
   if(DISABLE_BLAS == 0 && gpu_is_mine(gpu_num) >= GPU_MINE_CUBLAS){ //BLAS is enabled
    err_cublas=cublasSetStream(cublas_handle[gpu_num],*cuda_stream);
    if(err_cublas != CUBLAS_STATUS_SUCCESS){errc=cuda_task_record(cuda_task,coh_ctrl,72); errc=gpu_activate(cur_gpu); return 72;}
+#ifdef USE_CUTENSOR
+   err_cutensor=cutensorGetAlignmentRequirement(&(cutensor_handle[gpu_num]),(const void*)darg,
+                                                &(cuda_task->tens_cudesc[0]),&align_d);
+   if(err_cutensor == CUTENSOR_STATUS_SUCCESS){
+    err_cutensor=cutensorGetAlignmentRequirement(&(cutensor_handle[gpu_num]),(const void*)larg,
+                                                 &(cuda_task->tens_cudesc[1]),&align_l);
+    if(err_cutensor == CUTENSOR_STATUS_SUCCESS){
+     err_cutensor=cutensorGetAlignmentRequirement(&(cutensor_handle[gpu_num]),(const void*)rarg,
+                                                  &(cuda_task->tens_cudesc[2]),&align_r);
+    }
+   }
+   if(err_cutensor != CUTENSOR_STATUS_SUCCESS){
+    if(VERBOSE){
+     err_msg=cutensorGetErrorString(err_cutensor);
+     if(err_msg != NULL) printf("#ERROR(gpu_tensor_block_contract_dlf): cuTensor error: %s\n",err_msg);
+    }
+    errc=cuda_task_record(cuda_task,coh_ctrl,72); errc=gpu_activate(cur_gpu); return 72;
+   }
+#endif
    switch(dtens->data_kind){
     case R4:
 #ifdef USE_CUTENSOR
      if(cuda_task->pref_ptr == NULL) cuda_task->pref_ptr=&h_sgemm_beta_one;
-     err_cutensor=cutensorContraction(cutensor_handle[gpu_num],
-                                      cuda_task->pref_ptr,
-                                      larg,cuda_task->tens_cudesc[1],cumod_l,
-                                      rarg,cuda_task->tens_cudesc[2],cumod_r,
-                                      (const void*)&h_sgemm_beta_one,
-                                      darg,cuda_task->tens_cudesc[0],cumod_d,
-                                      darg,cuda_task->tens_cudesc[0],cumod_d,
-                                      CUTENSOR_OP_IDENTITY,CUDA_R_32F,CUTENSOR_ALGO_DEFAULT,
-                                      cutensor_workspace[gpu_num],(uint64_t)cutensor_worksize[gpu_num],
+     err_cutensor=cutensorInitContractionDescriptor(&(cutensor_handle[gpu_num]),&contr_cudesc,
+                                                    &(cuda_task->tens_cudesc[1]),cumod_l,align_l,
+                                                    &(cuda_task->tens_cudesc[2]),cumod_r,align_r,
+                                                    &(cuda_task->tens_cudesc[0]),cumod_d,align_d,
+                                                    &(cuda_task->tens_cudesc[0]),cumod_d,align_d,
+                                                    CUTENSOR_R_MIN_32F);
+     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
+     err_cutensor=cutensorInitContractionFind(&(cutensor_handle[gpu_num]),&find_cudesc,CUTENSOR_ALGO_DEFAULT);
+     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
+     err_cutensor=cutensorInitContractionPlan(&(cutensor_handle[gpu_num]),&plan_cudesc,&contr_cudesc,&find_cudesc,
+                                              (uint64_t)(cutensor_worksize[gpu_num]));
+     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
+     err_cutensor=cutensorContraction(&(cutensor_handle[gpu_num]),&plan_cudesc,
+                                      cuda_task->pref_ptr,larg,rarg,
+                                      (const void*)&h_sgemm_beta_one,darg,darg,
+                                      cutensor_workspace[gpu_num],(uint64_t)(cutensor_worksize[gpu_num]),
                                       *cuda_stream);
+     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
      if(cuda_task->pref_ptr == &h_sgemm_beta_one) cuda_task->pref_ptr=NULL;
 #else
      err_cublas=cublasSgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
@@ -6965,16 +6994,24 @@ NOTES:
     case R8:
 #ifdef USE_CUTENSOR
      if(cuda_task->pref_ptr == NULL) cuda_task->pref_ptr=&h_dgemm_beta_one;
-     err_cutensor=cutensorContraction(cutensor_handle[gpu_num],
-                                      cuda_task->pref_ptr,
-                                      larg,cuda_task->tens_cudesc[1],cumod_l,
-                                      rarg,cuda_task->tens_cudesc[2],cumod_r,
-                                      (const void*)&h_dgemm_beta_one,
-                                      darg,cuda_task->tens_cudesc[0],cumod_d,
-                                      darg,cuda_task->tens_cudesc[0],cumod_d,
-                                      CUTENSOR_OP_IDENTITY,CUDA_R_64F,CUTENSOR_ALGO_DEFAULT,
-                                      cutensor_workspace[gpu_num],(uint64_t)cutensor_worksize[gpu_num],
+     err_cutensor=cutensorInitContractionDescriptor(&(cutensor_handle[gpu_num]),&contr_cudesc,
+                                                    &(cuda_task->tens_cudesc[1]),cumod_l,align_l,
+                                                    &(cuda_task->tens_cudesc[2]),cumod_r,align_r,
+                                                    &(cuda_task->tens_cudesc[0]),cumod_d,align_d,
+                                                    &(cuda_task->tens_cudesc[0]),cumod_d,align_d,
+                                                    CUTENSOR_R_MIN_64F);
+     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
+     err_cutensor=cutensorInitContractionFind(&(cutensor_handle[gpu_num]),&find_cudesc,CUTENSOR_ALGO_DEFAULT);
+     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
+     err_cutensor=cutensorInitContractionPlan(&(cutensor_handle[gpu_num]),&plan_cudesc,&contr_cudesc,&find_cudesc,
+                                              (uint64_t)(cutensor_worksize[gpu_num]));
+     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
+     err_cutensor=cutensorContraction(&(cutensor_handle[gpu_num]),&plan_cudesc,
+                                      cuda_task->pref_ptr,larg,rarg,
+                                      (const void*)&h_dgemm_beta_one,darg,darg,
+                                      cutensor_workspace[gpu_num],(uint64_t)(cutensor_worksize[gpu_num]),
                                       *cuda_stream);
+     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
      if(cuda_task->pref_ptr == &h_dgemm_beta_one) cuda_task->pref_ptr=NULL;
 #else
      err_cublas=cublasDgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
@@ -7013,16 +7050,24 @@ NOTES:
      }else{
 #ifdef USE_CUTENSOR
       if(cuda_task->pref_ptr == NULL) cuda_task->pref_ptr=&h_cgemm_beta_one;
-      err_cutensor=cutensorContraction(cutensor_handle[gpu_num], //`Missing argument conjugation
-                                       cuda_task->pref_ptr,
-                                       larg,cuda_task->tens_cudesc[1],cumod_l,
-                                       rarg,cuda_task->tens_cudesc[2],cumod_r,
-                                       (const void*)&h_cgemm_beta_one,
-                                       darg,cuda_task->tens_cudesc[0],cumod_d,
-                                       darg,cuda_task->tens_cudesc[0],cumod_d,
-                                       CUTENSOR_OP_IDENTITY,CUDA_C_32F,CUTENSOR_ALGO_DEFAULT,
-                                       cutensor_workspace[gpu_num],(uint64_t)cutensor_worksize[gpu_num],
+      err_cutensor=cutensorInitContractionDescriptor(&(cutensor_handle[gpu_num]),&contr_cudesc,
+                                                     &(cuda_task->tens_cudesc[1]),cumod_l,align_l,
+                                                     &(cuda_task->tens_cudesc[2]),cumod_r,align_r,
+                                                     &(cuda_task->tens_cudesc[0]),cumod_d,align_d,
+                                                     &(cuda_task->tens_cudesc[0]),cumod_d,align_d,
+                                                     CUTENSOR_C_MIN_32F);
+      if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
+      err_cutensor=cutensorInitContractionFind(&(cutensor_handle[gpu_num]),&find_cudesc,CUTENSOR_ALGO_DEFAULT);
+      if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
+      err_cutensor=cutensorInitContractionPlan(&(cutensor_handle[gpu_num]),&plan_cudesc,&contr_cudesc,&find_cudesc,
+                                               (uint64_t)(cutensor_worksize[gpu_num]));
+      if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
+      err_cutensor=cutensorContraction(&(cutensor_handle[gpu_num]),&plan_cudesc, //`Missing complex conjugation for arguments
+                                       cuda_task->pref_ptr,larg,rarg,
+                                       (const void*)&h_cgemm_beta_one,darg,darg,
+                                       cutensor_workspace[gpu_num],(uint64_t)(cutensor_worksize[gpu_num]),
                                        *cuda_stream);
+      if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
       if(cuda_task->pref_ptr == &h_cgemm_beta_one) cuda_task->pref_ptr=NULL;
 #else
       if(conj_r){
@@ -7040,16 +7085,24 @@ NOTES:
     case C8:
 #ifdef USE_CUTENSOR
      if(cuda_task->pref_ptr == NULL) cuda_task->pref_ptr=&h_zgemm_beta_one;
-     err_cutensor=cutensorContraction(cutensor_handle[gpu_num], //`Missing argument conjugation
-                                      cuda_task->pref_ptr,
-                                      larg,cuda_task->tens_cudesc[1],cumod_l,
-                                      rarg,cuda_task->tens_cudesc[2],cumod_r,
-                                      (const void*)&h_zgemm_beta_one,
-                                      darg,cuda_task->tens_cudesc[0],cumod_d,
-                                      darg,cuda_task->tens_cudesc[0],cumod_d,
-                                      CUTENSOR_OP_IDENTITY,CUDA_C_64F,CUTENSOR_ALGO_DEFAULT,
-                                      cutensor_workspace[gpu_num],(uint64_t)cutensor_worksize[gpu_num],
+     err_cutensor=cutensorInitContractionDescriptor(&(cutensor_handle[gpu_num]),&contr_cudesc,
+                                                    &(cuda_task->tens_cudesc[1]),cumod_l,align_l,
+                                                    &(cuda_task->tens_cudesc[2]),cumod_r,align_r,
+                                                    &(cuda_task->tens_cudesc[0]),cumod_d,align_d,
+                                                    &(cuda_task->tens_cudesc[0]),cumod_d,align_d,
+                                                    CUTENSOR_C_MIN_64F);
+     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
+     err_cutensor=cutensorInitContractionFind(&(cutensor_handle[gpu_num]),&find_cudesc,CUTENSOR_ALGO_DEFAULT);
+     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
+     err_cutensor=cutensorInitContractionPlan(&(cutensor_handle[gpu_num]),&plan_cudesc,&contr_cudesc,&find_cudesc,
+                                              (uint64_t)(cutensor_worksize[gpu_num]));
+     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
+     err_cutensor=cutensorContraction(&(cutensor_handle[gpu_num]),&plan_cudesc, //`Missing complex conjugation for arguments
+                                      cuda_task->pref_ptr,larg,rarg,
+                                      (const void*)&h_zgemm_beta_one,darg,darg,
+                                      cutensor_workspace[gpu_num],(uint64_t)(cutensor_worksize[gpu_num]),
                                       *cuda_stream);
+     if(err_cutensor != CUTENSOR_STATUS_SUCCESS) break;
      if(cuda_task->pref_ptr == &h_zgemm_beta_one) cuda_task->pref_ptr=NULL;
 #else
      if(conj_r){
