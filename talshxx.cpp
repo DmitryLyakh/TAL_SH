@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2020/02/21
+REVISION: 2020/03/07
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -392,6 +392,44 @@ int Tensor::insertSlice(TensorTask * task_handle,         //out: task handle ass
   errc = talshTensorInsert(dtens,ltens,offsets.data(),device_id,device_kind,COPY_MT,accum);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::insertSlice): talshTensorInsert error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+ }
+ return errc;
+}
+
+
+int Tensor::copyBody(TensorTask * task_handle,    //out: task handle associated with this operation or nullptr (synchronous)
+                     const std::string & pattern, //in: permutation pattern string
+                     Tensor & left,               //in: left tensor (source)
+                     const int device_kind,       //in: execution device kind
+                     const int device_id)         //in: execution device id
+{
+ int errc = TALSH_SUCCESS;
+ this->completeWriteTask();
+ left.completeWriteTask();
+ const char * contr_ptrn = pattern.c_str();
+ talsh_tens_t * dtens = this->getTalshTensorPtr();
+ talsh_tens_t * ltens = left.getTalshTensorPtr();
+ if(task_handle != nullptr){ //asynchronous
+  bool task_empty = task_handle->isEmpty(); assert(task_empty);
+  talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
+  //++left; ++(*this);
+  errc = talshTensorCopy(contr_ptrn,dtens,ltens,device_id,device_kind,COPY_MT,task_hl);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::copyBody): talshTensorCopy error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+  if(errc == TALSH_SUCCESS){
+   task_handle->used_tensors_[0] = this;
+   task_handle->used_tensors_[1] = &left;
+   task_handle->num_tensors_ = 2;
+   this->resetWriteTask(task_handle);
+  }else{
+   task_handle->clean();
+  }
+ }else{ //synchronous
+  errc = talshTensorCopy(contr_ptrn,dtens,ltens,device_id,device_kind,COPY_MT);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::copyBody): talshTensorCopy error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
  }
  return errc;

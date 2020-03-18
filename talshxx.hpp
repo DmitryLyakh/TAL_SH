@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2020/02/21
+REVISION: 2020/03/07
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -269,6 +269,15 @@ public:
                  const int device_kind = DEV_HOST,        //in: execution device kind
                  const int device_id = 0,                 //in: execution device id
                  bool accumulative = false);              //in: accumulate versus overwrite the destination tensor
+
+ /** Copies the body of another congruent tensor with an optional dimension permutation:
+     this = left (permuted)
+     Returns an error code (0:success). **/
+ int copyBody(TensorTask * task_handle,               //out: task handle associated with this operation or nullptr (synchronous)
+              const std::string & pattern,            //in: permutation pattern string
+              Tensor & left,                          //in: left tensor (source)
+              const int device_kind = DEV_HOST,       //in: execution device kind
+              const int device_id = 0);               //in: execution device id
 
  /** Performs accumulation of a tensor into the current tensor:
      this += left * scalar_factor
@@ -686,7 +695,7 @@ int Tensor::accumulate(TensorTask * task_handle,    //out: task handle associate
  if(task_handle != nullptr){ //asynchronous
   bool task_empty = task_handle->isEmpty(); assert(task_empty);
   talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
-  //++left; ++right; ++(*this);
+  //++left; ++(*this);
   errc = talshTensorAdd(contr_ptrn,dtens,ltens,realPart(factor),imagPart(factor),device_id,device_kind,COPY_MT,task_hl);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::accumulate): talshTensorAdd error " << errc << std::endl; //debug
