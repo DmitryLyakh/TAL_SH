@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2020/02/21
+REVISION: 2020/04/13
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -269,7 +269,8 @@ extern "C"{
  size_t talshTensorSizeAllImages(const talsh_tens_t * tens_block,
                                  int * num_images);
 //  Get tensor dimension extents:
- const int * talshTensorDimExtents(const talsh_tens_t * tens_block, int * rank);
+ const int * talshTensorDimExtents(const talsh_tens_t * tens_block,
+                                   int * rank);
 //  Get the shape of the tensor block:
  int talshTensorShape(const talsh_tens_t * tens_block,
                       talsh_tens_shape_t * tens_shape);
@@ -531,6 +532,54 @@ extern "C"{
                            int accumulative = YEP);     //in: accumulate in (default) VS overwrite destination tensor: [YEP|NOPE]
  int talshTensorContractXL_(const char * cptrn, talsh_tens_t * dtens, talsh_tens_t * ltens, talsh_tens_t * rtens,
                             double scale_real, double scale_imag, int dev_id, int dev_kind, int accumulative);
+//  Tensor decomposition via SVD:
+//   Meaning of parameter <absorb>:
+//    'N': No absorption of stens;
+//    'L': stens will be absorbed into ltens;
+//    'R': stens will be absorbed into rtens;
+//    'S': square root of stens will be absorbed into both ltens and rtens;
+ int talshTensorDecomposeSVD(const char * cptrn,          //in: C-string: symbolic decomposition pattern, e.g. "D(a,b,c,d)=L(c,i,j,a)*R(b,j,d,i)"
+                             talsh_tens_t * dtens,        //in: tensor block to be decomposed
+                             talsh_tens_t * ltens,        //inout: left tensor factor
+                             talsh_tens_t * rtens,        //inout: right tensor factor
+                             talsh_tens_t * stens,        //inout: middle tensor factor (singular values), may be empty on entrance
+                             const char absorb = 'N',     //in: whether or not to absorb the middle factor stens into other factors
+                             int dev_id = DEV_DEFAULT,    //in: device id (flat or kind-specific)
+                             int dev_kind = DEV_DEFAULT); //in: device kind (if present, <dev_id> is kind-specific)
+//  Tensor decomposition via SVD with singular values absorbed into the left factor:
+ int talshTensorDecomposeSVDL(const char * cptrn,          //in: C-string: symbolic decomposition pattern, e.g. "D(a,b,c,d)=L(c,i,j,a)*R(b,j,d,i)"
+                              talsh_tens_t * dtens,        //in: tensor block to be decomposed
+                              talsh_tens_t * ltens,        //inout: left tensor factor with absorbed singular values
+                              talsh_tens_t * rtens,        //inout: right tensor factor
+                              int dev_id = DEV_DEFAULT,    //in: device id (flat or kind-specific)
+                              int dev_kind = DEV_DEFAULT); //in: device kind (if present, <dev_id> is kind-specific)
+//  Tensor decomposition via SVD with singular values absorbed into the right factor:
+ int talshTensorDecomposeSVDR(const char * cptrn,          //in: C-string: symbolic decomposition pattern, e.g. "D(a,b,c,d)=L(c,i,j,a)*R(b,j,d,i)"
+                              talsh_tens_t * dtens,        //in: tensor block to be decomposed
+                              talsh_tens_t * ltens,        //inout: left tensor factor
+                              talsh_tens_t * rtens,        //inout: right tensor factor with absorbed singular values
+                              int dev_id = DEV_DEFAULT,    //in: device id (flat or kind-specific)
+                              int dev_kind = DEV_DEFAULT); //in: device kind (if present, <dev_id> is kind-specific)
+//  Tensor decomposition via SVD with symmetrically absorbed square-root singular values into both factors:
+ int talshTensorDecomposeSVDLR(const char * cptrn,          //in: C-string: symbolic decomposition pattern, e.g. "D(a,b,c,d)=L(c,i,j,a)*R(b,j,d,i)"
+                               talsh_tens_t * dtens,        //in: tensor block to be decomposed
+                               talsh_tens_t * ltens,        //inout: left tensor factor with absorbed square-root singular values
+                               talsh_tens_t * rtens,        //inout: right tensor factor with absorbed square-root singular values
+                               int dev_id = DEV_DEFAULT,    //in: device id (flat or kind-specific)
+                               int dev_kind = DEV_DEFAULT); //in: device kind (if present, <dev_id> is kind-specific)
+//  Tensor orthogonalization via SVD (D=LR+ with singular values reset to unity):
+//   The symbolic tensor decomposition (contraction) pattern must only have one contracted index,
+//   its dimension being equal to the minimum of the left and right uncontracted dimension volumes:
+ int talshTensorOrthogonalizeSVD(const char * cptrn,          //in: C-string: symbolic decomposition pattern, e.g. "D(a,b,c,d)=L(c,i,a)*R(b,d,i)"
+                                 talsh_tens_t * dtens,        //inout: on entrance tensor block to be orthogonalized, on exit orthogonalized tensor block
+                                 int dev_id = DEV_DEFAULT,    //in: device id (flat or kind-specific)
+                                 int dev_kind = DEV_DEFAULT); //in: device kind (if present, <dev_id> is kind-specific)
+//  Tensor orthogonalization via MGS (D=Q from QR):
+ int talshTensorOrthogonalizeMGS(talsh_tens_t * dtens,        //inout: on entrance tensor block to be orthogonalized, on exit orthogonalized tensor block
+                                 int num_iso_dims,            //in: number of the isometric tensor dimensions
+                                 int * iso_dims,              //in: ordered list of the isometric tensor dimensions (tensor dimension numeration starts from 0)
+                                 int dev_id = DEV_DEFAULT,    //in: device id (flat or kind-specific)
+                                 int dev_kind = DEV_DEFAULT); //in: device kind (if present, <dev_id> is kind-specific)
 // TAL-SH debugging:
 //  1-norm of the tensor body image on Host:
  double talshTensorImageNorm1_cpu(const talsh_tens_t * talsh_tens);

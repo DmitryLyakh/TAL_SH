@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2020/01/23
+REVISION: 2020/04/12
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -580,7 +580,14 @@ static int free_buf_entry(ab_conf_t ab_conf, size_t *ab_occ, size_t ab_occ_size,
   }
  }else{
   omp_unset_nest_lock(&mem_lock);
-  if(VERBOSE) printf("#ERROR(TAL-SH:mem_manager:free_buf_entry): Partially occupied buffer entry detected: %llu %llu\n",ab_occ[entry_num],blck_sizes[i]);
+  if(VERBOSE){
+   if(ab_occ[entry_num] == 0){
+    printf("#ERROR(TAL-SH:mem_manager:free_buf_entry): Attempt to free an empty buffer entry %d\n",entry_num);
+   }else{
+    printf("#ERROR(TAL-SH:mem_manager:free_buf_entry): Partially occupied buffer entry detected: %llu < %llu\n",
+           ab_occ[entry_num],blck_sizes[i]);
+   }
+  }
   return 3;
  }
 #pragma omp flush

@@ -45,6 +45,7 @@ extern "C"{
 void test_talsh_c(int * ierr);
 void test_talsh_cxx(int * ierr);
 void test_talsh_xl(int * ierr);
+void test_talsh_svd(int * ierr);
 void test_talsh_qc_xl(int * ierr);
 void test_talsh_qc(int * ierr);
 void test_nwchem_c(int * ierr);
@@ -386,6 +387,149 @@ void test_talsh_xl(int * ierr)
  }
  //Shutdown TAL-SH:
  talshStats(); //GPU statistics
+ talsh::shutdown();
+ return;
+}
+
+
+void test_talsh_svd(int * ierr)
+{
+ const std::size_t DESKTOP_MEM = 4;  //GB
+ const std::size_t SUMMIT_MEM = 128; //GB
+ const std::size_t HOST_MEM_LIM = DESKTOP_MEM;
+#ifndef NO_GPU
+ const int device = DEV_NVIDIA_GPU;
+#else
+ const int device = DEV_HOST;
+#endif
+ const int device_id = 0; //[0...max] or DEV_DEFAULT (all devices)
+ const bool PRINT_SINGULAR_VALUES = false;
+
+ *ierr = 0;
+ //Initialize TAL-SH:
+ std::size_t host_buf_size = std::size_t{1024*1024*1024}*HOST_MEM_LIM;
+ talsh::initialize(&host_buf_size);
+ //Check max buffer/tensor size:
+ if(device != DEV_HOST){
+  std::cout << " Max buffer size on Host             = " << talsh::getDeviceMaxBufferSize(DEV_HOST,0) << std::endl;
+  std::cout << " Max tensor size on Host             = " << talsh::getDeviceMaxTensorSize(DEV_HOST,0) << std::endl;
+ }
+ std::cout << " Max buffer size on execution device = " << talsh::getDeviceMaxBufferSize(device,0) << std::endl;
+ std::cout << " Max tensor size on execution device = " << talsh::getDeviceMaxTensorSize(device,0) << std::endl;
+ //Test body (scoped):
+ {
+  //Create tensors on Host:
+  std::cout << " Creating tensor btens ... ";
+  talsh::Tensor btens({5,10,15,20,25},std::complex<float>{0.0,0.0});
+  std::cout << "Success" << std::endl;
+  std::cout << " Creating tensor dtens ... ";
+  talsh::Tensor dtens({25,20,15,10,5},std::complex<float>{0.0,0.0});
+  std::cout << "Success" << std::endl;
+  std::cout << " Creating tensor ltens ... ";
+  talsh::Tensor ltens({15,10,5,20,25},std::complex<float>{0.0,0.0});
+  std::cout << "Success" << std::endl;
+  std::cout << " Creating tensor rtens ... ";
+  talsh::Tensor rtens({20,10,10,20},std::complex<float>{0.0,0.0});
+  std::cout << "Success" << std::endl;
+  std::cout << " Creating tensor stens ... ";
+  talsh::Tensor stens({10,20},std::complex<float>{0.0,0.0});
+  std::cout << "Success" << std::endl;
+  //Initialize tensor btens to a random value:
+  std::cout << " Initializing tensor btens ... ";
+  std::complex<float> * tens_body;
+  bool success = btens.getDataAccessHost(&tens_body);
+  if(!success){
+   std::cout << "#ERROR: Unable to get access to the body of tensor btens!" << std::endl;
+   *ierr = 1; return;
+  }
+  auto vol = btens.getVolume(); if(vol == 0){*ierr = 2; return;}
+  for(decltype(vol) i = 0; i < vol; ++i)
+   tens_body[i] = std::complex<float>{static_cast<float>(i)*(1e-4f),-(static_cast<float>(i)*(1e-5f))};
+  std::cout << "Success" << std::endl;
+  double norm1;
+  *ierr = btens.norm1(nullptr,&norm1);
+  std::cout << " 1-norm of tensor btens = " << norm1 << std::endl;
+  for(decltype(vol) i = 0; i < vol; ++i) tens_body[i] /= norm1;
+  *ierr = btens.norm1(nullptr,&norm1);
+  std::cout << " Normalized 1-norm of tensor btens = " << norm1 << std::endl;
+  //Copy/permute tensor btens into tensor dtens:
+  std::cout << " Copy-permuting tensor btens into dtens ... ";
+  *ierr = dtens.copyBody(nullptr,"D(a,b,c,d,e)=B(e,d,c,b,a)",btens,device,device_id);
+  std::cout << " Status " << *ierr;
+  if(*ierr != TALSH_SUCCESS){
+   std::cout << ": Failed!" << std::endl;
+   *ierr = 3; return;
+  }
+  std::cout << ": Success" << std::endl;
+  *ierr = dtens.norm1(nullptr,&norm1);
+  std::cout << " 1-norm of tensor dtens = " << norm1 << std::endl;
+  //Perform tensor decomposition via SVD of tensor dtens:
+  const std::string pattern{"D(a,b,c,d,e)=L(c,i,e,j,a)*R(j,d,i,b)"};
+  std::cout << " Performing tensor decomposition of tensor dtens via SVD: " << pattern << " ... ";
+  if(PRINT_SINGULAR_VALUES){
+   *ierr = dtens.decomposeSVD(nullptr,pattern,ltens,rtens,stens,DEV_HOST,0);
+  }else{
+   *ierr = dtens.decomposeSVDLR(nullptr,pattern,ltens,rtens,DEV_HOST,0);
+  }
+  std::cout << " Status " << *ierr;
+  if(*ierr != TALSH_SUCCESS){
+   std::cout << ": Failed!" << std::endl;
+   *ierr = 4; return;
+  }
+  std::cout << ": Success" << std::endl;
+  //Inspect singular values:
+  if(PRINT_SINGULAR_VALUES){
+   std::cout << " Inspecting singular values stored in the middle tensor stens:\n";
+   success = stens.getDataAccessHost(&tens_body);
+   if(!success){
+    std::cout << "#ERROR: Unable to get access to the body of tensor stens!" << std::endl;
+    *ierr = 5; return;
+   }
+   vol = stens.getVolume(); if(vol == 0){*ierr = 6; return;}
+   for(decltype(vol) i = 0; i < vol; ++i) std::cout << i << ": (" << tens_body[i].real() <<
+                                                              "," << tens_body[i].imag() << ")\n";
+  }else{
+   //Reconstruct tensor dtens from its SVD factors:
+   std::cout << " Reconstructing tensor dtens from its SVD factors ... ";
+   *ierr = dtens.contractAccumulate(nullptr,pattern,ltens,rtens,device,device_id,std::complex<float>(1.0),false);
+   if(*ierr != TALSH_SUCCESS){
+    std::cout << ": Failed!" << std::endl;
+    *ierr = 7; return;
+   }
+   std::cout << ": Success" << std::endl;
+  }
+  //Accumulate tensor dtens into tensor btens with reverse permutation and inverse sign:
+  std::cout << " Accumulating tensor dtens into tensor btens with reverse permutation and inverse sign ... ";
+  *ierr = btens.accumulate(nullptr,"B(a,b,c,d,e)+=D(e,d,c,b,a)",dtens,device,device_id,std::complex<float>{-1.0f,0.0f});
+  std::cout << " Status " << *ierr;
+  if(*ierr != TALSH_SUCCESS){
+   std::cout << ": Failed!" << std::endl;
+   *ierr = 8; return;
+  }
+  std::cout << ": Success" << std::endl;
+  //Inspect the norm of tensor btens (must be zero):
+  std::cout << " Syncing tensor btens on Host ... ";
+  success = btens.sync(DEV_HOST,0,nullptr,true);
+  if(!success){
+   std::cout << ": Failed!" << std::endl;
+   *ierr = 9; return;
+  }
+  std::cout << ": Success" << std::endl;
+  *ierr = btens.norm1(nullptr,&norm1);
+  std::cout << " 1-norm of tensor btens (must be zero) = " << norm1 << std::endl;
+  success = btens.getDataAccessHost(&tens_body);
+  if(!success){
+   std::cout << "#ERROR: Unable to get access to the body of tensor btens!" << std::endl;
+   *ierr = 10; return;
+  }
+  vol = btens.getVolume(); if(vol == 0){*ierr = 11; return;}
+  float max_elem = 0.0f;
+  for(decltype(vol) i = 0; i < vol; ++i) max_elem = std::max(std::abs(tens_body[i]),max_elem);
+  std::cout << " Inf-norm of tensor btens (must be zero) = " << max_elem << std::endl;
+  if(max_elem > 1e-6) *ierr = 12;
+ }
+ //Shutdown TAL-SH:
+ talsh::printStatistics();
  talsh::shutdown();
  return;
 }

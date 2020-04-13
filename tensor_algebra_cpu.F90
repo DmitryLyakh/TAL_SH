@@ -1,9 +1,9 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2019/11/30
+!REVISION: 2020/04/12
 
-!Copyright (C) 2013-2019 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -4240,18 +4240,30 @@
 	 end function ord_rest_ok
 
 	end subroutine tensor_block_contract
-!------------------------------------------------------------------------------------
-        subroutine tensor_block_decompose_svd(dtens,ltens,rtens,stens,ierr,data_kind)
+!-------------------------------------------------------------------------------------------
+        subroutine tensor_block_decompose_svd(absorb,dtens,ltens,rtens,stens,ierr,data_kind)
+!This subroutine performs a (partial) SVD decomposition of a given tensor:
+! dtens(l1,l2,...,lm,r1,r2,...,rn) = ltens(l1,l2,...,lm,s1,s2,...,sk) *
+!                                    stens(s1,s2,...,sk) *
+!                                    rtens^H(s1,s2,...,sk,r1,r2,...,rn)
+!All tensors must have their data stored under the same type/precision.
+!The value of <absorb> regulates the absorption of the singular values:
+! 'N': No absorption;
+! 'L': Singular values will be absorbed into the left tensor <ltens>;
+! 'R': Singular values will be absorbed into the right tensor <rtens>;
+! 'S': Square root of singular values will be absorbed into both the left and right tensor;
+!Note that the original tensor dtens will no longer contain its data on exit!
         implicit none
+        character(1), intent(in):: absorb                   !in: singular value absorption regulator
         type(tensor_block_t), intent(inout), target:: dtens !inout: tensor to be decomposed (destroyed on exit)
         type(tensor_block_t), intent(inout), target:: ltens !out: left singular tensor
-        type(tensor_block_t), intent(inout), target:: rtens !out: right singular tensor (transposed)
+        type(tensor_block_t), intent(inout), target:: rtens !out: right singular tensor (conjugated-transposed)
         type(tensor_block_t), intent(inout), target:: stens !out: singular value tensor
         integer, intent(inout):: ierr                       !out: error code
         character(2), intent(in), optional:: data_kind      !in: preferred data kind
         integer:: i,nfound,lwork,info
         integer:: dtb,ltb,rtb,stb,drank,lrank,rrank,srank,lr,rr,cr
-        integer(LONGINT):: lu,ru,nv,mlr,lrwork
+        integer(LONGINT):: lu,ru,nv,mlr,lrwork,l0,l1,lb
         character(2):: dtk
         real(4):: wr4(1)
         real(8):: wr8(1)
@@ -4262,8 +4274,10 @@
         complex(4), pointer, contiguous:: dmc4(:,:),lmc4(:,:),rmc4(:,:),wrkc4(:)
         complex(8), pointer, contiguous:: dmc8(:,:),lmc8(:,:),rmc8(:,:),wrkc8(:)
         integer, allocatable:: iwork(:)
+        real(8):: time_beg
 
         ierr=0
+        time_beg=thread_wtime()
  !Get tensor ranks:
         drank=dtens%tensor_shape%num_dim
         lrank=ltens%tensor_shape%num_dim
@@ -4293,29 +4307,38 @@
            lu=1; do i=1,lr; lu=lu*ltens%tensor_shape%dim_extent(i); enddo
            ru=1; do i=cr+1,rrank; ru=ru*rtens%tensor_shape%dim_extent(i); enddo
            mlr=min(lu,ru)
-           lrwork=mlr*mlr*2+15*mlr
- !Associate matrices and perform SVD:
+           lrwork=mlr*(mlr*2+15*mlr) !GESVDX length of RWORK
+           !lrwork=max(mlr*mlr*5+mlr*5,mlr*max(lu,ru)*2+mlr*mlr*2+mlr) !GESDD length of RWORK
+ !Associate matrices and perform (partial) SVD:
            select case(dtk)
            case('r4','R4')
             dmr4(1:lu,1:ru)=>dtens%data_real4
             lmr4(1:lu,1:nv)=>ltens%data_real4
             rmr4(1:nv,1:ru)=>rtens%data_real4
+            sv4=>NULL()
             ierr=array_alloc(sv4,mlr,in_buffer=.TRUE.,fallback=.TRUE.)
             if(ierr.eq.0) then
              allocate(iwork(12*mlr),STAT=ierr)
              if(ierr.eq.0) then
 #ifdef WITH_LAPACK
               call sgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmr4,int(lu,kind=4),&
-                          &0d0,0d0,1,int(nv,kind=4),nfound,sv4,lmr4,int(lu,kind=4),&
+                          &0d0,0d0,1,int(min(nv,mlr),kind=4),nfound,sv4,lmr4,int(lu,kind=4),&
                           &rmr4,int(nv,kind=4),wr4,-1,iwork,info)
               if(info.eq.0) then
                lwork=int(wr4(1))+1
+               wrkr4=>NULL()
                ierr=array_alloc(wrkr4,int(lwork,kind=LONGINT),in_buffer=.TRUE.,fallback=.TRUE.)
                if(ierr.eq.0) then
                 call sgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmr4,int(lu,kind=4),&
-                            &0d0,0d0,1,int(nv,kind=4),nfound,sv4,lmr4,int(lu,kind=4),&
+                            &0d0,0d0,1,int(min(nv,mlr),kind=4),nfound,sv4,lmr4,int(lu,kind=4),&
                             &rmr4,int(nv,kind=4),wrkr4,lwork,iwork,info)
-                if(info.ne.0) ierr=6
+                if(info.eq.0) then
+                 do i=1,nfound; stens%data_real4(i-1)=sv4(i); enddo !converged singular values
+                 do i=nfound+1,nv; stens%data_real4(i-1)=0.0; enddo !unconverged singular values
+                else
+                 if(VERBOSE) write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): SGESVDX error ",i11)') info
+                 ierr=6
+                endif
                 call array_free(wrkr4)
                else
                 ierr=7
@@ -4338,22 +4361,30 @@
             dmr8(1:lu,1:ru)=>dtens%data_real8
             lmr8(1:lu,1:nv)=>ltens%data_real8
             rmr8(1:nv,1:ru)=>rtens%data_real8
+            sv8=>NULL()
             ierr=array_alloc(sv8,mlr,in_buffer=.TRUE.,fallback=.TRUE.)
             if(ierr.eq.0) then
              allocate(iwork(12*mlr),STAT=ierr)
              if(ierr.eq.0) then
 #ifdef WITH_LAPACK
               call dgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmr8,int(lu,kind=4),&
-                          &0d0,0d0,1,int(nv,kind=4),nfound,sv8,lmr8,int(lu,kind=4),&
+                          &0d0,0d0,1,int(min(nv,mlr),kind=4),nfound,sv8,lmr8,int(lu,kind=4),&
                           &rmr8,int(nv,kind=4),wr8,-1,iwork,info)
               if(info.eq.0) then
                lwork=int(wr8(1))+1
+               wrkr8=>NULL()
                ierr=array_alloc(wrkr8,int(lwork,kind=LONGINT),in_buffer=.TRUE.,fallback=.TRUE.)
                if(ierr.eq.0) then
                 call dgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmr8,int(lu,kind=4),&
-                            &0d0,0d0,1,int(nv,kind=4),nfound,sv8,lmr8,int(lu,kind=4),&
+                            &0d0,0d0,1,int(min(nv,mlr),kind=4),nfound,sv8,lmr8,int(lu,kind=4),&
                             &rmr8,int(nv,kind=4),wrkr8,lwork,iwork,info)
-                if(info.ne.0) ierr=11
+                if(info.eq.0) then
+                 do i=1,nfound; stens%data_real8(i-1)=sv8(i); enddo !converged singular values
+                 do i=nfound+1,nv; stens%data_real8(i-1)=0d0; enddo !unconverged singular values
+                else
+                 if(VERBOSE) write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): DGESVDX error ",i11)') info
+                 ierr=11
+                endif
                 call array_free(wrkr8)
                else
                 ierr=12
@@ -4376,24 +4407,33 @@
             dmc4(1:lu,1:ru)=>dtens%data_cmplx4
             lmc4(1:lu,1:nv)=>ltens%data_cmplx4
             rmc4(1:nv,1:ru)=>rtens%data_cmplx4
+            rwrk4=>NULL()
             ierr=array_alloc(rwrk4,lrwork,in_buffer=.TRUE.,fallback=.TRUE.)
             if(ierr.eq.0) then
+             sv4=>NULL()
              ierr=array_alloc(sv4,mlr,in_buffer=.TRUE.,fallback=.TRUE.)
              if(ierr.eq.0) then
               allocate(iwork(12*mlr),STAT=ierr)
               if(ierr.eq.0) then
 #ifdef WITH_LAPACK
                call cgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmc4,int(lu,kind=4),&
-                           &0d0,0d0,1,int(nv,kind=4),nfound,sv4,lmc4,int(lu,kind=4),&
+                           &0d0,0d0,1,int(min(nv,mlr),kind=4),nfound,sv4,lmc4,int(lu,kind=4),&
                            &rmc4,int(nv,kind=4),wc4,-1,rwrk4,iwork,info)
                if(info.eq.0) then
                 lwork=int(real(wc4(1)))+1
+                wrkc4=>NULL()
                 ierr=array_alloc(wrkc4,int(lwork,kind=LONGINT),in_buffer=.TRUE.,fallback=.TRUE.)
                 if(ierr.eq.0) then
                  call cgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmc4,int(lu,kind=4),&
-                             &0d0,0d0,1,int(nv,kind=4),nfound,sv4,lmc4,int(lu,kind=4),&
+                             &0d0,0d0,1,int(min(nv,mlr),kind=4),nfound,sv4,lmc4,int(lu,kind=4),&
                              &rmc4,int(nv,kind=4),wrkc4,lwork,rwrk4,iwork,info)
-                 if(info.ne.0) ierr=16
+                 if(info.eq.0) then
+                  do i=1,nfound; stens%data_cmplx4(i-1)=cmplx(sv4(i),0.0,kind=4); enddo !converged singular values
+                  do i=nfound+1,nv; stens%data_cmplx4(i-1)=(0.0,0.0); enddo !unconverged singular values
+                 else
+                  if(VERBOSE) write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): CGESVDX error ",i11)') info
+                  ierr=16
+                 endif
                  call array_free(wrkc4)
                 else
                  ierr=17
@@ -4420,24 +4460,33 @@
             dmc8(1:lu,1:ru)=>dtens%data_cmplx8
             lmc8(1:lu,1:nv)=>ltens%data_cmplx8
             rmc8(1:nv,1:ru)=>rtens%data_cmplx8
+            rwrk8=>NULL()
             ierr=array_alloc(rwrk8,lrwork,in_buffer=.TRUE.,fallback=.TRUE.)
             if(ierr.eq.0) then
+             sv8=>NULL()
              ierr=array_alloc(sv8,mlr,in_buffer=.TRUE.,fallback=.TRUE.)
              if(ierr.eq.0) then
               allocate(iwork(12*mlr),STAT=ierr)
               if(ierr.eq.0) then
 #ifdef WITH_LAPACK
                call zgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmc8,int(lu,kind=4),&
-                           &0d0,0d0,1,int(nv,kind=4),nfound,sv8,lmc8,int(lu,kind=4),&
+                           &0d0,0d0,1,int(min(nv,mlr),kind=4),nfound,sv8,lmc8,int(lu,kind=4),&
                            &rmc8,int(nv,kind=4),wc8,-1,rwrk8,iwork,info)
                if(info.eq.0) then
                 lwork=int(real(wc8(1)))+1
+                wrkc8=>NULL()
                 ierr=array_alloc(wrkc8,int(lwork,kind=LONGINT),in_buffer=.TRUE.,fallback=.TRUE.)
                 if(ierr.eq.0) then
                  call zgesvdx('V','V','I',int(lu,kind=4),int(ru,kind=4),dmc8,int(lu,kind=4),&
-                             &0d0,0d0,1,int(nv,kind=4),nfound,sv8,lmc8,int(lu,kind=4),&
+                             &0d0,0d0,1,int(min(nv,mlr),kind=4),nfound,sv8,lmc8,int(lu,kind=4),&
                              &rmc8,int(nv,kind=4),wrkc8,lwork,rwrk8,iwork,info)
-                 if(info.ne.0) ierr=22
+                 if(info.eq.0) then
+                  do i=1,nfound; stens%data_cmplx8(i-1)=cmplx(sv8(i),0d0,kind=8); enddo !converged singular values
+                  do i=nfound+1,nv; stens%data_cmplx8(i-1)=(0d0,0d0); enddo !unconverged singular values
+                 else
+                  if(VERBOSE) write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): ZGESVDX error ",i11)') info
+                  ierr=22
+                 endif
                  call array_free(wrkc8)
                 else
                  ierr=23
@@ -4463,15 +4512,185 @@
            case default
             ierr=28
            end select
+! Absorb the middle tensor of singular values into other tensor factors, if needed:
+           if(ierr.eq.0) then
+            select case(absorb)
+            case('N') !no absorption
+            case('L') !stens is absorbed into ltens
+             select case(dtk)
+             case('r4','R4')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0,l1,lb) SCHEDULE(GUIDED)
+              do l0=0,nv-1
+               lb=l0*lu
+               do l1=0,lu-1
+                ltens%data_real4(lb+l1)=ltens%data_real4(lb+l1)*stens%data_real4(l0)
+               enddo
+              enddo
+!$OMP END PARALLEL DO
+             case('r8','R8')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0,l1,lb) SCHEDULE(GUIDED)
+              do l0=0,nv-1
+               lb=l0*lu
+               do l1=0,lu-1
+                ltens%data_real8(lb+l1)=ltens%data_real8(lb+l1)*stens%data_real8(l0)
+               enddo
+              enddo
+!$OMP END PARALLEL DO
+             case('c4','C4')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0,l1,lb) SCHEDULE(GUIDED)
+              do l0=0,nv-1
+               lb=l0*lu
+               do l1=0,lu-1
+                ltens%data_cmplx4(lb+l1)=ltens%data_cmplx4(lb+l1)*stens%data_cmplx4(l0)
+               enddo
+              enddo
+!$OMP END PARALLEL DO
+             case('c8','C8')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0,l1,lb) SCHEDULE(GUIDED)
+              do l0=0,nv-1
+               lb=l0*lu
+               do l1=0,lu-1
+                ltens%data_cmplx8(lb+l1)=ltens%data_cmplx8(lb+l1)*stens%data_cmplx8(l0)
+               enddo
+              enddo
+!$OMP END PARALLEL DO
+             end select
+            case('R') !stens is absorbed into rtens
+             select case(dtk)
+             case('r4','R4')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0,l1,lb) SCHEDULE(GUIDED)
+              do l0=0,ru-1
+               lb=l0*nv
+               do l1=0,nv-1
+                rtens%data_real4(lb+l1)=rtens%data_real4(lb+l1)*stens%data_real4(l1)
+               enddo
+              enddo
+!$OMP END PARALLEL DO
+             case('r8','R8')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0,l1,lb) SCHEDULE(GUIDED)
+              do l0=0,ru-1
+               lb=l0*nv
+               do l1=0,nv-1
+                rtens%data_real8(lb+l1)=rtens%data_real8(lb+l1)*stens%data_real8(l1)
+               enddo
+              enddo
+!$OMP END PARALLEL DO
+             case('c4','C4')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0,l1,lb) SCHEDULE(GUIDED)
+              do l0=0,ru-1
+               lb=l0*nv
+               do l1=0,nv-1
+                rtens%data_cmplx4(lb+l1)=rtens%data_cmplx4(lb+l1)*stens%data_cmplx4(l1)
+               enddo
+              enddo
+!$OMP END PARALLEL DO
+             case('c8','C8')
+!$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0,l1,lb) SCHEDULE(GUIDED)
+              do l0=0,ru-1
+               lb=l0*nv
+               do l1=0,nv-1
+                rtens%data_cmplx8(lb+l1)=rtens%data_cmplx8(lb+l1)*stens%data_cmplx8(l1)
+               enddo
+              enddo
+!$OMP END PARALLEL DO
+             end select
+            case('S') !sqrt(stens) is absorbed into both ltens and rtens
+             select case(dtk)
+             case('r4','R4')
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l1,lb)
+!$OMP DO SCHEDULE(GUIDED)
+              do l0=0,nv-1
+               lb=l0*lu
+               do l1=0,lu-1
+                ltens%data_real4(lb+l1)=ltens%data_real4(lb+l1)*sqrt(stens%data_real4(l0))
+               enddo
+              enddo
+!$OMP END DO NOWAIT
+!$OMP DO SCHEDULE(GUIDED)
+              do l0=0,ru-1
+               lb=l0*nv
+               do l1=0,nv-1
+                rtens%data_real4(lb+l1)=rtens%data_real4(lb+l1)*sqrt(stens%data_real4(l1))
+               enddo
+              enddo
+!$OMP END DO
+!$OMP END PARALLEL
+             case('r8','R8')
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l1,lb)
+!$OMP DO SCHEDULE(GUIDED)
+              do l0=0,nv-1
+               lb=l0*lu
+               do l1=0,lu-1
+                ltens%data_real8(lb+l1)=ltens%data_real8(lb+l1)*sqrt(stens%data_real8(l0))
+               enddo
+              enddo
+!$OMP END DO NOWAIT
+!$OMP DO SCHEDULE(GUIDED)
+              do l0=0,ru-1
+               lb=l0*nv
+               do l1=0,nv-1
+                rtens%data_real8(lb+l1)=rtens%data_real8(lb+l1)*sqrt(stens%data_real8(l1))
+               enddo
+              enddo
+!$OMP END DO
+!$OMP END PARALLEL
+             case('c4','C4')
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l1,lb)
+!$OMP DO SCHEDULE(GUIDED)
+              do l0=0,nv-1
+               lb=l0*lu
+               do l1=0,lu-1
+                ltens%data_cmplx4(lb+l1)=ltens%data_cmplx4(lb+l1)*sqrt(real(stens%data_cmplx4(l0),4))
+               enddo
+              enddo
+!$OMP END DO NOWAIT
+!$OMP DO SCHEDULE(GUIDED)
+              do l0=0,ru-1
+               lb=l0*nv
+               do l1=0,nv-1
+                rtens%data_cmplx4(lb+l1)=rtens%data_cmplx4(lb+l1)*sqrt(real(stens%data_cmplx4(l1),4))
+               enddo
+              enddo
+!$OMP END DO
+!$OMP END PARALLEL
+             case('c8','C8')
+!$OMP PARALLEL DEFAULT(SHARED) PRIVATE(l0,l1,lb)
+!$OMP DO SCHEDULE(GUIDED)
+              do l0=0,nv-1
+               lb=l0*lu
+               do l1=0,lu-1
+                ltens%data_cmplx8(lb+l1)=ltens%data_cmplx8(lb+l1)*sqrt(real(stens%data_cmplx8(l0),8))
+               enddo
+              enddo
+!$OMP END DO NOWAIT
+!$OMP DO SCHEDULE(GUIDED)
+              do l0=0,ru-1
+               lb=l0*nv
+               do l1=0,nv-1
+                rtens%data_cmplx8(lb+l1)=rtens%data_cmplx8(lb+l1)*sqrt(real(stens%data_cmplx8(l1),8))
+               enddo
+              enddo
+!$OMP END DO
+!$OMP END PARALLEL
+             end select
+            case default
+             ierr=29
+            end select
+           endif
           else
-           ierr=29
+           ierr=30
           endif
          else
-          ierr=30
+          ierr=31
          endif
         else
-         ierr=31
+         ierr=32
         endif
+        if(VERBOSE.and.ierr.ne.0) then
+         write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): Error ",i11)') ierr
+        endif
+        !write(CONS_OUT,'("#DEBUG(CP-TAL:tensor_block_decompose_svd): Time (s) = ",F12.6,": Status ",i11)')&
+        !&thread_wtime()-time_beg,ierr !debug
         return
 
         contains
@@ -4481,23 +4700,23 @@
          integer, intent(out):: ier
 
          ier=0
-         if(associated(ltens%data_cmplx8).and.associated(rtens%data_cmplx8).and.associated(dtens%data_cmplx8)) then
+         if(associated(ltens%data_cmplx8).and.associated(rtens%data_cmplx8).and.associated(dtens%data_cmplx8).and.&
+           &associated(stens%data_cmplx8)) then
           dtkd='c8'
-          if(.not.associated(stens%data_real8)) then; dtkd='  '; ier=101; endif
          else
-          if(associated(ltens%data_cmplx4).and.associated(rtens%data_cmplx4).and.associated(dtens%data_cmplx4)) then
+          if(associated(ltens%data_cmplx4).and.associated(rtens%data_cmplx4).and.associated(dtens%data_cmplx4).and.&
+            &associated(stens%data_cmplx4)) then
            dtkd='c4'
-           if(.not.associated(stens%data_real4)) then; dtkd='  '; ier=102; endif
           else
-           if(associated(ltens%data_real8).and.associated(rtens%data_real8).and.associated(dtens%data_real8)) then
+           if(associated(ltens%data_real8).and.associated(rtens%data_real8).and.associated(dtens%data_real8).and.&
+             &associated(stens%data_real8)) then
             dtkd='r8'
-            if(.not.associated(stens%data_real8)) then; dtkd='  '; ier=103; endif
            else
-            if(associated(ltens%data_real4).and.associated(rtens%data_real4).and.associated(dtens%data_real4)) then
+            if(associated(ltens%data_real4).and.associated(rtens%data_real4).and.associated(dtens%data_real4).and.&
+              &associated(stens%data_real4)) then
              dtkd='r4'
-             if(.not.associated(stens%data_real4)) then; dtkd='  '; ier=104; endif
             else
-             ier=105
+             ier=5
             endif
            endif
           endif
@@ -5203,12 +5422,15 @@
         endif
         return
         end subroutine get_contr_pattern_sym
-!------------------------------------------------------------------------------------------------------
-	subroutine get_contr_permutations(lrank,rrank,cptrn,conj_bits,dprm,lprm,rprm,ncd,nlu,nru,ierr)&
+!---------------------------------------------------------------------------------------------------------------------
+        subroutine get_contr_permutations(gemm_tl,gemm_tr,lrank,rrank,cptrn,conj_bits,dprm,lprm,rprm,ncd,nlu,nru,ierr)&
                                          &bind(c,name='get_contr_permutations') !SERIAL
-!This subroutine returns all tensor index permutations necessary for the tensor
-!contraction specified by <cptrn> (implemented via a matrix multiplication).
+!This subroutine returns all tensor index permutations necessary for converting
+!the tensor contraction specified by <cptrn> into the matrix-matrix multiplication
+!of a given configuration {NN,TN,NT,TT}.
 !INPUT:
+! - gemm_tl - desired configuration of the left matrix in GEMM: 0 is 'N', 1 is 'T';
+! - gemm_tr - desired configuration of the right matrix in GEMM: 0 is 'N', 1 is 'T';
 ! - cptrn(1:lrank+rrank) - digital contraction pattern;
 ! - conj_bits - complex conjugation bits {0:D,1:L,2:R};
 !OUTPUT:
@@ -5219,26 +5441,37 @@
 ! - nlu - number of left uncontracted indices;
 ! - nru - number of right uncontracted indices;
 ! - ierr - error code (0:success).
-	implicit none
+!NOTES:
+! - The default expected GEMM configuration is assumed to be TN.
+!   When requesting the NN case, the left tensor is not allowed to be conjugated.
+!   When requesting the TN or NN case with the right tensor conjugated, it will
+!   be necessary to switch to the TT or NT case, respectively.
+        implicit none
 !------------------------------------------------
-	logical, parameter:: check_pattern=.TRUE.
+        logical, parameter:: check_pattern=.TRUE.
 !------------------------------------------------
-	integer(C_INT), intent(in), value:: lrank,rrank
-	integer(C_INT), intent(in):: cptrn(1:*)
-	integer(C_INT), intent(in), value:: conj_bits
-	integer(C_INT), intent(out):: dprm(0:*),lprm(0:*),rprm(0:*),ncd,nlu,nru
-	integer(C_INT), intent(inout):: ierr
-	integer(C_INT):: i,j,k,drank,jkey(1:lrank+rrank),jtrn0(0:lrank+rrank),jtrn1(0:lrank+rrank)
-	logical:: pattern_ok,simple,left_conj,right_conj
+        integer(C_INT), intent(in), value:: gemm_tl,gemm_tr
+        integer(C_INT), intent(in), value:: lrank,rrank
+        integer(C_INT), intent(in):: cptrn(1:*)
+        integer(C_INT), intent(in), value:: conj_bits
+        integer(C_INT), intent(out):: dprm(0:*),lprm(0:*),rprm(0:*),ncd,nlu,nru
+        integer(C_INT), intent(inout):: ierr
+        integer(C_INT):: i,j,k,drank,jkey(1:lrank+rrank),jtrn0(0:lrank+rrank),jtrn1(0:lrank+rrank)
+        logical:: pattern_ok,simple,left_conj,right_conj
 
-	ierr=0
-	if(check_pattern) then; pattern_ok=contr_pattern_ok(); else; pattern_ok=.TRUE.; endif
-	if(pattern_ok.and.lrank.ge.0.and.rrank.ge.0) then
+        ierr=0
+        if(check_pattern) then; pattern_ok=contr_pattern_ok(); else; pattern_ok=.TRUE.; endif
+        if(pattern_ok.and.lrank.ge.0.and.rrank.ge.0) then
  !Check conjugation bits:
          left_conj=btest(conj_bits,1)
          right_conj=btest(conj_bits,2)
          if(btest(conj_bits,0)) then
-          left_conj=.not.left_conj; right_conj=.not.right_conj
+          left_conj=(.not.left_conj); right_conj=(.not.right_conj)
+         endif
+         if((gemm_tl.eq.0).and.left_conj) then
+          if(VERBOSE) write(CONS_OUT,'("#ERROR(CP-TAL:get_contr_permutations): Left tensor conjugation is not supported'//&
+                                    &' with an untransposed left matrix in GEMM!")')
+          ierr=2; return
          endif
  !Destination operand:
 	 drank=0; dprm(0)=+1
@@ -5275,7 +5508,7 @@
 	  endif
 	 endif
  !Apply conjugation if needed (swap contracted and uncontracted positions):
-         if(left_conj.and..FALSE.) then !left argument is already processed as a transposed matrix
+         if(gemm_tl.eq.0) then !left argument is processed as a transposed matrix by default
           do i=1,lrank
            if(lprm(i).le.ncd) then
             lprm(i)=lprm(i)+nlu
@@ -5284,7 +5517,7 @@
            endif
           enddo
          endif
-         if(right_conj) then
+         if((gemm_tr.ne.0).or.right_conj) then !right argument is processed as a normal matrix by default
           do i=1,rrank
            if(rprm(i).le.ncd) then
             rprm(i)=rprm(i)+nru

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2020/03/07
+REVISION: 2020/04/13
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -328,6 +328,95 @@ public:
                         const int device_id = 0,                //in: execution device id
                         const T factor = TensorData<T>::unity); //in: scalar factor (alpha)
 
+ /** Arbitrary tensor decomposition via SVD. Returns an error code (0:success).
+     Example of the decomposition of tensor D(a,b,c,d,e):
+      D(a,b,c,d,e)=L(d,i,c,j)*M(i,j)*R(e,a,j,b,i)
+     This is a hyper-contraction, but the corresponding decomposition pattern
+     is still specified as a regular tensor contraction:
+      D(a,b,c,d,e)=L(d,i,c,j)*R(e,a,j,b,i)
+     The middle tensor factor is returned separately. **/
+ int decomposeSVD(TensorTask * task_handle,         //out: task handle associated with this operation or nullptr (synchronous)
+                  const std::string & pattern,      //in: decomposition pattern string (same as the tensor contraction pattern)
+                  Tensor & left,                    //out: left tensor factor
+                  Tensor & right,                   //out: right tensor factor
+                  Tensor & middle,                  //out: middle tensor factor (may be empty on entrance)
+                  const int device_kind = DEV_HOST, //in: execution device kind
+                  const int device_id = 0);         //in: execution device id
+
+ /** Arbitrary tensor decomposition via SVD with the middle tensor
+     absorbed by the left tensor factor. Returns an error code (0:success).
+     Example of the decomposition of tensor D(a,b,c,d,e):
+      D(a,b,c,d,e)=L(d,i,c,j)*M(i,j)*R(e,a,j,b,i)
+     This is a hyper-contraction, but the corresponding decomposition pattern
+     is still specified as a regular tensor contraction:
+      D(a,b,c,d,e)=L(d,i,c,j)*R(e,a,j,b,i)
+     The middle tensor factor is absorbed into the left tensor factor. **/
+ int decomposeSVDL(TensorTask * task_handle,         //out: task handle associated with this operation or nullptr (synchronous)
+                   const std::string & pattern,      //in: decomposition pattern string (same as the tensor contraction pattern)
+                   Tensor & left,                    //out: left tensor factor
+                   Tensor & right,                   //out: right tensor factor
+                   const int device_kind = DEV_HOST, //in: execution device kind
+                   const int device_id = 0);         //in: execution device id
+
+ /** Arbitrary tensor decomposition via SVD with the middle tensor
+     absorbed by the right tensor factor. Returns an error code (0:success).
+     Example of the decomposition of tensor D(a,b,c,d,e):
+      D(a,b,c,d,e)=L(d,i,c,j)*M(i,j)*R(e,a,j,b,i)
+     This is a hyper-contraction, but the corresponding decomposition pattern
+     is still specified as a regular tensor contraction:
+      D(a,b,c,d,e)=L(d,i,c,j)*R(e,a,j,b,i)
+     The middle tensor factor is absorbed into the right tensor factor. **/
+ int decomposeSVDR(TensorTask * task_handle,         //out: task handle associated with this operation or nullptr (synchronous)
+                   const std::string & pattern,      //in: decomposition pattern string (same as the tensor contraction pattern)
+                   Tensor & left,                    //out: left tensor factor
+                   Tensor & right,                   //out: right tensor factor
+                   const int device_kind = DEV_HOST, //in: execution device kind
+                   const int device_id = 0);         //in: execution device id
+
+ /** Arbitrary tensor decomposition via SVD with the middle tensor
+     absorbed by both left and right tensor factors (as the square root of it).
+     Returns an error code (0:success).
+     Example of the decomposition of tensor D(a,b,c,d,e):
+      D(a,b,c,d,e)=L(d,i,c,j)*M(i,j)*R(e,a,j,b,i)
+     This is a hyper-contraction, but the corresponding decomposition pattern
+     is still specified as a regular tensor contraction:
+      D(a,b,c,d,e)=L(d,i,c,j)*R(e,a,j,b,i)
+     The middle tensor factor is absorbed into both left and right tensor factors. **/
+ int decomposeSVDLR(TensorTask * task_handle,         //out: task handle associated with this operation or nullptr (synchronous)
+                    const std::string & pattern,      //in: decomposition pattern string (same as the tensor contraction pattern)
+                    Tensor & left,                    //out: left tensor factor
+                    Tensor & right,                   //out: right tensor factor
+                    const int device_kind = DEV_HOST, //in: execution device kind
+                    const int device_id = 0);         //in: execution device id
+
+ /** Internal tensor orthogonalization via SVD and discarding the middle tensor.
+     Returns an error code (0:success).
+     Example of the decomposition of tensor D(a,b,c,d,e):
+      D(a,b,c,d,e)=L(d,i,c)*M(i)*R(e,a,b,i)
+     This is a hyper-contraction, but the corresponding decomposition pattern
+     is still specified as a regular tensor contraction:
+      D(a,b,c,d,e)=L(d,i,c)*R(e,a,b,i)
+     The middle tensor factor is discarded, with tensor D redefined according
+     to the above equation. The symbolic tensor decomposition (contraction)
+     pattern must only have one contracted index, its dimension being equal
+     to the minimum of the left and right uncontracted dimension volumes,
+     e.g. in the shown case min(vol(d,c),vol(e,a,b)). **/
+ int orthogonalizeSVD(TensorTask * task_handle,         //out: task handle associated with this operation or nullptr (synchronous)
+                      const std::string & pattern,      //in: decomposition pattern string (same as the tensor contraction pattern)
+                      const int device_kind = DEV_HOST, //in: execution device kind
+                      const int device_id = 0);         //in: execution device id
+
+ /** Internal tensor orthogonalization via the Modified Gram-Schmidt procedure.
+     The set of tensor dimensions provided in the isometric dimension set argument
+     will form the column space of the corresponding orthogonal matrix,
+     which can either be square or tall rectangular. Thus, the cumulative
+     volume of the complementary tensor dimensions must not exceed the
+     cumulative volume of the isometric dimension set. **/
+ int orthogonalizeMGS(TensorTask * task_handle,         //out: task handle associated with this operation or nullptr (synchronous)
+                      const std::vector<unsigned int> & iso_dims, //in: isometric dimension set (cannot be empty)
+                      const int device_kind = DEV_HOST, //in: execution device kind
+                      const int device_id = 0);         //in: execution device id
+
  /** Prints the tensor info. **/
  void print() const;
  /** Prints the tensor info and elements greater or equal to "thresh". **/
@@ -431,9 +520,16 @@ std::size_t getDeviceMaxBufferSize(const int device_kind = DEV_HOST, //in: devic
 bool enableFastMath(int device_kind,              //in: device kind
                     int device_id = DEV_DEFAULT); //in: device id
 
+// Memory management logging:
+void startMemManagerLog();
+void finishMemManagerLog();
+
 // Basic tensor operation logging:
 void startTensorOpLog();
 void finishTensorOpLog();
+
+// TAL-SH statistics:
+void printStatistics();
 
 
 //Template definitions:

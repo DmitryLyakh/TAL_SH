@@ -1,7 +1,7 @@
 /** ExaTensor::TAL-SH: Lower-level header:
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device agnostic).
-REVISION: 2020/02/26
+REVISION: 2020/03/24
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -286,7 +286,11 @@ extern "C"{
 //Generic:
  int tens_valid_data_kind(int datk, int * datk_size = NULL);
  int tens_valid_data_kind_(int datk, int * datk_size);
- void get_contr_pattern_sym(const int * rank_left, const int * rank_right, const int * conj_bits, const int * cptrn_dig, char * cptrn_sym, int * cpl, int * ierr);
+ int permutation_trivial(const int perm_len, const int * perm, const int base = 0);
+ void get_contr_pattern_sym(const int * rank_left, const int * rank_right, const int * conj_bits,
+                            const int * cptrn_dig, char * cptrn_sym, int * cpl, int * ierr);
+ void get_contr_permutations(int gemm_tl, int gemm_tr, int lrank, int rrank, const int *cptrn, int conj_bits,
+                             int *dprm, int *lprm, int *rprm, int *ncd, int *nlu, int *nru, int *ierr);
 #ifdef USE_CUTENSOR
  int get_contr_pattern_cutensor(const int * dig_ptrn, int drank, int32_t * ptrn_d, int lrank, int32_t * ptrn_l, int rrank, int32_t * ptrn_r);
 #endif
