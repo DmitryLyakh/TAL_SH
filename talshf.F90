@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2020/04/12
+!REVISION: 2020/05/07
 
 !Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -31,6 +31,7 @@
         public talsh_tens_data_t      !TAL-SH tensor data descriptor
         public MAX_SHAPE_STR_LEN      !max length of a shape-defining string
         public MAX_TENSOR_RANK        !max tensor rank
+        public CPTAL_MAX_THREADS      !max expected number of CPU OpenMP threads in CP-TAL
         public mem_allocate           !universal memory allocator
         public mem_free               !universal memory deallocator
         public tensor_shape_rank      !
