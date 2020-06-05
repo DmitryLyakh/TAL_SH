@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/05/07
+!REVISION: 2020/05/29
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -4323,7 +4323,7 @@
            mlr=min(lu,ru)
            lrwork=mlr*(mlr*2+15*mlr) !GESVDX length of RWORK
            !lrwork=max(mlr*mlr*5+mlr*5,mlr*max(lu,ru)*2+mlr*mlr*2+mlr) !GESDD length of RWORK
-           if(PRINT_INFO) write(CONS_OUT,'(" Matrix dimensions:",i13,1x,i13,1x,i13)') lu,ru,nv
+           if(PRINT_INFO) write(CONS_OUT,'(" Matrix dimensions: ",i13,1x,i13,1x,i13)') lu,ru,nv
  !Associate matrices and perform (partial) SVD:
            select case(dtk)
            case('r4','R4')
@@ -4351,7 +4351,12 @@
                  do i=1,nfound; stens%data_real4(i-1)=sv4(i); enddo !converged singular values
                  do i=nfound+1,nv; stens%data_real4(i-1)=0.0; enddo !unconverged singular values
                 else
-                 if(VERBOSE) write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): SGESVDX error ",i11)') info
+                 if(VERBOSE) then
+                  write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): SGESVDX error ",i11)') info
+                  write(CONS_OUT,'(" Matrix dimensions: ",i13,1x,i13,1x,i13)') lu,ru,nv
+                  write(CONS_OUT,'(" Input matrix elements:")')
+                  write(CONS_OUT,*) dmr4(1:lu,1:ru)
+                 endif
                  ierr=6
                 endif
                 call array_free(wrkr4)
@@ -4397,7 +4402,12 @@
                  do i=1,nfound; stens%data_real8(i-1)=sv8(i); enddo !converged singular values
                  do i=nfound+1,nv; stens%data_real8(i-1)=0d0; enddo !unconverged singular values
                 else
-                 if(VERBOSE) write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): DGESVDX error ",i11)') info
+                 if(VERBOSE) then
+                  write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): DGESVDX error ",i11)') info
+                  write(CONS_OUT,'(" Matrix dimensions: ",i13,1x,i13,1x,i13)') lu,ru,nv
+                  write(CONS_OUT,'(" Input matrix elements:")')
+                  write(CONS_OUT,*) dmr8(1:lu,1:ru)
+                 endif
                  ierr=11
                 endif
                 call array_free(wrkr8)
@@ -4446,7 +4456,12 @@
                   do i=1,nfound; stens%data_cmplx4(i-1)=cmplx(sv4(i),0.0,kind=4); enddo !converged singular values
                   do i=nfound+1,nv; stens%data_cmplx4(i-1)=(0.0,0.0); enddo !unconverged singular values
                  else
-                  if(VERBOSE) write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): CGESVDX error ",i11)') info
+                  if(VERBOSE) then
+                   write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): CGESVDX error ",i11)') info
+                   write(CONS_OUT,'(" Matrix dimensions: ",i13,1x,i13,1x,i13)') lu,ru,nv
+                   write(CONS_OUT,'(" Input matrix elements:")')
+                   write(CONS_OUT,*) dmc4(1:lu,1:ru)
+                  endif
                   ierr=16
                  endif
                  call array_free(wrkc4)
@@ -4499,7 +4514,12 @@
                   do i=1,nfound; stens%data_cmplx8(i-1)=cmplx(sv8(i),0d0,kind=8); enddo !converged singular values
                   do i=nfound+1,nv; stens%data_cmplx8(i-1)=(0d0,0d0); enddo !unconverged singular values
                  else
-                  if(VERBOSE) write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): ZGESVDX error ",i11)') info
+                  if(VERBOSE) then
+                   write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): ZGESVDX error ",i11)') info
+                   write(CONS_OUT,'(" Matrix dimensions: ",i13,1x,i13,1x,i13)') lu,ru,nv
+                   write(CONS_OUT,'(" Input matrix elements:")')
+                   write(CONS_OUT,*) dmc8(1:lu,1:ru)
+                  endif
                   ierr=22
                  endif
                  call array_free(wrkc8)
@@ -4527,7 +4547,7 @@
            case default
             ierr=28
            end select
-! Absorb the middle tensor of singular values into other tensor factors, if needed:
+ !Absorb the middle tensor of singular values into other tensor factors, if needed:
            if(ierr.eq.0) then
             if(PRINT_INFO) then
              write(CONS_OUT,'("#DEBUG(CP-TAL:tensor_block_decompose_svd): Intermediate tensor 2-norms:")')
@@ -5229,7 +5249,7 @@
 	 aloop: do while(i.le.l)
 	  do while(cptrn(i:i).ne.'('); i=i+1; if(i.gt.l) exit aloop; enddo !find opening parenthesis (next tensor)
 	  if(i.gt.2) then
-	   if(cptrn(i-1:i-1).eq.'+'.and.alphanumeric(cptrn(i-2:i-2))) conj=conj+(2**(n+1)) !tensor complex conjugation flag
+	   if(cptrn(i-1:i-1).eq.'+'.and.alphanumeric_underscore(cptrn(i-2:i-2))) conj=conj+(2**(n+1)) !tensor complex conjugation flag
 	  endif
 	  ks=i; i=i+1; n=n+1; k=1 !found '(': beginning of tensor argument #n
 	  if(n.gt.2) then; ierr=1; return; endif !trap: no more than two input arguments

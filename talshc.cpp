@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/04/13
+REVISION: 2020/06/05
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -381,13 +381,19 @@ static int talsh_find_optimal_device(const talsh_tens_t * tens0, const talsh_ten
     based on the data residence, tensor sizes, and current device occupation.
     A negative return status indicates an error. **/
 {
- int i,j,devid,al,am,as,ov[3][TALSH_MAX_DEV_PRESENT],ovl[3];
+ int i,j,devid,al,am,as,good_for_gpu,ov[3][TALSH_MAX_DEV_PRESENT],ovl[3];
  const int idx[3][3]={-1,0,1, 0,-1,2, 1,2,-1};
  size_t s[3];
+ double gflops;
 
+ gflops=0.0; good_for_gpu=0;
  s[0]=0; if(tens0 != NULL){s[0]=talshTensorVolume(tens0);}else{return DEV_NULL;}
  s[1]=0; if(tens1 != NULL) s[1]=talshTensorVolume(tens1);
  s[2]=0; if(tens2 != NULL) s[2]=talshTensorVolume(tens2);
+ if(s[0] > 0 && s[1] > 0 && s[2] > 0){
+  gflops=2.0*sqrt(((double)(s[0]))*((double)(s[1]))*((double)(s[2])))/(1e9);
+  if(gflops > (double)(TALSH_GFLOP_THRESH_GPU)) good_for_gpu=1;
+ }
  devid=DEV_NULL; for(i=0;i<3;++i) ovl[i]=0;
  //Overlap tens0 and tens1:
  if(s[0] > 0 && s[1] > 0){
@@ -396,7 +402,9 @@ static int talsh_find_optimal_device(const talsh_tens_t * tens0, const talsh_ten
     for(j=0;j<tens1->ndev;++j){
      if(tens1->avail[j] == YEP){
       if(tens1->dev_rsc[j].dev_id == tens0->dev_rsc[i].dev_id){
-       ov[0][(ovl[0])++]=tens1->dev_rsc[j].dev_id;
+       if(tens1->dev_rsc[j].dev_id != talshFlatDevId(DEV_HOST,0) || good_for_gpu == 0){
+        ov[0][(ovl[0])++]=tens1->dev_rsc[j].dev_id;
+       }
       }
      }
     }
@@ -419,7 +427,9 @@ static int talsh_find_optimal_device(const talsh_tens_t * tens0, const talsh_ten
     for(j=0;j<tens2->ndev;++j){
      if(tens2->avail[j] == YEP){
       if(tens2->dev_rsc[j].dev_id == tens0->dev_rsc[i].dev_id){
-       ov[1][(ovl[1])++]=tens2->dev_rsc[j].dev_id;
+       if(tens2->dev_rsc[j].dev_id != talshFlatDevId(DEV_HOST,0) || good_for_gpu == 0){
+        ov[1][(ovl[1])++]=tens2->dev_rsc[j].dev_id;
+       }
       }
      }
     }
@@ -442,7 +452,9 @@ static int talsh_find_optimal_device(const talsh_tens_t * tens0, const talsh_ten
     for(j=0;j<tens2->ndev;++j){
      if(tens2->avail[j] == YEP){
       if(tens2->dev_rsc[j].dev_id == tens1->dev_rsc[i].dev_id){
-       ov[2][(ovl[2])++]=tens2->dev_rsc[j].dev_id;
+       if(tens2->dev_rsc[j].dev_id != talshFlatDevId(DEV_HOST,0) || good_for_gpu == 0){
+        ov[2][(ovl[2])++]=tens2->dev_rsc[j].dev_id;
+       }
       }
      }
     }
@@ -479,6 +491,11 @@ static int talsh_find_optimal_device(const talsh_tens_t * tens0, const talsh_ten
   case 0: devid=tens0->dev_rsc[0].dev_id; break;
   case 1: devid=tens1->dev_rsc[0].dev_id; break;
   case 2: devid=tens2->dev_rsc[0].dev_id; break;
+ }
+ if(devid == talshFlatDevId(DEV_HOST,0) && good_for_gpu){
+  i=talshDeviceBusyLeast(DEV_NVIDIA_GPU); if(i >= 0 && i < DEV_MAX) return i;
+  i=talshDeviceBusyLeast(DEV_INTEL_MIC); if(i >= 0 && i < DEV_MAX) return i;
+  i=talshDeviceBusyLeast(DEV_AMD_GPU); if(i >= 0 && i < DEV_MAX) return i;
  }
  return devid;
 }
@@ -780,7 +797,7 @@ int talshDeviceState_(int dev_num, int dev_kind) //Fortran wrapper
 }
 
 int talshDeviceBusyLeast(int dev_kind) //in: device kind (defaults to any kind)
-/** Returns the least busy device id. **/
+/** Returns the least busy flat device id. **/
 {
  int i;
 
@@ -794,7 +811,7 @@ int talshDeviceBusyLeast(int dev_kind) //in: device kind (defaults to any kind)
 #ifndef NO_GPU
    i=gpu_busy_least();
    if(i < 0 || i >= MAX_GPUS_PER_NODE) return TALSH_FAILURE;
-   return i;
+   return talshFlatDevId(DEV_NVIDIA_GPU,i);
 #else
    return TALSH_NOT_AVAILABLE;
 #endif

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2020/04/13
+REVISION: 2020/05/29
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -545,8 +545,9 @@ Tensor::Impl::Impl(const std::initializer_list<std::size_t> signature, //tensor 
  const int rank = static_cast<int>(dims.size());
  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),NULL,0,
                              NULL,realPart(init_val),imagPart(init_val));
- if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::Tensor): talshTensorConstruct error " << errc << std::endl;
- assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
+ if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::Tensor): talshTensorConstruct error " << errc << std::endl << std::flush;
+ assert(errc == TALSH_SUCCESS);
+ assert(signature.size() == dims.size());
  write_task_ = nullptr;
 }
 
@@ -561,8 +562,9 @@ Tensor::Impl::Impl(const std::vector<std::size_t> & signature, //tensor signatur
  const int rank = static_cast<int>(dims.size());
  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),NULL,0,
                              NULL,realPart(init_val),imagPart(init_val));
- if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::Tensor): talshTensorConstruct error " << errc << std::endl;
- assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
+ if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::Tensor): talshTensorConstruct error " << errc << std::endl << std::flush;
+ assert(errc == TALSH_SUCCESS);
+ assert(signature.size() == dims.size());
  write_task_ = nullptr;
 }
 
@@ -576,8 +578,9 @@ Tensor::Impl::Impl(const std::vector<std::size_t> & signature, //tensor signatur
  int errc = talshTensorClean(&tensor_); assert(errc == TALSH_SUCCESS);
  const int rank = static_cast<int>(dims.size());
  errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),NULL,0);
- if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::Tensor): talshTensorConstruct error " << errc << std::endl;
- assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
+ if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::Tensor): talshTensorConstruct error " << errc << std::endl << std::flush;
+ assert(errc == TALSH_SUCCESS);
+ assert(signature.size() == dims.size());
  std::size_t vol = talshTensorVolume(&tensor_); assert(vol <= ext_data.size());
  errc = talshTensorImportData(&tensor_,TensorData<T>::kind,static_cast<const void*>(ext_data.data()));
  if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::Tensor): talshTensorImportData error " << errc << std::endl;
@@ -603,8 +606,9 @@ Tensor::Impl::Impl(const std::initializer_list<std::size_t> signature, //tensor 
   errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.begin(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem,-1,
                               NULL,realPart(*init_val),imagPart(*init_val));
  }
- if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::Tensor): talshTensorConstruct error " << errc << std::endl;
- assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
+ if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::Tensor): talshTensorConstruct error " << errc << std::endl << std::flush;
+ assert(errc == TALSH_SUCCESS);
+ assert(signature.size() == dims.size());
  write_task_ = nullptr;
 }
 
@@ -626,8 +630,9 @@ Tensor::Impl::Impl(const std::vector<std::size_t> & signature, //tensor signatur
   errc = talshTensorConstruct(&tensor_,TensorData<T>::kind,rank,dims.data(),talshFlatDevId(DEV_HOST,0),(void*)ext_mem,-1,
                               NULL,realPart(*init_val),imagPart(*init_val));
  }
- if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::Tensor): talshTensorConstruct error " << errc << std::endl;
- assert(errc == TALSH_SUCCESS && signature.size() == dims.size());
+ if(errc != TALSH_SUCCESS) std::cout << "#ERROR(talsh::Tensor::Tensor): talshTensorConstruct error " << errc << std::endl << std::flush;
+ assert(errc == TALSH_SUCCESS);
+ assert(signature.size() == dims.size());
  write_task_ = nullptr;
 }
 

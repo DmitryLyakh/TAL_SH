@@ -1,8 +1,8 @@
 !Standard procedures often used by me.
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISON: 2019/09/17
+!REVISON: 2020/05/29
 
-!Copyright (C) 2005-2019 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2005-2020 Dmitry I. Lyakh (Liakh)
 
 !This file is part of ExaTensor.
 
@@ -29,7 +29,8 @@
 	real(8), parameter, public:: BOHR=0.529177249d0    !Bohrs to Angstroms conversion factor
 !Procedures:
 	public:: alphanumeric!checks if the character is alphanumeric
-	public:: alphanumeric_string !checks if the string is alphanumeric_
+	public:: alphanumeric_underscore!checks if the character is alphanumeric or underscore
+	public:: alphanumeric_string !checks if the string is alphanumeric (with underscores allowed)
 	public:: array2string!converts a character*1 array into a string
 	public:: byte_chksum !returns the raw byte check sum for a given memory segment
 	public:: cap_ascii   !makes all English letters capital
@@ -99,6 +100,24 @@
 	 endif
 	 return
 	end function alphanumeric
+!---------------------------------------------------
+	logical function alphanumeric_underscore(ch)
+!Returns TRUE if the character is ASCII alphanumeric or underscore, FALSE otherwise.
+!A space is not considered alphanumeric.
+	 implicit none
+	 character(1), intent(in):: ch
+	 alphanumeric_underscore=.FALSE.
+	 if(is_it_letter(ch).gt.0) then
+	  alphanumeric_underscore=.TRUE.
+	 else
+	  if(is_it_number(ch).ge.0) then
+	   alphanumeric_underscore=.TRUE.
+	  else
+	   if(ch.eq.'_') alphanumeric_underscore=.TRUE.
+	  endif
+	 endif
+	 return
+	end function alphanumeric_underscore
 !------------------------------------------------
 	logical function alphanumeric_string(str)
 !Returns TRUE if the string only contains ASCII alphanumeric + underscore,
@@ -111,7 +130,7 @@
 	 l=len(str)
 	 if(l.gt.0) then
 	  do i=1,l
-	   if(.not.(alphanumeric(str(i:i)).or.str(i:i).eq.'_')) then
+	   if(.not.alphanumeric_underscore(str(i:i))) then
 	    alphanumeric_string=.FALSE.
 	    exit
 	   endif
