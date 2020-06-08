@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/06/05
+REVISION: 2020/06/08
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -75,9 +75,9 @@ static int LOGGING_OPS=0; //logging basic tensor operations
 static int talsh_on=0;             //TAL-SH initialization flag (1:initalized; 0:not)
 static omp_nest_lock_t talsh_lock; //TAL-SH global lock for thread safety
 static clock_t talsh_begin_time;   //TAL-SH begin time (zero time reference)
-// Accelerator configuration (`Needs modification for non-contiguous subranges):
-static int talsh_gpu_beg;          //first Nvidia GPU in the range `Obsolete
-static int talsh_gpu_end;          //last Nvidia GPU in the range `Obsolete
+// Accelerator configuration:
+static int talsh_gpu_beg;          //first Nvidia GPU in the assigned range
+static int talsh_gpu_end;          //last Nvidia GPU in the assigned range
 // Device status:
 static int talsh_cpu=DEV_OFF;
 static int talsh_gpu[MAX_GPUS_PER_NODE]={DEV_OFF}; //current GPU status: {DEV_OFF,DEV_ON,DEV_ON_BLAS}
@@ -5153,11 +5153,19 @@ int talshTensorContractXL(const char * cptrn,   //in: C-string: symbolic contrac
  // Check execution device:
  if(dev_kind == DEV_DEFAULT){
   if(dev_id == DEV_DEFAULT){
-   dev_kind=DEV_HOST; dev_id=0;
+#ifndef NO_GPU
+   if(talsh_gpu_beg <= talsh_gpu_end){
+    dev_kind=DEV_NVIDIA_GPU; dev_beg=talsh_gpu_beg; dev_end=talsh_gpu_end;
+   }else{
+    dev_kind=DEV_HOST; dev_beg=0; dev_end=0;
+   }
+#else
+   dev_kind=DEV_HOST; dev_beg=0; dev_end=0;
+#endif
   }else{
    dev_id=talshKindDevId(dev_id,&dev_kind);
+   dev_beg=dev_id; dev_end=dev_id;
   }
-  dev_beg=dev_id; dev_end=dev_id;
  }else{
   if(dev_id == DEV_DEFAULT){
    switch(dev_kind){
