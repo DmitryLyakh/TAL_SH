@@ -149,10 +149,6 @@ static void host_task_print(const host_task_t * host_task);
 // C tensor block aliasing:
 static int talsh_tensor_c_assoc(const talsh_tens_t * talsh_tens, int image_id, tensBlck_t ** tensC);
 static int talsh_tensor_c_dissoc(tensBlck_t * tensC);
-// Find an optimal device for a 1-, 2-, or 3-ary tensor operation:
-static int talsh_find_optimal_device(const talsh_tens_t * tens0,
-                                     const talsh_tens_t * tens1 = NULL,
-                                     const talsh_tens_t * tens2 = NULL);
 // Additional TAL-SH tensor API:
 static int talshTensorIsHealthy(const talsh_tens_t * talsh_tens);
 // Additional TAL-SH task API:
@@ -376,7 +372,7 @@ static int talsh_tensor_c_dissoc(tensBlck_t * tensC) //inout: <tensBlck_t> creat
  return errc;
 }
 
-static int talsh_find_optimal_device(const talsh_tens_t * tens0, const talsh_tens_t * tens1, const talsh_tens_t * tens2)
+int talshDetermineOptimalDevice(const talsh_tens_t * tens0, const talsh_tens_t * tens1, const talsh_tens_t * tens2)
 /** Given tensor arguments, returns a flat id of the most appropriate device
     based on the data residence, tensor sizes, and current device occupation.
     A negative return status indicates an error. **/
@@ -3555,7 +3551,7 @@ int talshTensorInit(talsh_tens_t * dtens,
  //Determine the execution device (devid:[dvk,dvn]):
  if(dev_kind == DEV_DEFAULT){ //device kind is not specified explicitly
   if(dev_id == DEV_DEFAULT){ //neither specific device nor device kind are specified: Find one
-   devid=talsh_find_optimal_device(dtens);
+   devid=talshDetermineOptimalDevice(dtens);
    if(devid < 0 || devid >= DEV_MAX){
     tsk->task_error=103; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
    }
@@ -3777,7 +3773,7 @@ int talshTensorSlice(talsh_tens_t * dtens, //inout: destination tensor block (te
  //Determine the execution device (devid:[dvk,dvn]):
  if(dev_kind == DEV_DEFAULT){ //device kind is not specified explicitly
   if(dev_id == DEV_DEFAULT){ //neither specific device nor device kind are specified: Find one
-   devid=talsh_find_optimal_device(dtens,ltens);
+   devid=talshDetermineOptimalDevice(dtens,ltens);
    if(devid < 0 || devid >= DEV_MAX){
     tsk->task_error=104; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
    }
@@ -4038,7 +4034,7 @@ int talshTensorInsert(talsh_tens_t * dtens, //inout: destination tensor block
  //Determine the execution device (devid:[dvk,dvn]):
  if(dev_kind == DEV_DEFAULT){ //device kind is not specified explicitly
   if(dev_id == DEV_DEFAULT){ //neither specific device nor device kind are specified: Find one
-   devid=talsh_find_optimal_device(dtens,ltens);
+   devid=talshDetermineOptimalDevice(dtens,ltens);
    if(devid < 0 || devid >= DEV_MAX){
     tsk->task_error=104; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
    }
@@ -4303,7 +4299,7 @@ int talshTensorCopy(const char * cptrn,   //in: tensor copy pattern
  //Determine the execution device (devid:[dvk,dvn]):
  if(dev_kind == DEV_DEFAULT){ //device kind is not specified explicitly
   if(dev_id == DEV_DEFAULT){ //neither specific device nor device kind are specified: Find one
-   devid=talsh_find_optimal_device(dtens,ltens);
+   devid=talshDetermineOptimalDevice(dtens,ltens);
    if(devid < 0 || devid >= DEV_MAX){
     tsk->task_error=104; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
    }
@@ -4578,7 +4574,7 @@ int talshTensorAdd(const char * cptrn,   //in: tensor addition pattern
  //Determine the execution device (devid:[dvk,dvn]):
  if(dev_kind == DEV_DEFAULT){ //device kind is not specified explicitly
   if(dev_id == DEV_DEFAULT){ //neither specific device nor device kind are specified: Find one
-   devid=talsh_find_optimal_device(dtens,ltens);
+   devid=talshDetermineOptimalDevice(dtens,ltens);
    if(devid < 0 || devid >= DEV_MAX){
     tsk->task_error=104; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
    }
@@ -4860,7 +4856,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
  //Determine the execution device (devid:[dvk,dvn]):
  if(dev_kind == DEV_DEFAULT){ //device kind is not specified explicitly
   if(dev_id == DEV_DEFAULT){ //neither specific device nor device kind are specified: Find one
-   devid=talsh_find_optimal_device(dtens,ltens,rtens);
+   devid=talshDetermineOptimalDevice(dtens,ltens,rtens);
    if(devid < 0 || devid >= DEV_MAX){
     tsk->task_error=104; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
    }
@@ -5432,7 +5428,7 @@ int talshTensorDecomposeSVD(const char * cptrn,   //in: C-string: symbolic decom
  //Determine the execution device (devid:[dvk,dvn]):
  if(dev_kind == DEV_DEFAULT){ //device kind is not specified explicitly
   if(dev_id == DEV_DEFAULT){ //neither specific device nor device kind are specified: Find one
-   devid=talsh_find_optimal_device(dtens,ltens,rtens);
+   devid=talshDetermineOptimalDevice(dtens,ltens,rtens);
    if(devid < 0 || devid >= DEV_MAX) return TALSH_FAILURE;
   }else{ //<dev_id> is a flat device id
    devid=dev_id;

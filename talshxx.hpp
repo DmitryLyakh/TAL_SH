@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2020/05/29
+REVISION: 2020/06/08
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -427,6 +427,10 @@ public:
  /** Returns a non-owning pointer to the write task, or nullptr. **/
  TensorTask * getWriteTask();
 
+ friend int determineOptimalDevice(Tensor & tens0);
+ friend int determineOptimalDevice(Tensor & tens0, Tensor & tens1);
+ friend int determineOptimalDevice(Tensor & tens0, Tensor & tens1, Tensor & tens2);
+
 private:
 
  //Private methods:
@@ -515,6 +519,14 @@ std::size_t getDeviceMaxTensorSize(const int device_kind = DEV_HOST, //in: devic
 // Max device memory buffer size (bytes) per specified device:
 std::size_t getDeviceMaxBufferSize(const int device_kind = DEV_HOST, //in: device kind
                                    const int device_id = 0);         //in: device id
+
+// Determine the optimal execution device for given tensors:
+int determineOptimalDevice(Tensor & tens0);
+int determineOptimalDevice(Tensor & tens0,
+                           Tensor & tens1);
+int determineOptimalDevice(Tensor & tens0,
+                           Tensor & tens1,
+                           Tensor & tens2);
 
 // Enable fast math on a given device(s):
 bool enableFastMath(int device_kind,              //in: device kind
