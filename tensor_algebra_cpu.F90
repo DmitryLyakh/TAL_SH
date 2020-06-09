@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/05/29
+!REVISION: 2020/06/09
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -8458,9 +8458,9 @@
 	real(real_kind), intent(in), optional:: alpha !BLAS alpha
 	real(real_kind), intent(in), optional:: beta  !BLAS beta (defaults to 1)
 	integer i,j,k,l,m,n
-	real(real_kind) val,alf,bet
+	real(real_kind) alf,bet
 	integer(LONGINT) l0
-	real(8) time_beg,tm
+	real(8) time_beg,tm,val
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
 !DIR$ ATTRIBUTES ALIGN:128:: real_kind
@@ -8472,7 +8472,7 @@
 	if(present(alpha)) then; alf=alpha; else; alf=1.0; endif
 	if(present(beta)) then; bet=beta; else; bet=1.0; endif
 	if(dc.gt.0_LONGINT) then
-	 val=0.0
+	 val=0d0
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val)
 	 do l0=0_LONGINT,dc-1_LONGINT
           val=val+ltens(l0)*rtens(l0)
@@ -8552,7 +8552,8 @@
 	complex(real_kind), intent(in), optional:: alpha !BLAS alpha
 	complex(real_kind), intent(in), optional:: beta  !BLAS beta (defaults to 1)
 	integer i,j,k,l,m,n
-	complex(real_kind) val,alf,bet
+	complex(real_kind) alf,bet
+	complex(8) val
 	integer(LONGINT) l0
 	real(8) time_beg,tm
 #ifndef NO_PHI
@@ -8566,7 +8567,7 @@
 	if(present(alpha)) then; alf=alpha; else; alf=(1.0,0.0); endif
 	if(present(beta)) then; bet=beta; else; bet=(1.0,0.0); endif
 	if(dc.gt.0_LONGINT) then
-	 val=(0.0,0.0)
+	 val=(0d0,0d0)
 !$OMP PARALLEL DO DEFAULT(SHARED) PRIVATE(l0) SCHEDULE(GUIDED) REDUCTION(+:val)
 	 do l0=0_LONGINT,dc-1_LONGINT
           val=val+ltens(l0)*rtens(l0)
@@ -8578,7 +8579,7 @@
 	endif
 !       tm=thread_wtime(time_beg) !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_c4): time/speed/error = ",2(F10.4,1x),i3)') &
-!        tm,2d0*dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
+!        tm,8d0*dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_fcontract_dlf_c4
 !-------------------------------------------------------------------------------------
@@ -8625,7 +8626,7 @@
 	endif
 !       tm=thread_wtime(time_beg) !debug
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_fcontract_dlf_c8): time/speed/error = ",2(F10.4,1x),i3)') &
-!        tm,2d0*dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
+!        tm,8d0*dble(dc)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_fcontract_dlf_c8
 !-------------------------------------------------------------------------------------------
