@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2020/06/08
+REVISION: 2020/06/19
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -177,18 +177,23 @@ Tensor & Tensor::operator--()
 /** Synchronizes the tensor presence on the given device.
     Returns TRUE on success, FALSE if an active write task
     on this tensor has failed to complete successfully. **/
-bool Tensor::sync(const int device_kind, const int device_id, void * device_mem, bool exclusive)
+bool Tensor::sync(TensorTask * task_handle, const int device_kind, const int device_id, void * device_mem, bool exclusive)
 {
  bool res = this->completeWriteTask();
  if(res){
   int errc;
+  talsh_task_t * task_hl = NULL;
+  if(task_handle != nullptr){
+   bool task_empty = task_handle->isEmpty(); assert(task_empty);
+   task_hl = task_handle->getTalshTaskPtr();
+  }
   if(device_mem != nullptr){ //client provided an explicit buffer to place the tensor into
-   errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,device_mem);
+   errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,device_mem,COPY_M,task_hl);
   }else{ //no explicit buffer provided, use saved information (if any)
    if(device_kind == DEV_HOST){
-    errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,pimpl_->host_mem_);
+    errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,pimpl_->host_mem_,COPY_M,task_hl);
    }else{
-    errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind);
+    errc = talshTensorPlace(&(pimpl_->tensor_),device_id,device_kind,NULL,COPY_M,task_hl);
    }
   }
   assert(errc == TALSH_SUCCESS);
@@ -198,6 +203,21 @@ bool Tensor::sync(const int device_kind, const int device_id, void * device_mem,
   }
  }
  return res;
+}
+
+
+bool Tensor::sync(const int device_kind, const int device_id, void * device_mem, bool exclusive)
+{
+ return sync(nullptr,device_kind,device_id,device_mem,exclusive);
+}
+
+
+/** Discards the tensor body image from a given device. **/
+void Tensor::discardImage(const int device_kind, const int device_id)
+{
+ auto errc = talshTensorDiscard(&(pimpl_->tensor_),device_id,device_kind);
+ assert(errc == TALSH_SUCCESS);
+ return;
 }
 
 

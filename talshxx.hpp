@@ -225,13 +225,24 @@ public:
  Tensor & operator++(); //increments tensor use count
  Tensor & operator--(); //decrements tensor use count
 
- /** Synchronizes the tensor presence on the given device.
-     Returns TRUE on success, FALSE if an active write task
-     on this tensor has failed to complete successfully. **/
+ /** Synchronizes the tensor presence on the given device. Returns TRUE on success,
+     FALSE if an active write task on this tensor has failed to complete successfully.
+     Note that regardless of the value of "exclusive" the tensor body image is moved to
+     the given device from some other device, that is, "exclusive" = TRUE will only
+     apply to the remaining tensor body images. **/
  bool sync(const int device_kind = DEV_HOST, //in: device kind
            const int device_id = 0,          //in: specific device of the given kind which the synchronization is done for
            void * device_mem = nullptr,      //in: optional pointer to that device's client memory where the tensor data should go
-           bool exclusive = false);          //in: if true, tensor images on all other devices will be discarded
+           bool exclusive = false);          //in: if true, remaining tensor images on all other devices will be discarded
+ bool sync(TensorTask * task_handle,         //out: task handle associated with this operation or nullptr (synchronous)
+           const int device_kind = DEV_HOST, //in: device kind
+           const int device_id = 0,          //in: specific device of the given kind which the synchronization is done for
+           void * device_mem = nullptr,      //in: optional pointer to that device's client memory where the tensor data should go
+           bool exclusive = false);          //in: if true, remaining tensor images on all other devices will be discarded
+
+ /** Discards the tensor body image from a given device. **/
+ void discardImage(const int device_kind, //in: device kind
+                   const int device_id);  //in: specific device of the given kind
 
  /** Returns TRUE if the tensor is ready (has been computed).
      If ready, synchronizes its presence on the given device. **/
