@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2020/06/08
+REVISION: 2020/06/19
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -427,6 +427,9 @@ public:
  /** Returns a non-owning pointer to the write task, or nullptr. **/
  TensorTask * getWriteTask();
 
+ /** Returns a pointer to the underlying C TAL-SH tensor implementation. **/
+ talsh_tens_t * getTalshTensorPtr();
+
  friend int determineOptimalDevice(Tensor & tens0);
  friend int determineOptimalDevice(Tensor & tens0, Tensor & tens1);
  friend int determineOptimalDevice(Tensor & tens0, Tensor & tens1, Tensor & tens2);
@@ -434,7 +437,6 @@ public:
 private:
 
  //Private methods:
- talsh_tens_t * getTalshTensorPtr();
  bool completeWriteTask();
  bool testWriteTask(int * status);
 

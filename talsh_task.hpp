@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: C++ TAL-SH task
-REVISION: 2019/09/04
+REVISION: 2020/06/19
 
-Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -57,10 +57,27 @@ public:
  /** Returns the current TAL-SH task status in <status>, together with TRUE if the TAL-SH task has completed. **/
  bool test(int * status);
 
-private:
+ /** Returns the execution device kind and its specifc id.
+     Negative id on return means device is undefined. **/
+ int getExecutionDevice(int * device_kind);
 
-//Methods:
+ /** Returns the total number of tensor arguments used in the TAL-SH task. **/
+ unsigned int getNumTensorArguments() const;
+
+ /** Returns a specific tensor argument used in the TAL-SH task or nullptr if it does not exist. **/
+ const Tensor * getTensorArgument(unsigned int arg_num) const;
+
+ /** Returns all tensor arguments and their images used in the TAL-SH task or NULL if none. **/
+ const talshTensArg_t * getTensorArgumentImages(int * num_arguments);
+
+ /** Returns the tensor argument coherence control value used in the TAL-SH task.
+     Negative value on return means undefined. **/
+ int getTensorArgumentCoherence();
+
+ /** Returns a pointer to the underlying C TAL-SH task implementation. **/
  talsh_task_t * getTalshTaskPtr();
+
+private:
 
 //Data members:
  talsh_task_t talsh_task_;                    //TAL-SH task handle

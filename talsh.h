@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2020/06/08
+REVISION: 2020/06/19
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -353,6 +353,11 @@ extern "C"{
  int talshTaskDevId(talsh_task_t * talsh_task,
                     int * dev_kind = NULL);
  int talshTaskDevId_(talsh_task_t * talsh_task, int * dev_kind);
+//  Get the argument coherence control value used in the TAL-SH task:
+ int talshTaskArgCoherence(const talsh_task_t * talsh_task);
+//  Get the tensor arguments used in the TAL-SH task:
+ const talshTensArg_t * talshTaskTensArgs(const talsh_task_t * talsh_task,
+                                          int * num_args);
 //  Get the TAL-SH task status:
  int talshTaskStatus(talsh_task_t * talsh_task);
 //  Check whether a TAL-SH task has completed:

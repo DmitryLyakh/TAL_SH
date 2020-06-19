@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/06/08
+REVISION: 2020/06/19
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -2282,6 +2282,25 @@ int talshTaskDevId(talsh_task_t * talsh_task, int * dev_kind)
 int talshTaskDevId_(talsh_task_t * talsh_task, int * dev_kind) //Fortran wrapper
 {
  return talshTaskDevId(talsh_task,dev_kind);
+}
+
+int talshTaskArgCoherence(const talsh_task_t * talsh_task)
+{
+#pragma omp flush
+ if(talsh_task == NULL) return -1;
+ return talsh_task->coherence;
+}
+
+const talshTensArg_t * talshTaskTensArgs(const talsh_task_t * talsh_task, int * num_args)
+{
+#pragma omp flush
+ if(talsh_task != NULL){
+  if(num_args != NULL) *num_args=talsh_task->num_args;
+  return talsh_task->tens_args;
+ }else{
+  if(num_args != NULL) *num_args=0;
+ }
+ return NULL;
 }
 
 int talshTaskStatus(talsh_task_t * talsh_task)
