@@ -1,8 +1,8 @@
 /** TAL-SH: Byte packet
-REVISION: 2019/09/13
+REVISION: 2020/06/30
 
-Copyright (C) 2018-2019 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2018-2019 Oak Ridge National Laboratory (UT-Battelle) **/
+Copyright (C) 2018-2020 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2018-2020 Oak Ridge National Laboratory (UT-Battelle) **/
 
 #ifndef BYTE_PACKET_H_
 #define BYTE_PACKET_H_
@@ -25,6 +25,9 @@ void initBytePacket(BytePacket * packet,
                     unsigned long long max_size = BYTE_PACKET_CAPACITY);
 
 /** Destroys the byte packet. **/
+void destroyBytePacket(BytePacket * packet);
+
+/** Clears the byte packet (reusing the buffer). **/
 void clearBytePacket(BytePacket * packet);
 
 /** Resets the position inside the byte packet. **/
