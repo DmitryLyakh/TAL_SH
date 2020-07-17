@@ -609,10 +609,9 @@ int Tensor::orthogonalizeMGS(TensorTask * task_handle, //out: task handle associ
  talsh_tens_t * dtens = this->getTalshTensorPtr();
  int num_iso_dims = static_cast<int>(iso_dims.size());
  assert(num_iso_dims > 0);
- int isodims[num_iso_dims];
- for(int i = 0; i < num_iso_dims; ++i) isodims[i] = static_cast<int>(iso_dims[i]);
+ std::vector<int> isodims(std::begin(iso_dims),std::end(iso_dims));
  if(task_handle != nullptr) task_handle->clean();
- errc = talshTensorOrthogonalizeMGS(dtens,num_iso_dims,isodims,device_id,device_kind);
+ errc = talshTensorOrthogonalizeMGS(dtens,num_iso_dims,isodims.data(),device_id,device_kind);
  return errc;
 }
 
