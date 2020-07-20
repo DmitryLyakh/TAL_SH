@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/06/09
+!REVISION: 2020/07/13
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -3716,6 +3716,21 @@
           write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_contract): NaN detected in right input tensor!")')
           flush(CONS_OUT)
           call crash()
+         endif
+         if(present(accumulative)) then
+          if(accumulative) then
+           if(tensor_block_has_nan(dtens)) then
+            write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_contract): NaN detected in the output tensor on entrance!")')
+            flush(CONS_OUT)
+            call crash()
+           endif
+          endif
+         else
+          if(tensor_block_has_nan(dtens)) then
+           write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_contract): NaN detected in the output tensor on entrance!")')
+           flush(CONS_OUT)
+           call crash()
+          endif
          endif
         endif
 !Get the argument types:

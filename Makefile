@@ -399,7 +399,11 @@ FFLAGS_IBM_PRF = -c -qsmp=omp -g -O3
 FFLAGS = $(FFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(DF)$(NO_GPU) $(DF)$(NO_AMD) $(DF)$(NO_PHI) $(DF)$(NO_BLAS) $(DF)-D$(EXA_OS) $(PIC_FLAG)
 
 #THREADS:
-LTHREAD_GNU   = -lgomp
+ifeq ($(BUILD_TYPE),DEV)
+LTHREAD_GNU   = -fopenmp
+else
+LTHREAD_GNU   = -fopenmp
+endif
 LTHREAD_PGI   = -mp -lpthread
 LTHREAD_INTEL = -liomp5
 LTHREAD_CRAY  = -fopenmp

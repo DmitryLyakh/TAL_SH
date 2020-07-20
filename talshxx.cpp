@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API implementation.
-REVISION: 2020/06/27
+REVISION: 2020/07/20
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -607,11 +607,12 @@ int Tensor::orthogonalizeMGS(TensorTask * task_handle, //out: task handle associ
  int errc = TALSH_SUCCESS;
  this->completeWriteTask();
  talsh_tens_t * dtens = this->getTalshTensorPtr();
+ int isodims[MAX_TENSOR_RANK];
  int num_iso_dims = static_cast<int>(iso_dims.size());
- assert(num_iso_dims > 0);
- std::vector<int> isodims(std::begin(iso_dims),std::end(iso_dims));
+ assert(num_iso_dims > 0 && num_iso_dims <= MAX_TENSOR_RANK);
+ for(int i = 0; i < num_iso_dims; ++i) isodims[i] = static_cast<int>(iso_dims[i]);
  if(task_handle != nullptr) task_handle->clean();
- errc = talshTensorOrthogonalizeMGS(dtens,num_iso_dims,isodims.data(),device_id,device_kind);
+ errc = talshTensorOrthogonalizeMGS(dtens,num_iso_dims,isodims,device_id,device_kind);
  return errc;
 }
 
