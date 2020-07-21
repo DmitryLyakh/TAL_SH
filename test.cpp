@@ -1,7 +1,7 @@
 /** TALSH::C/C++ API testing.
 
-!Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -19,42 +19,33 @@
 !along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 **/
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-#include <time.h>
-#include <assert.h>
-
-#include "device_algebra.h"
+#include "talshxx.hpp"
 #include "talsh.h"
-
-#ifdef __cplusplus
+#include "device_algebra.h"
 
 #include <iostream>
 #include <memory>
 #include <string>
 #include <complex>
 
-#include "talshxx.hpp"
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
+#include <ctime>
+#include <cassert>
 
-#endif
-
-#ifdef __cplusplus
 extern "C"{
-#endif
-void test_talsh_c(int * ierr);
-void test_talsh_cxx(int * ierr);
-void test_talsh_xl(int * ierr);
-void test_talsh_svd(int * ierr);
-void test_talsh_qc_xl(int * ierr);
-void test_talsh_qc(int * ierr);
-void test_nwchem_c(int * ierr);
+ void test_talsh_c(int * ierr);
+ void test_talsh_cxx(int * ierr);
+ void test_talsh_xl(int * ierr);
+ void test_talsh_svd(int * ierr);
+ void test_talsh_qc_xl(int * ierr);
+ void test_talsh_qc(int * ierr);
+ void test_nwchem_c(int * ierr);
 #ifndef NO_GPU
-void test_nvtal_c(int * ierr);
+ void test_nvtal_c(int * ierr);
 #endif
-#ifdef __cplusplus
 }
-#endif
 
 
 void test_talsh_c(int * ierr)
@@ -187,7 +178,6 @@ void test_talsh_c(int * ierr)
 }
 
 
-#ifdef __cplusplus
 void test_talsh_cxx(int * ierr)
 {
  const int VDIM=40; //virtual dimension size
@@ -852,7 +842,6 @@ void test_talsh_qc(int * ierr)
 
  return;
 }
-#endif //__cplusplus
 
 
 void test_nwchem_c(int * ierr)

@@ -15,7 +15,7 @@ export BUILD_TYPE ?= OPT
 #MPI library base: [NONE]:
 export MPILIB ?= NONE
 #BLAS: [ATLAS|MKL|OPENBLAS|ACML|LIBSCI|ESSL|NONE]:
-export BLASLIB ?= NONE
+export BLASLIB ?= OPENBLAS
 #NVIDIA GPU via CUDA: [CUDA|NOCUDA]:
 export GPU_CUDA ?= NOCUDA
 #NVIDIA GPU architecture (two digits, >=35):
@@ -27,7 +27,7 @@ export EXA_OS ?= LINUX
 #ADJUST EXTRAS (optional):
 
 #LAPACK: [YES|NO]:
-export WITH_LAPACK ?= NO
+export WITH_LAPACK ?= YES
 #Fast GPU tensor transpose (cuTT library): [YES|NO]:
 export WITH_CUTT ?= NO
 #In-place GPU tensor contraction (cuTensor library): [YES|NO]
@@ -66,7 +66,7 @@ export PATH_BLAS_MKL ?= $(PATH_INTEL)/mkl/lib/intel64
 export PATH_BLAS_MKL_DEP ?= $(PATH_INTEL)/compilers_and_libraries/linux/lib/intel64_lin
 export PATH_BLAS_MKL_INC ?= $(PATH_INTEL)/mkl/include/intel64/lp64
 # Set this path if you have chosen OpenBLAS:
-export PATH_BLAS_OPENBLAS ?= /usr/lib/x86_64-linux-gnu
+export PATH_BLAS_OPENBLAS ?= /usr/local/blas/openblas/lib
 # Set this path if you have chosen ACML:
 export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
 # Set this path if you have chosen Cray LibSci:
@@ -80,8 +80,8 @@ export PATH_IBM_XL_FOR ?= /sw/summit/xl/16.1.1-3/xlf/16.1.1/lib
 export PATH_IBM_XL_SMP ?= /sw/summit/xl/16.1.1-3/xlsmp/5.1.1/lib
 
 #LAPACK (only set these if you have chosen WITH_LAPACK=YES above):
-export PATH_LAPACK_LIB ?= /usr/lib/x86_64-linux-gnu
-export LAPACK_LIBS ?= -llapack
+export PATH_LAPACK_LIB ?= $(PATH_BLAS_OPENBLAS)
+export LAPACK_LIBS ?= -L.
 
 #CUDA (set these only if you build with CUDA):
 export PATH_CUDA ?= /usr/local/cuda
@@ -415,8 +415,8 @@ LFLAGS = $(MPI_LINK) $(LA_LINK) $(LTHREAD) $(CUDA_LINK) $(LIB)
 
 OBJS =  ./OBJ/dil_basic.o ./OBJ/stsubs.o ./OBJ/combinatoric.o ./OBJ/symm_index.o ./OBJ/timer.o ./OBJ/timers.o ./OBJ/nvtx_profile.o \
 	./OBJ/byte_packet.o ./OBJ/tensor_algebra.o ./OBJ/tensor_algebra_cpu.o ./OBJ/tensor_algebra_cpu_phi.o \
-	./OBJ/tensor_dil_omp.o ./OBJ/mem_manager.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/talshf.o ./OBJ/talshc.o \
-	./OBJ/talsh_task.o ./OBJ/talshxx.o
+	./OBJ/tensor_dil_omp.o ./OBJ/mem_manager.o ./OBJ/tensor_algebra_gpu.o ./OBJ/tensor_algebra_gpu_nvidia.o \
+	./OBJ/talshf.o ./OBJ/talshc.o ./OBJ/talsh_task.o ./OBJ/talshxx.o
 
 $(NAME): lib$(NAME).a ./OBJ/test.o ./OBJ/main.o
 	$(FCOMP) ./OBJ/main.o ./OBJ/test.o lib$(NAME).a $(LFLAGS) -o test_$(NAME).x
@@ -485,6 +485,9 @@ endif
 
 ./OBJ/mem_manager.o: mem_manager.cpp mem_manager.h tensor_algebra.h device_algebra.h
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) mem_manager.cpp -o ./OBJ/mem_manager.o
+
+./OBJ/tensor_algebra_gpu.o: tensor_algebra_gpu.cpp tensor_algebra.h mem_manager.h
+	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) tensor_algebra_gpu.cpp -o ./OBJ/tensor_algebra_gpu.o
 
 ./OBJ/tensor_algebra_gpu_nvidia.o: tensor_algebra_gpu_nvidia.cu talsh_complex.h tensor_algebra.h device_algebra.h
 ifeq ($(GPU_CUDA),CUDA)

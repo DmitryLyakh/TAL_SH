@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: C++ TAL-SH task
-REVISION: 2020/06/19
+REVISION: 2020/07/21
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -24,9 +24,9 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #ifndef TALSH_TASK_HPP_
 #define TALSH_TASK_HPP_
 
-#include <tuple>
-
 #include "talsh.h" //TAL-SH C header
+
+#include <tuple>
 
 namespace talsh{
 

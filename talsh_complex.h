@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Complex arithmetic header.
-REVISION: 2019/04/17
+REVISION: 2020/07/21
 
-Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -24,7 +24,7 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #ifndef TALSH_COMPLEX_H_
 #define TALSH_COMPLEX_H_
 
-#include <math.h>
+#include <cmath>
 
 #ifdef __cplusplus
 #include <complex>

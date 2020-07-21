@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/06/19
+REVISION: 2020/07/21
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -54,17 +54,17 @@ FOR DEVELOPER(s):
       conversion.
 **/
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-
-#include <omp.h>
-
-#include "timer.h"
+#include "talsh.h"
+#include "talsh_complex.h"
 #include "device_algebra.h"
 #include "mem_manager.h"
-#include "talsh_complex.h"
-#include "talsh.h"
+#include "timer.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+
+#include <omp.h>
 
 //PARAMETERS:
 static int VERBOSE=1;     //verbosity for errors
@@ -95,9 +95,7 @@ typedef struct{
 } host_task_t;
 
 //PROTOTYPES OF IMPORTED FUNCTIONS:
-#ifdef __cplusplus
 extern "C"{
-#endif
 // CP-TAL tensor operations:
 int cpu_tensor_block_init(void * dftr, double val_real, double val_imag, int arg_conj);
 int cpu_tensor_block_slice(void * lftr, void * dftr, const int * offsets, int accumulative);
@@ -115,14 +113,10 @@ int talsh_get_contr_ptrn_str2dig(const char * c_str, int * dig_ptrn,
 int talsh_tensor_f_assoc(const talsh_tens_t * talsh_tens, int image_id, void ** tensF);
 int talsh_tensor_f_dissoc(void * tensF);
 int talsh_update_f_scalar(void * tensF, int data_kind, void * gmem_p);
-#ifdef __cplusplus
 }
-#endif
 
 //PROTOTYPES OF INTERNAL FUNCTIONS:
-#ifdef __cplusplus
 extern "C"{
-#endif
 // Error counters:
 static void talsh_raise_not_clean();
 // Tensor body image info (exported to talshf.F90):
@@ -155,9 +149,7 @@ static int talshTensorIsHealthy(const talsh_tens_t * talsh_tens);
 static int talshTaskConstruct(talsh_task_t * talsh_task, int dev_kind, int coh_ctrl, int data_kind = NO_TYPE);
 static int talshTaskSetArg(talsh_task_t * talsh_task, talsh_tens_t * talsh_tens_p, int image_id);
 static int talshTaskFinalize(talsh_task_t * talsh_task, int task_status);
-#ifdef __cplusplus
 }
-#endif
 
 //INTERNAL FUNCTIONS:
 // Error counters:

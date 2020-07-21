@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Memory management API header.
-REVISION: 2019/11/27
+REVISION: 2020/07/21
 
-Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -24,6 +24,8 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #ifndef MEM_MANAGER_H_
 #define MEM_MANAGER_H_
 
+#include <cstddef>
+
 //Types:
 // Generic slab:
 typedef struct{
@@ -39,9 +41,7 @@ typedef struct{
 } slab_t;
 
 //Exported functions:
-#ifdef __cplusplus
 extern "C"{
-#endif
 //Buffer memory management (all devices):
  int arg_buf_allocate(size_t *arg_buf_size, int *arg_max, int gpu_beg, int gpu_end); //generic
  int arg_buf_deallocate(int gpu_beg, int gpu_end); //generic
@@ -99,8 +99,6 @@ extern "C"{
  int gpu_mem_alloc(void **dev_ptr, size_t tsize, int gpu_id = -1); //NVidia GPU only
  int gpu_mem_free(void *dev_ptr, int gpu_id = -1); //NVidia GPU only
 #endif /*NO_GPU*/
-#ifdef __cplusplus
 }
-#endif
 
 #endif /*MEM_MANAGER_H_*/

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2020/06/30
+REVISION: 2020/07/21
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -24,18 +24,17 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #ifndef TALSHXX_HPP_
 #define TALSHXX_HPP_
 
+#include "talsh_task.hpp" //TAL-SH C++ task
+#include "talsh.h"        //TAL-SH C header
+#include "mem_manager.h"  //TAL-SH memory manager
+
 #include <iostream>
 #include <complex>
 #include <memory>
 #include <initializer_list>
 #include <vector>
 #include <string>
-
 #include <cassert>
-
-#include "mem_manager.h"  //TAL-SH memory manager
-#include "talsh.h"        //TAL-SH C header
-#include "talsh_task.hpp" //TAL-SH C++ task
 
 namespace talsh{
 

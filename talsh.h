@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2020/06/22
+REVISION: 2020/07/21
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -24,10 +24,10 @@ along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
 #ifndef TALSH_H_
 #define TALSH_H_
 
-#include <math.h>
+#include "tensor_algebra.h"
 #include "timer.h"
 
-#include "tensor_algebra.h"
+#include <cmath>
 
 //TAL-SH PARAMETERS:
 #define TALSH_MAX_DEV_PRESENT 16 //max number of on-node devices the tensor block can be simultaneously present on

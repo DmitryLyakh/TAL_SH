@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2020/04/12
+REVISION: 2020/07/21
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -64,7 +64,9 @@ FOR DEVELOPERS ONLY:
 #ifndef DEVICE_ALGEBRA_H_
 #define DEVICE_ALGEBRA_H_
 
-#include <time.h>
+#include "tensor_algebra.h"
+
+#include <ctime>
 
 #ifndef NO_GPU
 
@@ -82,8 +84,6 @@ FOR DEVELOPERS ONLY:
 #endif
 
 #endif /*NO_GPU*/
-
-#include "tensor_algebra.h"
 
 //DEVICE COMPUTE CAPABILITY (for Host code, but use __CUDA_ARCH__ for device code):
 #ifndef CUDA_ARCH
@@ -189,9 +189,7 @@ typedef struct{
 //Note: Adding new CUDA events will require adjustment of NUM_EVENTS_PER_TASK.
 
 //FUNCTION PROTOTYPES:
-#ifdef __cplusplus
 extern "C"{
-#endif
 #ifndef NO_GPU
 // NVidia GPU operations (NV-TAL):
 //  NV-TAL debugging:
@@ -216,7 +214,7 @@ extern "C"{
  void gpu_set_transpose_algorithm(int alg); //{EFF_TRN_OFF,EFF_TRN_ON,EFF_TRN_ON_CUTT}
  void gpu_set_matmult_algorithm(int alg);
  int gpu_print_stats(int gpu_num = -1);
-#endif /*NO_GPU */
+#endif /*NO_GPU*/
 //  C tensor block API:
 //   NV-TAL tensor block:
  int tensBlck_create(tensBlck_t **ctens);
@@ -269,9 +267,9 @@ extern "C"{
                                    double scale_real = 1.0, double scale_imag = 0.0, int conj_bits = 0, int accumulative = YEP);
  int gpu_tensor_block_decompose_svd(const char absorb, tensBlck_t *dtens, tensBlck_t *ltens, tensBlck_t *rtens, tensBlck_t *stens,
                                     int gpu_id = -1);
-#endif /*NO_GPU */
-#ifdef __cplusplus
+#endif /*NO_GPU*/
 }
-#endif
+
+template <typename T> int gpu_matrix_multiply_tn(size_t ll, size_t lr, size_t lc, const T * lmat, const T * rmat, T * dmat);
 
 #endif /*DEVICE_ALGEBRA_H_*/

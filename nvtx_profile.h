@@ -32,14 +32,9 @@ const int num_colors = sizeof(colors)/sizeof(uint32_t);
 
 #endif //NO_GPU
 
-
-#ifdef __cplusplus
 extern "C" {
-#endif
  void prof_push(const char * annotation, int color);
  void prof_pop();
-#ifdef __cplusplus
 }
-#endif
 
 #endif /*END NVTX_PROFILE_H_*/

@@ -1,9 +1,9 @@
 /* Timing services (threadsafe).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-REVISION: 2018/08/07
+REVISION: 2020/07/21
 
-Copyright (C) 2014-2016 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2016 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -20,8 +20,9 @@ GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License
 along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.*/
 
-#include <chrono>
 #include "timer.h"
+
+#include <chrono>
 
 double time_sys_sec()
 {

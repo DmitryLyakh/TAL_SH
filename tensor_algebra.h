@@ -1,7 +1,7 @@
 /** ExaTensor::TAL-SH: Lower-level header:
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device agnostic).
-REVISION: 2020/03/24
+REVISION: 2020/07/21
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -63,9 +63,9 @@ FOR DEVELOPERS ONLY:
 #ifndef TENSOR_ALGEBRA_H_
 #define TENSOR_ALGEBRA_H_
 
-#ifdef USE_CUTENSOR
-#include <stdint.h>
-#endif
+#include <cstddef>
+#include <cstdint>
+#include <ctime>
 
 //GLOBAL PARAMETERS:
 #define MAX_TENSOR_RANK 32 //max allowed tensor rank: Must be multiple of 4
@@ -280,9 +280,7 @@ typedef struct{
 } talsh_stats_t;
 
 //FUNCTION PROTOTYPES:
-#ifdef __cplusplus
 extern "C"{
-#endif
 //Generic:
  int tens_valid_data_kind(int datk, int * datk_size = NULL);
  int tens_valid_data_kind_(int datk, int * datk_size);
@@ -337,9 +335,6 @@ extern "C"{
  int tensShape_reshape(talsh_tens_shape_t * tshape,
                        int rank, const int * dims = NULL, const int * divs = NULL, const int * grps = NULL);
  void tensShape_print(const talsh_tens_shape_t * tshape);
-#ifdef __cplusplus
 }
-template <typename T> int gpu_matrix_multiply_tn(size_t ll, size_t lr, size_t lc, const T * lmat, const T * rmat, T * dmat);
-#endif
 
 #endif /*TENSOR_ALGEBRA_H_*/
