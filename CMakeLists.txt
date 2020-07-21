@@ -22,14 +22,14 @@ find_package(MPI REQUIRED)
 
 #set(TALSH_GPU_ARCH 35)
 
-if (TALSH_GPU)
-	set(TALSH_GPU_DEFS "CUDA_ARCH=${TALSH_GPU_ARCH}0")
+if(TALSH_GPU)
+  set(TALSH_GPU_DEFS "CUDA_ARCH=${TALSH_GPU_ARCH}0")
 else()
-	set(TALSH_GPU_DEFS NO_GPU)
+  set(TALSH_GPU_DEFS NO_GPU)
 endif()
 
 if(WITH_CUTENSOR)
-    set(TALSH_GPU_DEFS USE_CUTENSOR)
+  set(TALSH_GPU_DEFS USE_CUTENSOR)
 endif()
 
 set(TALSH_CXX_FLAGS ${CMAKE_CXX_FLAGS} -O3)
@@ -53,23 +53,23 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Cray")
   set(TALSH_CXX_FLAGS ${TALSH_CXX_FLAGS} -h std=c++11)
 endif()
 
-if (NOT TALSH_BLAS)
-       set(NO_BLAS NO_BLAS)
+if(NOT TALSH_BLAS)
+  set(NO_BLAS NO_BLAS)
 endif()
 
 set(TALSH_CXX_COMPILE_DEFS ${TALSH_GPU_DEFS} ${NO_BLAS} NO_AMD NO_PHI LINUX)
 set(TALSH_Fortran_COMPILE_DEFS ${TALSH_GPU_DEFS} ${NO_BLAS} NO_AMD NO_PHI LINUX)
 
-if (TALSH_GPU)
-	   set(TALSH_INCLUDES ${MPI_C_INCLUDE_PATH} ${MPI_Fortran_INCLUDE_PATH} ${CUDA_INCLUDE_DIRS})
-	   if(WITH_CUTENSOR)
-	   	 set(TALSH_INCLUDES ${MPI_C_INCLUDE_PATH} ${MPI_Fortran_INCLUDE_PATH} ${CUDA_INCLUDE_DIRS} ${CUTENSOR_INSTALL_PATH}/include)
-	   endif()
+if(TALSH_GPU)
+  set(TALSH_INCLUDES ${MPI_C_INCLUDE_PATH} ${MPI_Fortran_INCLUDE_PATH} ${CUDA_INCLUDE_DIRS})
+  if(WITH_CUTENSOR)
+    set(TALSH_INCLUDES ${MPI_C_INCLUDE_PATH} ${MPI_Fortran_INCLUDE_PATH} ${CUDA_INCLUDE_DIRS} ${CUTENSOR_INSTALL_PATH}/include)
+  endif()
 else()
-       set(TALSH_INCLUDES ${MPI_C_INCLUDE_PATH} ${MPI_Fortran_INCLUDE_PATH})
+  set(TALSH_INCLUDES ${MPI_C_INCLUDE_PATH} ${MPI_Fortran_INCLUDE_PATH})
 endif()
 
-set (TALSH_FORTRAN_SOURCES
+set(TALSH_FORTRAN_SOURCES
 	 dil_basic.F90
 	 stsubs.F90
 	 combinatoric.F90
@@ -82,31 +82,33 @@ set (TALSH_FORTRAN_SOURCES
 	 talshf.F90
 	 )
 
-set (TALSH_CXX_SOURCES
+set(TALSH_CXX_SOURCES
 	timer.cpp
 	byte_packet.cpp
+	nvtx_profile.c
 	mem_manager.cpp
+	tensor_algebra_gpu.cpp
 	talshc.cpp
 	talsh_task.cpp
 	talshxx.cpp
         )
 
 if(TALSH_GPU)
-	set(TALSH_CUDA_SOURCES tensor_algebra_gpu_nvidia.cu)
+  set(TALSH_CUDA_SOURCES tensor_algebra_gpu_nvidia.cu)
 else()
-	configure_file(tensor_algebra_gpu_nvidia.cu ${PROJECT_SOURCE_DIR}/tensor_algebra_gpu_nvidia.cpp COPYONLY)
-	set(TALSH_CXX_SOURCES ${TALSH_CXX_SOURCES} tensor_algebra_gpu_nvidia.cpp)
+  configure_file(tensor_algebra_gpu_nvidia.cu ${PROJECT_SOURCE_DIR}/tensor_algebra_gpu_nvidia.cpp COPYONLY)
+  set(TALSH_CXX_SOURCES ${TALSH_CXX_SOURCES} tensor_algebra_gpu_nvidia.cpp)
 endif()
 
 #set(TALSH_CUDA_FLAGS -O3 -lineinfo -w -D_FORCE_INLINES
-#                                               -std=c++11 -Xptxas --warn-on-spills -arch=sm_${TALSH_GPU_ARCH})
+#                     -std=c++11 -Xptxas --warn-on-spills -arch=sm_${TALSH_GPU_ARCH})
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Cray")
-	set(TALSH_CUDA_FLAGS  ${TALSH_CUDA_FLAGS} -O3 -lineinfo -w -D_FORCE_INLINES
-		-Xptxas --warn-on-spills;-gencode arch=compute_${TALSH_GPU_ARCH},code=sm_${TALSH_GPU_ARCH}; -ccbin /usr/bin/g++)
+  set(TALSH_CUDA_FLAGS  ${TALSH_CUDA_FLAGS} -O3 -lineinfo -w -D_FORCE_INLINES
+      -Xptxas --warn-on-spills;-gencode arch=compute_${TALSH_GPU_ARCH},code=sm_${TALSH_GPU_ARCH}; -ccbin /usr/bin/g++)
 else()
-set(TALSH_CUDA_FLAGS  ${TALSH_CUDA_FLAGS} -O3 -lineinfo -w -D_FORCE_INLINES
-                -std=c++11 -Xptxas --warn-on-spills;-gencode arch=compute_${TALSH_GPU_ARCH},code=sm_${TALSH_GPU_ARCH}; -ccbin /usr/bin/g++)
+  set(TALSH_CUDA_FLAGS  ${TALSH_CUDA_FLAGS} -O3 -lineinfo -w -D_FORCE_INLINES
+      -std=c++11 -Xptxas --warn-on-spills;-gencode arch=compute_${TALSH_GPU_ARCH},code=sm_${TALSH_GPU_ARCH}; -ccbin /usr/bin/g++)
 endif()
 
 if(TALSH_FINE_TIMING)
@@ -117,7 +119,6 @@ add_library(talsh_cxx OBJECT ${TALSH_CXX_SOURCES})
 target_include_directories(talsh_cxx PUBLIC ${TALSH_INCLUDES})
 target_compile_definitions(talsh_cxx PRIVATE ${TALSH_CXX_COMPILE_DEFS})
 target_compile_options(talsh_cxx PUBLIC ${TALSH_CXX_FLAGS})
-
 
 if(TALSH_GPU)
 	add_library(talsh_fort OBJECT ${TALSH_FORTRAN_SOURCES})
@@ -136,12 +137,13 @@ else()
 	target_compile_options(talsh PUBLIC ${TALSH_Fortran_FLAGS})
 endif()
 
-
 set(TALSH_HEADERS
 	timer.h
 	byte_packet.h
-	tensor_algebra.h
+	nvtx_profile.h
 	mem_manager.h
+	tensor_algebra.h
+	device_algebra.h
 	talsh_complex.h
 	talsh.h
 	tensor_method.hpp
