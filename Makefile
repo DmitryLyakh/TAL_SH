@@ -11,17 +11,19 @@ export WRAP ?= NOWRAP
 #Compiler: [GNU|INTEL|CRAY|IBM|PGI]:
 export TOOLKIT ?= GNU
 #Optimization: [DEV|OPT|PRF]:
-export BUILD_TYPE ?= OPT
+export BUILD_TYPE ?= DEV
 #MPI library base: [NONE]:
 export MPILIB ?= NONE
 #BLAS: [ATLAS|MKL|OPENBLAS|ACML|LIBSCI|ESSL|NONE]:
 export BLASLIB ?= OPENBLAS
 #NVIDIA GPU via CUDA: [CUDA|NOCUDA]:
-export GPU_CUDA ?= NOCUDA
+export GPU_CUDA ?= CUDA
 #NVIDIA GPU architecture (two digits, >=35):
-export GPU_SM_ARCH ?= 35
+export GPU_SM_ARCH ?= 50
 #Operating system: [LINUX|NO_LINUX]:
 export EXA_OS ?= LINUX
+#Only for Linux DEV builds with GNU: [YES|NO]:
+export LINUX_GNU_ASAN ?= NO
 
 
 #ADJUST EXTRAS (optional):
@@ -164,6 +166,7 @@ CPPCOMP = $(COMP_PREF) $(CPP_$(WRAP))
 endif
 #CUDA compiler:
 CUDA_COMP = nvcc
+HIP_COMP = hipcc
 
 #COMPILER INCLUDES:
 INC_GNU = -I.
@@ -195,6 +198,15 @@ else
  LIB = $(LIB_$(WRAP)) -lstdc++
 endif
 endif
+endif
+
+#SANITIZERS:
+ifeq ($(LINUX_GNU_ASAN),YES)
+ ASAN_COMPILE = -fsanitize=address -fno-omit-frame-pointer
+ ASAN_CXX = -Wno-maybe-uninitialized -Wno-unused-result
+else
+ ASAN_COMPILE = -I.
+ ASAN_CXX = -I.
 endif
 
 #MPI INCLUDES:
@@ -351,7 +363,7 @@ CFLAGS_INTEL_PRF = -c -g -O3 -qopenmp
 CFLAGS_CRAY_DEV = -c -g -O0 -fopenmp -D_DEBUG
 CFLAGS_CRAY_OPT = -c -O3 -fopenmp
 CFLAGS_CRAY_PRF = -c -g -O3 -fopenmp
-CFLAGS_GNU_DEV = -c -g -O0 -fopenmp -D_DEBUG
+CFLAGS_GNU_DEV = -c -g -O0 -fopenmp -D_DEBUG $(ASAN_COMPILE)
 CFLAGS_GNU_OPT = -c -O3 -fopenmp
 CFLAGS_GNU_PRF = -c -g -O3 -fopenmp
 CFLAGS_PGI_DEV = -c -g -O0 -D_DEBUG -silent -w
@@ -378,7 +390,7 @@ CFLAGS += -DEXATN_SERVICE
 endif
 
 #CPP FLAGS:
-CPPFLAGS = $(CFLAGS) -std=c++11
+CPPFLAGS = $(CFLAGS) -std=c++11 $(ASAN_CXX)
 
 #FORTRAN FLAGS:
 FFLAGS_INTEL_DEV = -c -g -O0 -fpp -vec-threshold4 -traceback -qopenmp -mkl=parallel $(LA_INC)
@@ -387,7 +399,7 @@ FFLAGS_INTEL_PRF = -c -g -O3 -fpp -vec-threshold4 -traceback -qopenmp -mkl=paral
 FFLAGS_CRAY_DEV = -c -g -fopenmp -J OBJ $(LA_INC)
 FFLAGS_CRAY_OPT = -c -O3 -fopenmp -J OBJ $(LA_INC)
 FFLAGS_CRAY_PRF = -c -g -O3 -fopenmp -J OBJ $(LA_INC)
-FFLAGS_GNU_DEV = -c -fopenmp -g -Og -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -ffpe-trap=invalid,zero,overflow $(LA_INC)
+FFLAGS_GNU_DEV = -c -fopenmp -g -Og -fbacktrace -fcheck=bounds -fcheck=array-temps -fcheck=pointer -ffpe-trap=invalid,zero,overflow $(ASAN_COMPILE) $(LA_INC)
 FFLAGS_GNU_OPT = -c -fopenmp -O3 $(LA_INC)
 FFLAGS_GNU_PRF = -c -fopenmp -g -O3 $(LA_INC)
 FFLAGS_PGI_DEV = -c -mp -Mcache_align -Mbounds -Mchkptr -Mstandard -Mallocatable=03 -g -O0 $(LA_INC)
@@ -399,11 +411,7 @@ FFLAGS_IBM_PRF = -c -qsmp=omp -g -O3
 FFLAGS = $(FFLAGS_$(TOOLKIT)_$(BUILD_TYPE)) $(DF)$(NO_GPU) $(DF)$(NO_AMD) $(DF)$(NO_PHI) $(DF)$(NO_BLAS) $(DF)-D$(EXA_OS) $(PIC_FLAG)
 
 #THREADS:
-ifeq ($(BUILD_TYPE),DEV)
-LTHREAD_GNU   = -fopenmp
-else
-LTHREAD_GNU   = -fopenmp
-endif
+LTHREAD_GNU   = -fopenmp $(ASAN_COMPILE)
 LTHREAD_PGI   = -mp -lpthread
 LTHREAD_INTEL = -liomp5
 LTHREAD_CRAY  = -fopenmp
@@ -420,6 +428,8 @@ OBJS =  ./OBJ/dil_basic.o ./OBJ/stsubs.o ./OBJ/combinatoric.o ./OBJ/symm_index.o
 
 $(NAME): lib$(NAME).a ./OBJ/test.o ./OBJ/main.o
 	$(FCOMP) ./OBJ/main.o ./OBJ/test.o lib$(NAME).a $(LFLAGS) -o test_$(NAME).x
+#	$(HIP_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) mem_manager.hip.cpp -o ./OBJ/mem_manager.hip.o
+#	$(HIP_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) tensor_algebra_gpu_nvidia.hip.cpp -o ./OBJ/tensor_algebra_gpu_nvidia.hip.o
 
 lib$(NAME).a: $(OBJS)
 ifeq ($(WITH_CUTT),YES)
@@ -486,6 +496,11 @@ endif
 ./OBJ/mem_manager.o: mem_manager.cpp mem_manager.h tensor_algebra.h device_algebra.h
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) mem_manager.cpp -o ./OBJ/mem_manager.o
 
+./OBJ/mem_manager.hip.o: mem_manager.hip.cpp mem_manager.h tensor_algebra.h device_algebra.hip.h
+ifeq ($(GPU_CUDA),CUDA)
+	$(HIP_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) mem_manager.hip.cpp -o ./OBJ/mem_manager.hip.o
+endif
+
 ./OBJ/tensor_algebra_gpu.o: tensor_algebra_gpu.cpp tensor_algebra.h mem_manager.h
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) tensor_algebra_gpu.cpp -o ./OBJ/tensor_algebra_gpu.o
 
@@ -497,6 +512,11 @@ else
 	cp tensor_algebra_gpu_nvidia.cu tensor_algebra_gpu_nvidia.cpp
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) tensor_algebra_gpu_nvidia.cpp -o ./OBJ/tensor_algebra_gpu_nvidia.o
 	rm -f tensor_algebra_gpu_nvidia.cpp
+endif
+
+./OBJ/tensor_algebra_gpu_nvidia.hip.o: tensor_algebra_gpu_nvidia.hip.cpp tensor_algebra.h device_algebra.hip.h talsh_complex.hip.h
+ifeq ($(GPU_CUDA),CUDA)
+	$(HIP_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) tensor_algebra_gpu_nvidia.hip.cpp -o ./OBJ/tensor_algebra_gpu_nvidia.hip.o
 endif
 
 ./OBJ/talshf.o: talshf.F90 ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/mem_manager.o

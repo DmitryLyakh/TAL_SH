@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2020/07/21
+REVISION: 2020/07/30
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -83,10 +83,10 @@ TO BE FIXED:
    memory (either global or constant) as a temporary for BLAS references.
 **/
 
-#include "device_algebra.h"
-#include "tensor_algebra.h"
 #include "mem_manager.h"
-#include "talsh_complex.h"
+#include "device_algebra.hip.h"
+#include "tensor_algebra.h"
+#include "talsh_complex.hip.h"
 
 #include <cstdio>
 #include <cstdlib>

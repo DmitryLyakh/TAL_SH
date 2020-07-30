@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2020/07/21
+REVISION: 2020/07/30
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -33,7 +33,7 @@ FOR DEVELOPERS ONLY:
 **/
 
 #include "mem_manager.h"
-#include "device_algebra.h"
+#include "device_algebra.hip.h"
 #include "tensor_algebra.h"
 
 #include <cstdio>
