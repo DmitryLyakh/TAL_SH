@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2020/07/30
+REVISION: 2020/08/02
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -2868,7 +2868,7 @@ __host__ int gpu_enable_fast_math(int gpu_num){
 #ifndef NO_BLAS
  for(i=gs;i<=gf;++i){
   if(gpu_is_mine(i) >= GPU_MINE_CUBLAS){
-   if(cublasSetMathMode(cublas_handle[i],CUBLAS_TENSOR_OP_MATH) != HIPBLAS_STATUS_SUCCESS) return 1;
+   //if(hipblasSetMathMode(cublas_handle[i],HIPBLAS_TENSOR_OP_MATH) != HIPBLAS_STATUS_SUCCESS) return 1; //`HIP no functionality
   }else{
    if(gpu_num >= 0) return 2;
   }
@@ -2891,7 +2891,7 @@ __host__ int gpu_disable_fast_math(int gpu_num){
 #ifndef NO_BLAS
  for(i=gs;i<=gf;++i){
   if(gpu_is_mine(i) >= GPU_MINE_CUBLAS){
-   if(cublasSetMathMode(cublas_handle[i],CUBLAS_DEFAULT_MATH) != HIPBLAS_STATUS_SUCCESS) return 1;
+   //if(hipblasSetMathMode(cublas_handle[i],HIPBLAS_DEFAULT_MATH) != HIPBLAS_STATUS_SUCCESS) return 1; //`HIP no functionality
   }else{
    if(gpu_num >= 0) return 2;
   }
@@ -2905,12 +2905,14 @@ __host__ int gpu_disable_fast_math(int gpu_num){
 __host__ int gpu_query_fast_math(int gpu_num){
 /** Queries the status of fast math on given GPU. **/
 #ifndef NO_BLAS
- cublasMath_t math_mode;
+/*`HIP no functionality:
+ hipblasMath_t math_mode;
  if(gpu_is_mine(gpu_num) >= GPU_MINE_CUBLAS){
-  if(cublasGetMathMode(cublas_handle[gpu_num],&math_mode) == HIPBLAS_STATUS_SUCCESS){
-   if(math_mode == CUBLAS_TENSOR_OP_MATH) return YEP;
+  if(hipblasGetMathMode(cublas_handle[gpu_num],&math_mode) == HIPBLAS_STATUS_SUCCESS){
+   if(math_mode == HIPBLAS_TENSOR_OP_MATH) return YEP;
   }
  }
+*/
 #endif
  return NOPE;
 }
@@ -6659,12 +6661,12 @@ NOTES:
 #else
       if(conj_r){
        err_cublas=hipblasCgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
-                  (talshComplex4*)alpha_plus_p,(talshComplex4*)larg,(int)lc,(talshComplex4*)rarg,(int)lr,(talshComplex4*)beta_p,
-                  (talshComplex4*)darg,(int)ll);
+                  (hipblasComplex*)alpha_plus_p,(hipblasComplex*)larg,(int)lc,(hipblasComplex*)rarg,(int)lr,(hipblasComplex*)beta_p,
+                  (hipblasComplex*)darg,(int)ll);
       }else{
        err_cublas=hipblasCgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
-                  (talshComplex4*)alpha_plus_p,(talshComplex4*)larg,(int)lc,(talshComplex4*)rarg,(int)lc,(talshComplex4*)beta_p,
-                  (talshComplex4*)darg,(int)ll);
+                  (hipblasComplex*)alpha_plus_p,(hipblasComplex*)larg,(int)lc,(hipblasComplex*)rarg,(int)lc,(hipblasComplex*)beta_p,
+                  (hipblasComplex*)darg,(int)ll);
       }
 #endif
      }
@@ -6694,12 +6696,12 @@ NOTES:
 #else
      if(conj_r){
       err_cublas=hipblasZgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
-                 (talshComplex8*)alpha_plus_p,(talshComplex8*)larg,(int)lc,(talshComplex8*)rarg,(int)lr,(talshComplex8*)beta_p,
-                 (talshComplex8*)darg,(int)ll);
+                 (hipblasDoubleComplex*)alpha_plus_p,(hipblasDoubleComplex*)larg,(int)lc,(hipblasDoubleComplex*)rarg,(int)lr,(hipblasDoubleComplex*)beta_p,
+                 (hipblasDoubleComplex*)darg,(int)ll);
      }else{
       err_cublas=hipblasZgemm(cublas_handle[gpu_num],left_conj,right_conj,(int)ll,(int)lr,(int)lc,
-                 (talshComplex8*)alpha_plus_p,(talshComplex8*)larg,(int)lc,(talshComplex8*)rarg,(int)lc,(talshComplex8*)beta_p,
-                 (talshComplex8*)darg,(int)ll);
+                 (hipblasDoubleComplex*)alpha_plus_p,(hipblasDoubleComplex*)larg,(int)lc,(hipblasDoubleComplex*)rarg,(int)lc,(hipblasDoubleComplex*)beta_p,
+                 (hipblasDoubleComplex*)darg,(int)ll);
      }
 #endif
      break;
