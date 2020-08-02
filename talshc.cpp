@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/07/21
+REVISION: 2020/08/02
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -3362,6 +3362,11 @@ int talshTensorPlace(talsh_tens_t * tens,
    host_task=(host_task_t*)(tsk->task_p);
    errc=host_task_record(host_task,(unsigned int)copy_ctrl,0); //record task success (no coherence control on Host)
    if(errc){tsk->task_error=112; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;}
+   //If blocking call, complete it here:
+   if(errc == TALSH_SUCCESS && talsh_task == NULL){
+    errc=talshTaskWait(tsk,&j); if(errc == TALSH_SUCCESS && j != TALSH_TASK_COMPLETED) errc=TALSH_TASK_ERROR;
+    j=talshTaskDestroy(tsk); if(j != TALSH_SUCCESS && errc == TALSH_SUCCESS) errc=j;
+   }
    break;
   case DEV_NVIDIA_GPU:
 #ifndef NO_GPU
