@@ -1,6 +1,6 @@
 /** Tensor Algebra Library core for GPU
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2020/07/21
+REVISION: 2020/08/02
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -674,11 +674,12 @@ int tensShape_construct(talsh_tens_shape_t * tshape, int pinned, int rank, const
  if(rank > 0 && tshape->num_dim <= 0){ //acquire multi-index resources
   if(tshape->dims != NULL || tshape->divs != NULL || tshape->grps != NULL) return -7; //shape must be clean if .num_dim<0
   if(pinned == NOPE){
-   mi_dims=(int*)malloc(3*MAX_TENSOR_RANK*sizeof(int));
+   mi_dims=(int*)malloc(3*rank*sizeof(int));
    if(mi_dims == NULL) return TRY_LATER;
-   mi_divs=mi_dims+MAX_TENSOR_RANK;
-   mi_grps=mi_divs+MAX_TENSOR_RANK;
+   mi_divs=mi_dims+rank;
+   mi_grps=mi_divs+rank;
   }else{
+   if(rank > MAX_TENSOR_RANK) return -8;
  //Multi-index "Dimension extents":
    errc=mi_entry_get(&mi_dims); //acquire a mi resource
    if(errc != 0){
