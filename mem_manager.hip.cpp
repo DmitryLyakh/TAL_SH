@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2020/07/30
+REVISION: 2020/08/11
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -49,8 +49,8 @@ FOR DEVELOPERS ONLY:
 #define BLCK_BUF_TOP_HOST 3          //number of argument buffer entries of the largest size (level 0) on Host: multiple of 3
 #define BLCK_BUF_BRANCH_HOST 2       //branching factor for each subsequent buffer level on Host
 //GPU argument buffer structure (the total number of entries must be less or equal to MAX_GPU_ARGS):
-#define BLCK_BUF_DEPTH_GPU 6         //number of distinct tensor block buffer levels on GPU
-#define BLCK_BUF_TOP_GPU 3           //number of argument buffer entries of the largest size (level 0) on GPU: multiple of 3
+#define BLCK_BUF_DEPTH_GPU 5         //number of distinct tensor block buffer levels on GPU
+#define BLCK_BUF_TOP_GPU 6           //number of argument buffer entries of the largest size (level 0) on GPU: multiple of 3
 #define BLCK_BUF_BRANCH_GPU 2        //branching factor for each subsequent buffer level on GPU
 
 static int VERBOSE=1; //verbosity (for errors)
