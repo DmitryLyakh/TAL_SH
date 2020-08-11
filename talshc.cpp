@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/08/02
+REVISION: 2020/08/11
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -379,7 +379,7 @@ int talshDetermineOptimalDevice(const talsh_tens_t * tens0, const talsh_tens_t *
  s[1]=0; if(tens1 != NULL) s[1]=talshTensorVolume(tens1);
  s[2]=0; if(tens2 != NULL) s[2]=talshTensorVolume(tens2);
  if(s[0] > 0 && s[1] > 0 && s[2] > 0){
-  gflops=2.0*sqrt(((double)(s[0]))*((double)(s[1]))*((double)(s[2])))/(1e9);
+  gflops=sqrt(((double)(s[0]))*((double)(s[1]))*((double)(s[2])))/(1e9); //FMA GFlop (no FMA or complex factors)
   if(gflops > (double)(TALSH_GFLOP_THRESH_GPU)) good_for_gpu=1;
  }
  devid=DEV_NULL; for(i=0;i<3;++i) ovl[i]=0;
