@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/07/13
+!REVISION: 2020/08/12
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -4278,7 +4278,7 @@
         character(2), intent(in), optional:: data_kind      !in: preferred data kind
         !---------------------------------------------
         logical, parameter:: PRINT_INFO=.FALSE.
-        !----------------------------
+        !--------------------------------------
         integer:: i,nfound,lwork,info
         integer:: dtb,ltb,rtb,stb,drank,lrank,rrank,srank,lr,rr,cr
         integer(LONGINT):: lu,ru,nv,mlr,lrwork,l0,l1,lb
@@ -4339,6 +4339,10 @@
            lrwork=mlr*(mlr*2+15*mlr) !GESVDX length of RWORK
            !lrwork=max(mlr*mlr*5+mlr*5,mlr*max(lu,ru)*2+mlr*mlr*2+mlr) !GESDD length of RWORK
            if(PRINT_INFO) write(CONS_OUT,'(" Matrix dimensions: ",i13,1x,i13,1x,i13)') lu,ru,nv
+           if(nv.gt.mlr) then
+            write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): Contracted index volume exceeds its SVD limit!")')
+            ierr=5; return
+           endif
  !Associate matrices and perform (partial) SVD:
            select case(dtk)
            case('r4','R4')

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/08/11
+REVISION: 2020/08/12
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -5427,9 +5427,9 @@ int talshTensorDecomposeSVD(const char * cptrn,   //in: C-string: symbolic decom
  get_contr_permutations(0,0,lrnk,rrnk,contr_ptrn,0,dprm,lprm,rprm,&ncd,&nlu,&nru,&errc);
  if(errc) return TALSH_FAILURE;
  if(nlu <= 0 || nru <= 0 || ncd <= 0) return TALSH_INVALID_ARGS;
- dtr=permutation_trivial(drnk,dprm,1); //base 1
- ltr=permutation_trivial(lrnk,lprm,1); //base 1
- rtr=permutation_trivial(rrnk,rprm,1); //base 1
+ dtr=permutation_trivial(drnk,&(dprm[1]),1); //base 1
+ ltr=permutation_trivial(lrnk,&(lprm[1]),1); //base 1
+ rtr=permutation_trivial(rrnk,&(rprm[1]),1); //base 1
  //DEBUG BEGIN
  //printf("\n#DEBUG(talshTensorDecomposeSVD):");
  //printf("\n Contraction configuration (l,r,c): %d %d %d",nlu,nru,ncd);
