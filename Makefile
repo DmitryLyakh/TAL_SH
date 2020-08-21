@@ -523,15 +523,21 @@ endif
 ./OBJ/tensor_dil_omp.o: tensor_dil_omp.F90 ./OBJ/timers.o
 	$(FCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(FFLAGS) tensor_dil_omp.F90 -o ./OBJ/tensor_dil_omp.o
 
-./OBJ/mem_manager.o: mem_manager.cpp mem_manager.h tensor_algebra.h device_algebra.h
-	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) mem_manager.cpp -o ./OBJ/mem_manager.o
-
+ifeq ($(USE_HIP),YES)
 ./OBJ/mem_manager.hip.o: mem_manager.hip.cpp mem_manager.h tensor_algebra.h device_algebra.hip.h
 	$(HIP_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(HIP_INC) $(CUDA_INC) $(CUDA_FLAGS) mem_manager.hip.cpp -o ./OBJ/mem_manager.hip.o
+else
+./OBJ/mem_manager.o: mem_manager.cpp mem_manager.h tensor_algebra.h device_algebra.h
+	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) mem_manager.cpp -o ./OBJ/mem_manager.o
+endif
 
 ./OBJ/tensor_algebra_gpu.o: tensor_algebra_gpu.cpp mem_manager.h tensor_algebra.h
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) tensor_algebra_gpu.cpp -o ./OBJ/tensor_algebra_gpu.o
 
+ifeq ($(USE_HIP),YES)
+./OBJ/tensor_algebra_gpu_nvidia.hip.o: tensor_algebra_gpu_nvidia.hip.cu tensor_algebra.h device_algebra.hip.h talsh_complex.hip.h
+	$(HIP_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(HIP_INC) $(CUDA_INC) $(CUDA_FLAGS) tensor_algebra_gpu_nvidia.hip.cu -o ./OBJ/tensor_algebra_gpu_nvidia.hip.o
+else
 ./OBJ/tensor_algebra_gpu_nvidia.o: tensor_algebra_gpu_nvidia.cu tensor_algebra.h device_algebra.h talsh_complex.h
 ifeq ($(GPU_CUDA),CUDA)
 	$(CUDA_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(CUDA_INC) $(CUDA_FLAGS) --ptx --source-in-ptx tensor_algebra_gpu_nvidia.cu -o ./OBJ/tensor_algebra_gpu_nvidia.ptx
@@ -541,15 +547,21 @@ else
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) tensor_algebra_gpu_nvidia.cpp -o ./OBJ/tensor_algebra_gpu_nvidia.o
 	rm -f tensor_algebra_gpu_nvidia.cpp
 endif
+endif
 
-./OBJ/tensor_algebra_gpu_nvidia.hip.o: tensor_algebra_gpu_nvidia.hip.cu tensor_algebra.h device_algebra.hip.h talsh_complex.hip.h
-	$(HIP_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(HIP_INC) $(CUDA_INC) $(CUDA_FLAGS) tensor_algebra_gpu_nvidia.hip.cu -o ./OBJ/tensor_algebra_gpu_nvidia.hip.o
+ifeq ($(USE_HIP),YES)
+./OBJ/talshf.o: talshf.F90 ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_algebra_gpu_nvidia.hip.o ./OBJ/mem_manager.hip.o
+	$(FCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(FFLAGS) talshf.F90 -o ./OBJ/talshf.o
 
+./OBJ/talshc.o: talshc.cpp talsh.h talsh_complex.h tensor_algebra.h device_algebra.h ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_algebra_gpu_nvidia.hip.o ./OBJ/mem_manager.hip.o
+	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) talshc.cpp -o ./OBJ/talshc.o
+else
 ./OBJ/talshf.o: talshf.F90 ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/mem_manager.o
 	$(FCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(FFLAGS) talshf.F90 -o ./OBJ/talshf.o
 
 ./OBJ/talshc.o: talshc.cpp talsh.h talsh_complex.h tensor_algebra.h device_algebra.h ./OBJ/tensor_algebra_cpu_phi.o ./OBJ/tensor_algebra_gpu_nvidia.o ./OBJ/mem_manager.o
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) talshc.cpp -o ./OBJ/talshc.o
+endif
 
 ./OBJ/talsh_task.o: talsh_task.cpp talsh.h ./OBJ/talshc.o
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) talsh_task.cpp -o ./OBJ/talsh_task.o
