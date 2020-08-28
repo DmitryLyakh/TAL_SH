@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/08/12
+!REVISION: 2020/08/28
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -119,6 +119,11 @@
          complex(4), pointer, contiguous:: data_cmplx4(:)=>NULL() !tensor block data (float complex)
          complex(8), pointer, contiguous:: data_cmplx8(:)=>NULL() !tensor block data (double complex)
         end type tensor_block_t
+!GLOBAL DATA:
+        real(8), private:: cpu_flops=0d0         !total CPU executed flops
+        real(8), private:: cpu_flop_time=0d0     !time spent executing flops
+        real(8), private:: cpu_permute_bytes=0d0 !total CPU permuted data size
+        real(8), private:: cpu_permute_time=0d0  !time spent permuting data
 
 !GENERIC INTERFACES:
         interface tensor_block_shape_create
@@ -202,6 +207,7 @@
         public set_data_kind_sync          !turns on/off data kind synchronization (0/1)
         public set_transpose_algorithm     !switches between scatter (0) and shared-memory (1) tensor transpose algorithms
         public set_matmult_algorithm       !switches between BLAS GEMM (0) and my OpenMP matmult kernels (1)
+        public cptal_print_stats           !prints the tensor operation execution statistics on Host CPU
         public cmplx4_to_real4             !returns the real approximate of a complex number (algorithm by D.I.L.)
         public cmplx8_to_real8             !returns the real approximate of a complex number (algorithm by D.I.L.)
         public tensor_shape_assoc          !constructs a tensor shape object by pointer associating with external data
@@ -371,6 +377,18 @@
 #endif
 	return
 	end subroutine set_matmult_algorithm
+!-------------------------------------------
+        subroutine cptal_print_stats()
+        implicit none
+
+        write(CONS_OUT,'("#MSG(TAL-SH::CP-TAL): Statistics on CPU:")')
+        write(CONS_OUT,'(1x,"Number of Flops processed: ",D25.14)') cpu_flops
+        write(CONS_OUT,'(1x,"Average GFlop/s rate     : ",D25.14)') cpu_flops/(cpu_flop_time*1d9)
+        write(CONS_OUT,'(1x,"Number of Bytes permuted : ",D25.14)') cpu_permute_bytes
+        write(CONS_OUT,'(1x,"Average permute GB/s rate: ",D25.14)') cpu_permute_bytes/(cpu_permute_time*1024d0*1024d0*1024d0)
+        write(CONS_OUT,'("#END_MSG")')
+        return
+        end subroutine cptal_print_stats
 !---------------------------------------------
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: cmplx4_to_real4
@@ -3695,7 +3713,7 @@
         character(2):: dtk
         character(1):: ltrm,rtrm
         real(4):: d_r4
-        real(8):: d_r8,start_gemm,finish_gemm
+        real(8):: d_r8,start_gemm,finish_gemm,gemm_flops
         complex(4):: d_c4,l_c4,r_c4
         complex(8):: d_c8,l_c8,r_c8,alf,beta
         logical:: contr_ok,ltransp,rtransp,dtransp,transp,lconj,rconj,dconj,accum
@@ -3911,7 +3929,7 @@
          if(l0.ne.lld.or.l1.ne.lcd.or.l2.ne.lrd) then; ierr=17; goto 999; endif
          if(rtrm.eq.'C') then; l2=lrd; else; l2=lcd; endif !leading dimension for the right matrix
  !Multiply two matrices (dtp += ltp * rtp):
-	 start_gemm=thread_wtime() !debug
+	 start_gemm=thread_wtime()
 	 select case(contr_case)
 	 case(PARTIAL_CONTRACTION) !destination is an array
 	  select case(dtk)
@@ -4013,6 +4031,14 @@
 	  dtp%scalar_value=dtp%scalar_value+l_c8*r_c8*alf
 	 end select
 	 finish_gemm=thread_wtime()
+	 cpu_flop_time=cpu_flop_time+(finish_gemm-start_gemm)
+	 select case(dtk)
+	 case('r4','R4','r8','R8')
+	  gemm_flops=lld*lrd*lcd*2d0
+	 case('c4','C4','c8','C8')
+	  gemm_flops=lld*lrd*lcd*8d0
+	 end select
+	 cpu_flops=cpu_flops+gemm_flops
  !Transpose the matrix-result back into the output tensor:
 	 if(dtransp) then
 !	  write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): permutation to be performed for ",i2)') 0 !debug
@@ -4047,8 +4073,8 @@
 	 case(MULTIPLY_SCALARS)
 	 end select
 	 if(LOGGING.gt.0) then
-	  write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): Max threads = ",i3,": GEMM time ",F10.4)')&
-          &nthr,finish_gemm-start_gemm !debug
+	  write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): Max threads = ",i3,": GEMM Flop count = ",D25.14,'//&
+	  &'": GEMM time = ",F10.4)') nthr,gemm_flops,(finish_gemm-start_gemm)
 	 endif
  !Check NaN in output tensor:
 	 if(CHECK_NAN) then
@@ -7179,7 +7205,7 @@
 !DIR$ ATTRIBUTES ALIGN:128:: im,n2o,ipr,dim_beg,dim_end,bases_in,bases_out,bases_pri,segs
 #endif
 	ierr=0
-	time_beg=thread_wtime() !debug
+	time_beg=thread_wtime()
 	if(dim_num.lt.0) then; ierr=1; return; elseif(dim_num.eq.0) then; tens_out(0)=tens_in(0); return; endif
 !Check the index permutation:
 	trivial=.TRUE.; do i=1,dim_num; if(dim_transp(i).ne.i) then; trivial=.FALSE.; exit; endif; enddo
@@ -7373,10 +7399,12 @@
          endif
 !$OMP END PARALLEL
 	endif !trivial or not
-	tm=thread_wtime(time_beg) !debug
+	tm=thread_wtime(time_beg)
+	cpu_permute_time=cpu_permute_time+tm
+	cpu_permute_bytes=cpu_permute_bytes+dble(2_LONGINT*bs*real_kind)
 	if(LOGGING.gt.0) then
 	 write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_r4): Done: ",F10.4," sec, ",F10.4," GB/s, error ",i3)') &
-	 tm,dble(2_LONGINT*bs*real_kind)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	 tm,dble(2_LONGINT*bs*real_kind)/(tm*1024d0*1024d0*1024d0),ierr
 	endif
 	return
 	end subroutine tensor_block_copy_dlf_r4
@@ -7423,7 +7451,7 @@
 !DIR$ ATTRIBUTES ALIGN:128:: im,n2o,ipr,dim_beg,dim_end,bases_in,bases_out,bases_pri,segs
 #endif
 	ierr=0
-	time_beg=thread_wtime() !debug
+	time_beg=thread_wtime()
 	if(dim_num.lt.0) then; ierr=1; return; elseif(dim_num.eq.0) then; tens_out(0)=tens_in(0); return; endif
 !Check the index permutation:
 	trivial=.TRUE.; do i=1,dim_num; if(dim_transp(i).ne.i) then; trivial=.FALSE.; exit; endif; enddo
@@ -7617,10 +7645,12 @@
          endif
 !$OMP END PARALLEL
 	endif !trivial or not
-	tm=thread_wtime(time_beg) !debug
+	tm=thread_wtime(time_beg)
+	cpu_permute_time=cpu_permute_time+tm
+	cpu_permute_bytes=cpu_permute_bytes+dble(2_LONGINT*bs*real_kind)
 	if(LOGGING.gt.0) then
 	 write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_r8): Done: ",F10.4," sec, ",F10.4," GB/s, error ",i3)')&
-	 &tm,dble(2_LONGINT*bs*real_kind)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	 &tm,dble(2_LONGINT*bs*real_kind)/(tm*1024d0*1024d0*1024d0),ierr
 	endif
 	return
 	end subroutine tensor_block_copy_dlf_r8
@@ -7669,7 +7699,7 @@
 !DIR$ ATTRIBUTES ALIGN:128:: im,n2o,ipr,dim_beg,dim_end,bases_in,bases_out,bases_pri,segs
 #endif
 	ierr=0
-	time_beg=thread_wtime() !debug
+	time_beg=thread_wtime()
 	if(present(conjug)) then; conj=conjug; else; conj=.FALSE.; endif !optional complex conjugation
 	if(dim_num.lt.0) then
 	 ierr=1; return
@@ -7894,10 +7924,12 @@
          endif
 !$OMP END PARALLEL
 	endif !trivial or not
-	tm=thread_wtime(time_beg) !debug
+	tm=thread_wtime(time_beg)
+	cpu_permute_time=cpu_permute_time+tm
+	cpu_permute_bytes=cpu_permute_bytes+dble(4_LONGINT*bs*real_kind)
 	if(LOGGING.gt.0) then
 	 write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_c4): Done: ",F10.4," sec, ",F10.4," GB/s, error ",i3)') &
-	 tm,dble(2_LONGINT*bs*real_kind*2_LONGINT)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	 tm,dble(2_LONGINT*bs*real_kind*2_LONGINT)/(tm*1024d0*1024d0*1024d0),ierr
 	endif
 	return
 	end subroutine tensor_block_copy_dlf_c4
@@ -7946,7 +7978,7 @@
 !DIR$ ATTRIBUTES ALIGN:128:: im,n2o,ipr,dim_beg,dim_end,bases_in,bases_out,bases_pri,segs
 #endif
 	ierr=0
-	time_beg=thread_wtime() !debug
+	time_beg=thread_wtime()
 	if(present(conjug)) then; conj=conjug; else; conj=.FALSE.; endif !optional complex conjugation
 	if(dim_num.lt.0) then
 	 ierr=1; return
@@ -8171,10 +8203,12 @@
          endif
 !$OMP END PARALLEL
 	endif !trivial or not
-	tm=thread_wtime(time_beg) !debug
+	tm=thread_wtime(time_beg)
+	cpu_permute_time=cpu_permute_time+tm
+	cpu_permute_bytes=cpu_permute_bytes+dble(4_LONGINT*bs*real_kind)
 	if(LOGGING.gt.0) then
 	 write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_dlf_c8): Done: ",F10.4," sec, ",F10.4," GB/s, error ",i3)') &
-	 tm,dble(2_LONGINT*bs*real_kind*2_LONGINT)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	 tm,dble(2_LONGINT*bs*real_kind*2_LONGINT)/(tm*1024d0*1024d0*1024d0),ierr
 	endif
 	return
 	end subroutine tensor_block_copy_dlf_c8
@@ -8204,14 +8238,14 @@
 	integer i,k,n2o(dim_num)
 	integer(LONGINT) j,l,m,n,base_in(dim_num),base_out(dim_num)
 	logical trivial
-	real(8) time_beg
+	real(8) time_beg,tm
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
 !DIR$ ATTRIBUTES ALIGN:128:: real_kind,n2o,base_in,base_out
 #endif
 
 	ierr=0
-!	time_beg=thread_wtime() !debug
+	time_beg=thread_wtime()
 	if(dim_num.eq.0) then !scalar tensor
 	 tens_out(0)=tens_in(0)
 	elseif(dim_num.gt.0) then
@@ -8235,8 +8269,11 @@
 	else
 	 ierr=1
 	endif
-!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_scatter_dlf_r4): kernel time/error code = ",F10.4,1x,i3)') &
-!        thread_wtime(time_beg),ierr !debug
+	tm=thread_wtime(time_beg)
+	cpu_permute_time=cpu_permute_time+tm
+	cpu_permute_bytes=cpu_permute_bytes+dble(2_LONGINT*n*real_kind)
+!       write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_scatter_dlf_r4): kernel time/error code = ",F10.4,1x,i3)')&
+!       &thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_copy_scatter_dlf_r4
 !--------------------------------------------------------------------------------------------------------
@@ -8272,7 +8309,7 @@
 #endif
 
 	ierr=0
-!	time_beg=thread_wtime() !debug
+	time_beg=thread_wtime()
 	if(dim_num.eq.0) then !scalar tensor
 	 tens_out(0)=tens_in(0)
 	elseif(dim_num.gt.0) then
@@ -8296,9 +8333,11 @@
 	else
 	 ierr=1
 	endif
-!       tm=thread_wtime(time_beg)
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_scatter_dlf_r8): Done: ",F10.4," sec, ",F10.4," GB/s, error ",'&
-!        &//'i3)') tm,dble(2_LONGINT*n*real_kind)/(tm*1024d0*1024d0*1024d0),ierr !debug
+	tm=thread_wtime(time_beg)
+	cpu_permute_time=cpu_permute_time+tm
+	cpu_permute_bytes=cpu_permute_bytes+dble(2_LONGINT*n*real_kind)
+!       write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_scatter_dlf_r8): Done: ",F10.4," sec, ",F10.4," GB/s, error ",'&
+!       &//'i3)') tm,dble(2_LONGINT*n*real_kind)/(tm*1024d0*1024d0*1024d0),ierr !debug
 	return
 	end subroutine tensor_block_copy_scatter_dlf_r8
 !---------------------------------------------------------------------------------------------------------------
@@ -8329,14 +8368,14 @@
 	integer i,k,n2o(dim_num)
 	integer(LONGINT) j,l,m,n,base_in(dim_num),base_out(dim_num)
 	logical trivial,conj
-	real(8) time_beg
+	real(8) time_beg,tm
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
 !DIR$ ATTRIBUTES ALIGN:128:: real_kind,n2o,base_in,base_out
 #endif
 
 	ierr=0
-!	time_beg=thread_wtime() !debug
+	time_beg=thread_wtime()
 	if(present(conjug)) then; conj=conjug; else; conj=.FALSE.; endif !optional complex conjugation
 	if(dim_num.eq.0) then !scalar tensor
 	 if(conj) then; tens_out(0)=conjg(tens_in(0)); else; tens_out(0)=tens_in(0); endif
@@ -8376,8 +8415,11 @@
 	else
 	 ierr=1
 	endif
-!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_scatter_dlf_c4): kernel time/error code = ",F10.4,1x,i3)') &
-!        thread_wtime(time_beg),ierr !debug
+	tm=thread_wtime(time_beg)
+	cpu_permute_time=cpu_permute_time+tm
+	cpu_permute_bytes=cpu_permute_bytes+dble(4_LONGINT*n*real_kind)
+!       write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_scatter_dlf_c4): kernel time/error code = ",F10.4,1x,i3)')&
+!       &thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_copy_scatter_dlf_c4
 !---------------------------------------------------------------------------------------------------------------
@@ -8408,14 +8450,14 @@
 	integer i,k,n2o(dim_num)
 	integer(LONGINT) j,l,m,n,base_in(dim_num),base_out(dim_num)
 	logical trivial,conj
-	real(8) time_beg
+	real(8) time_beg,tm
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: real_kind
 !DIR$ ATTRIBUTES ALIGN:128:: real_kind,n2o,base_in,base_out
 #endif
 
 	ierr=0
-!	time_beg=thread_wtime() !debug
+	time_beg=thread_wtime()
 	if(present(conjug)) then; conj=conjug; else; conj=.FALSE.; endif !optional complex conjugation
 	if(dim_num.eq.0) then !scalar tensor
 	 if(conj) then; tens_out(0)=conjg(tens_in(0)); else; tens_out(0)=tens_in(0); endif
@@ -8455,8 +8497,11 @@
 	else
 	 ierr=1
 	endif
-!	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_scatter_dlf_c8): kernel time/error code = ",F10.4,1x,i3)') &
-!        thread_wtime(time_beg),ierr !debug
+	tm=thread_wtime(time_beg)
+	cpu_permute_time=cpu_permute_time+tm
+	cpu_permute_bytes=cpu_permute_bytes+dble(4_LONGINT*n*real_kind)
+!       write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_copy_scatter_dlf_c8): kernel time/error code = ",F10.4,1x,i3)')&
+!       &thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_copy_scatter_dlf_c8
 !-------------------------------------------------------------------------------------

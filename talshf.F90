@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2020/05/07
+!REVISION: 2020/08/28
 
 !Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -1898,5 +1898,12 @@
          endif
          return
         end function cpu_tensor_block_decompose_svd
+!-------------------------------------------------------------------------------
+        integer(C_INT) function cpu_print_stats() bind(c,name='cpu_print_stats')
+
+         cpu_print_stats=0
+         call cptal_print_stats()
+         return
+        end function cpu_print_stats
 
        end module talsh

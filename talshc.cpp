@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/08/12
+REVISION: 2020/08/28
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -106,6 +106,7 @@ int cpu_tensor_block_add(const int * contr_ptrn, void * lftr, void * dftr,
 int cpu_tensor_block_contract(const int * contr_ptrn, void * lftr, void * rftr, void * dftr,
                               double scale_real, double scale_imag, int arg_conj, int accumulative);
 int cpu_tensor_block_decompose_svd(const char absorb, void * dftr, void * lftr, void * rftr, void * sftr);
+int cpu_print_stats();
 // Contraction pattern conversion:
 int talsh_get_contr_ptrn_str2dig(const char * c_str, int * dig_ptrn,
                                  int * drank, int * lrank, int * rrank, int * conj_bits);
@@ -1059,7 +1060,7 @@ int talshStats(int dev_id,   //in: device id (either flat or kind specific devic
    }
    break;
   case DEV_HOST:
-   rc=TALSH_NOT_IMPLEMENTED; //`Implement
+   rc=cpu_print_stats();
    break;
   case DEV_NVIDIA_GPU:
 #ifndef NO_GPU

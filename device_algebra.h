@@ -2,7 +2,7 @@
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device specific):
     CP-TAL, NV-TAL, XP-TAL, AM-TAL, etc.
-REVISION: 2020/07/21
+REVISION: 2020/08/28
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -187,6 +187,19 @@ typedef struct{
  void * pref_ptr;        //tensor operation prefactor location
 } cudaTask_t;
 //Note: Adding new CUDA events will require adjustment of NUM_EVENTS_PER_TASK.
+
+// Device statistics:
+typedef struct{
+ unsigned long long int tasks_submitted; //number of TAL-SH tasks submitted to the device
+ unsigned long long int tasks_completed; //number of TAL-SH tasks successfully completed on the device
+ unsigned long long int tasks_deferred;  //number of TAL-SH tasks deferred (TRY_LATER or DEVICE_UNABLE)
+ unsigned long long int tasks_failed;    //number of TAL-SH tasks failed (with an error)
+ double flops;                           //total number of Flops processed (successfully completed)
+ double traffic_in;                      //total number of bytes transferred in
+ double traffic_out;                     //total number of bytes transferred out
+ double time_active;                     //time in seconds device is active
+ clock_t time_start;                     //time when the library was initialized (internal use only)
+} talsh_stats_t;
 
 //FUNCTION PROTOTYPES:
 extern "C"{

@@ -1,7 +1,7 @@
 /** ExaTensor::TAL-SH: Lower-level header:
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device agnostic).
-REVISION: 2020/07/21
+REVISION: 2020/08/28
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -265,19 +265,6 @@ typedef int (*talsh_tens_init_i)(const talsh_tens_data_t * tens_data,
                                  const talsh_tens_signature_t * tens_signature);
 // Dummy function that does no initialization on a tensor:
 int talsh_tens_no_init(const talsh_tens_data_t *, const talsh_tens_shape_t *, const talsh_tens_signature_t *);
-
-// Device statistics:
-typedef struct{
- unsigned long long int tasks_submitted; //number of TAL-SH tasks submitted to the device
- unsigned long long int tasks_completed; //number of TAL-SH tasks successfully completed on the device
- unsigned long long int tasks_deferred;  //number of TAL-SH tasks deferred (TRY_LATER or DEVICE_UNABLE)
- unsigned long long int tasks_failed;    //number of TAL-SH tasks failed (with an error)
- double flops;                           //total number of Flops processed (successfully completed)
- double traffic_in;                      //total number of bytes transferred in
- double traffic_out;                     //total number of bytes transferred out
- double time_active;                     //time in seconds device is active
- clock_t time_start;                     //time when the library was initialized (internal use only)
-} talsh_stats_t;
 
 //FUNCTION PROTOTYPES:
 extern "C"{
