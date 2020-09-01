@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/08/28
+!REVISION: 2020/09/01
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -121,9 +121,10 @@
         end type tensor_block_t
 !GLOBAL DATA:
         real(8), private:: cpu_flops=0d0         !total CPU executed flops
-        real(8), private:: cpu_flop_time=0d0     !time spent executing flops
+        real(8), private:: cpu_flop_time=0d0     !time spent executing CPU flops
         real(8), private:: cpu_permute_bytes=0d0 !total CPU permuted data size
-        real(8), private:: cpu_permute_time=0d0  !time spent permuting data
+        real(8), private:: cpu_permute_time=0d0  !time spent permuting data on CPU
+        real(8), private:: cpu_contract_time=0d0 !total time spent in tensor contractions on CPU
 
 !GENERIC INTERFACES:
         interface tensor_block_shape_create
@@ -382,10 +383,11 @@
         implicit none
 
         write(CONS_OUT,'("#MSG(TAL-SH::CP-TAL): Statistics on CPU:")')
-        write(CONS_OUT,'(1x,"Number of Flops processed: ",D25.14)') cpu_flops
-        write(CONS_OUT,'(1x,"Average GFlop/s rate     : ",D25.14)') cpu_flops/(cpu_flop_time*1d9)
-        write(CONS_OUT,'(1x,"Number of Bytes permuted : ",D25.14)') cpu_permute_bytes
-        write(CONS_OUT,'(1x,"Average permute GB/s rate: ",D25.14)') cpu_permute_bytes/(cpu_permute_time*1024d0*1024d0*1024d0)
+        write(CONS_OUT,'(1x,"Number of Flops processed    : ",D25.14)') cpu_flops
+        write(CONS_OUT,'(1x,"Average GEMM GFlop/s rate    : ",D25.14)') cpu_flops/(cpu_flop_time*1d9)
+        write(CONS_OUT,'(1x,"Number of Bytes permuted     : ",D25.14)') cpu_permute_bytes
+        write(CONS_OUT,'(1x,"Average permute GB/s rate    : ",D25.14)') cpu_permute_bytes/(cpu_permute_time*1024d0*1024d0*1024d0)
+        write(CONS_OUT,'(1x,"Average contract GFlop/s rate: ",D25.14)') cpu_flops/(cpu_contract_time*1d9)
         write(CONS_OUT,'("#END_MSG")')
         return
         end subroutine cptal_print_stats
@@ -3713,12 +3715,13 @@
         character(2):: dtk
         character(1):: ltrm,rtrm
         real(4):: d_r4
-        real(8):: d_r8,start_gemm,finish_gemm,gemm_flops
+        real(8):: d_r8,start_gemm,finish_gemm,gemm_flops,tc_start,tc_finish
         complex(4):: d_c4,l_c4,r_c4
         complex(8):: d_c8,l_c8,r_c8,alf,beta
         logical:: contr_ok,ltransp,rtransp,dtransp,transp,lconj,rconj,dconj,accum
 
         ierr=0
+        tc_start=thread_wtime()
         nthr=omp_get_max_threads()
 #ifdef USE_MKL
         call mkl_set_num_threads(nthr)
@@ -4072,10 +4075,6 @@
 	  if(dtransp) then; call tensor_block_destroy(dta,j); if(j.ne.0) ierr=ierr+2000+j; endif
 	 case(MULTIPLY_SCALARS)
 	 end select
-	 if(LOGGING.gt.0) then
-	  write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): Max threads = ",i3,": GEMM Flop count = ",D25.14,'//&
-	  &'": GEMM time = ",F10.4)') nthr,gemm_flops,(finish_gemm-start_gemm)
-	 endif
  !Check NaN in output tensor:
 	 if(CHECK_NAN) then
 	  if(tensor_block_has_nan(dtens)) then
@@ -4089,6 +4088,12 @@
 	   flush(CONS_OUT)
 	   call crash()
 	  endif
+	 endif
+	 tc_finish=thread_wtime()
+	 cpu_contract_time=cpu_contract_time+(tc_finish-tc_start)
+	 if(LOGGING.gt.0) then
+	  write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): Max threads = ",i3,": GEMM Flop count = ",D25.14,'//&
+	  &'": GEMM time = ",F10.4,": Total time = ",F10.4)') nthr,gemm_flops,(finish_gemm-start_gemm),(tc_finish-tc_start)
 	 endif
 	else
 	 ierr=36
