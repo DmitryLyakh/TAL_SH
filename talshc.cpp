@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/08/28
+REVISION: 2020/09/03
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -3143,19 +3143,19 @@ int talshTensorOpDecompose2(         //out: error code
      for(int i = 0; i < lrank; ++i){
       cd = tens_op->tens_slice[1].shape.dims[i];
       if(contr_ptrn[i] < 0){ //contracted index
-       lc *= cd; if(cd > sc){sc = cd; mc = i;}
+       lc *= cd; if(cd >= sc){sc = cd; mc = i;}
       }else if(contr_ptrn[i] > 0){ //left (or batch) index
        dst[contr_ptrn[i] - 1] = (i+1);
-       ll *= cd; if(cd > sl){sl = cd; ml = i;}
+       ll *= cd; if(cd >= sl){sl = cd; ml = i;}
       }
      }
      for(int i = 0; i < rrank; ++i){
       cd = tens_op->tens_slice[2].shape.dims[i];
       if(contr_ptrn[lrank + i] > 0){ //right index
        if(dst[contr_ptrn[lrank + i] - 1] == 0){
-        lr *= cd; if(cd > sr){sr = cd; mr = lrank + i;}
+        lr *= cd; if(cd >= sr){sr = cd; mr = lrank + i;}
        }else{ //batch index
-        ll /= cd; lb *= cd; if(cd > sb){sb = cd; mb = lrank + i;}
+        ll /= cd; lb *= cd; if(cd >= sb){sb = cd; mb = lrank + i;}
        }
       }
      }

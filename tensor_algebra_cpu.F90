@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/09/01
+!REVISION: 2020/09/03
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -384,10 +384,22 @@
 
         write(CONS_OUT,'("#MSG(TAL-SH::CP-TAL): Statistics on CPU:")')
         write(CONS_OUT,'(1x,"Number of Flops processed    : ",D25.14)') cpu_flops
-        write(CONS_OUT,'(1x,"Average GEMM GFlop/s rate    : ",D25.14)') cpu_flops/(cpu_flop_time*1d9)
+        if(cpu_flop_time.gt.0d0) then
+         write(CONS_OUT,'(1x,"Average GEMM GFlop/s rate    : ",D25.14)') cpu_flops/(cpu_flop_time*1d9)
+        else
+         write(CONS_OUT,'(1x,"Average GEMM GFlop/s rate    : ",D25.14)') 0d0
+        endif
         write(CONS_OUT,'(1x,"Number of Bytes permuted     : ",D25.14)') cpu_permute_bytes
-        write(CONS_OUT,'(1x,"Average permute GB/s rate    : ",D25.14)') cpu_permute_bytes/(cpu_permute_time*1024d0*1024d0*1024d0)
-        write(CONS_OUT,'(1x,"Average contract GFlop/s rate: ",D25.14)') cpu_flops/(cpu_contract_time*1d9)
+        if(cpu_permute_time.gt.0d0) then
+         write(CONS_OUT,'(1x,"Average permute GB/s rate    : ",D25.14)') cpu_permute_bytes/(cpu_permute_time*1024d0*1024d0*1024d0)
+        else
+         write(CONS_OUT,'(1x,"Average permute GB/s rate    : ",D25.14)') 0d0
+        endif
+        if(cpu_contract_time.gt.0d0) then
+         write(CONS_OUT,'(1x,"Average contract GFlop/s rate: ",D25.14)') cpu_flops/(cpu_contract_time*1d9)
+        else
+         write(CONS_OUT,'(1x,"Average contract GFlop/s rate: ",D25.14)') 0d0
+        endif
         write(CONS_OUT,'("#END_MSG")')
         return
         end subroutine cptal_print_stats
