@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2020/08/11
+REVISION: 2020/09/04
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -305,7 +305,7 @@ OUTPUT:
   }
 #endif /*NO_GPU*/
  }else{
-  if(VERBOSE) printf("#ERROR(arg_buf_allocate): Host buffer memory allocation failed: Size = %llu\n",hsize);
+  if(VERBOSE) printf("#ERROR(arg_buf_allocate): Host buffer memory allocation failed: Size = %zu\n",hsize);
   return 15;
  }
  bufs_ready=1; //mark the Host and GPU argument buffers as ready
@@ -485,11 +485,11 @@ void print_blck_buf_sizes_host()
 #pragma omp flush
  printf("\n#INFO(TALSH:mem_manager): Host Buffer structure:\n");
  printf(" Host Buffer base address: %p\n",arg_buf_host);
- printf(" Host Buffer size (bytes): %llu\n",arg_buf_host_size);
+ printf(" Host Buffer size (bytes): %zu\n",arg_buf_host_size);
  printf(" Block sizes (bytes) at levels:\n");
  fflush(stdout);
  dpth=get_blck_buf_sizes_host(bsz);
- for(i=0;i<dpth;++i) printf("  Level %d: %llu\n",i,bsz[i]);
+ for(i=0;i<dpth;++i) printf("  Level %d: %zu\n",i,bsz[i]);
  fflush(stdout);
  return;
 }
@@ -584,7 +584,7 @@ static int free_buf_entry(ab_conf_t ab_conf, size_t *ab_occ, size_t ab_occ_size,
    if(ab_occ[entry_num] == 0){
     printf("#ERROR(TAL-SH:mem_manager:free_buf_entry): Attempt to free an empty buffer entry %d\n",entry_num);
    }else{
-    printf("#ERROR(TAL-SH:mem_manager:free_buf_entry): Partially occupied buffer entry detected: %llu < %llu\n",
+    printf("#ERROR(TAL-SH:mem_manager:free_buf_entry): Partially occupied buffer entry detected: %zu < %zu\n",
            ab_occ[entry_num],blck_sizes[i]);
    }
   }
@@ -901,7 +901,8 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
   }else{
    omp_unset_nest_lock(&mem_lock);
    if(VERBOSE){
-    printf("\n#ERROR(TALSH:mem_manager:get_buf_entry_from_address): Wrong buffer address alignment or corruption: %p %d %llu %llu\n",addr,lev-1,prev_lev_size,prev_entry_occ);
+    printf("\n#ERROR(TALSH:mem_manager:get_buf_entry_from_address): Wrong buffer address alignment or corruption: %p %d %zu %zu\n",
+           addr,lev-1,prev_lev_size,prev_entry_occ);
     print_blck_buf_sizes_host();
     fflush(stdout);
    }
@@ -1326,7 +1327,7 @@ an error code != 0, among which are also TRY_LATER and DEVICE_UNABLE. **/
   }
  }
  if(LOGGING){
-  printf("#DEBUG(TALSH:mem_manager:mem_allocate): Allocation of %llu bytes error %d: Address %p\n",bytes,errc,*mem_ptr);
+  printf("#DEBUG(TALSH:mem_manager:mem_allocate): Allocation of %zu bytes error %d: Address %p\n",bytes,errc,*mem_ptr);
   fflush(stdout);
  }
 #pragma omp flush
