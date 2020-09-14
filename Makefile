@@ -11,7 +11,7 @@ export WRAP ?= NOWRAP
 #Compiler: [GNU|INTEL|CRAY|IBM|PGI]:
 export TOOLKIT ?= GNU
 #Optimization: [DEV|OPT|PRF]:
-export BUILD_TYPE ?= DEV
+export BUILD_TYPE ?= OPT
 #MPI library base: [NONE]:
 export MPILIB ?= NONE
 #BLAS: [ATLAS|MKL|OPENBLAS|ACML|LIBSCI|ESSL|NONE]:
@@ -19,7 +19,7 @@ export BLASLIB ?= OPENBLAS
 #NVIDIA GPU via CUDA: [CUDA|NOCUDA]:
 export GPU_CUDA ?= NOCUDA
 #NVIDIA GPU architecture (two digits, >=35):
-export GPU_SM_ARCH ?= 50
+export GPU_SM_ARCH ?= 35
 #HIP portability layer [YES|NO]:
 export USE_HIP ?= NO
 #Operating system: [LINUX|NO_LINUX]:
