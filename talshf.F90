@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2020/08/28
+!REVISION: 2020/09/14
 
 !Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -1625,7 +1625,7 @@
           if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_DEFAULT; endif
           call string2array(cptrn(1:l),contr_ptrn,l,ierr); l=l+1; contr_ptrn(l:l)=achar(0) !C-string
           if(ierr.eq.0) then
-           if(devk.eq.DEV_DEFAULT.and.devn.eq.DEV_DEFAULT.and.EXECUTION_DEVICE_KIND.ge.0.and.(.not.present(talsh_task))) then
+           if(devk.eq.DEV_DEFAULT.and.devn.eq.DEV_DEFAULT.and.(.not.present(talsh_task))) then
             devk=EXECUTION_DEVICE_KIND; devn=EXECUTION_DEVICE_ID
             ierr=talshTensorContractXL_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,accum)
            else
@@ -1673,7 +1673,7 @@
           if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_DEFAULT; endif
           call string2array(cptrn(1:l),contr_ptrn,l,ierr); l=l+1; contr_ptrn(l:l)=achar(0) !C-string
           if(ierr.eq.0) then
-           if(devk.eq.DEV_DEFAULT.and.devn.eq.DEV_DEFAULT.and.EXECUTION_DEVICE_KIND.ge.0) then
+           if(devk.eq.DEV_DEFAULT.and.devn.eq.DEV_DEFAULT) then
             devk=EXECUTION_DEVICE_KIND; devn=EXECUTION_DEVICE_ID
            endif
            ierr=talshTensorContractXL_(contr_ptrn,dtens,ltens,rtens,scale_real,scale_imag,devn,devk,accum)
