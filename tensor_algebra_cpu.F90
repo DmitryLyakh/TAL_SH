@@ -5547,13 +5547,13 @@
         subroutine get_contr_permutations(gemm_tl,gemm_tr,lrank,rrank,cptrn,conj_bits,dprm,lprm,rprm,ncd,nlu,nru,ierr)&
                                          &bind(c,name='get_contr_permutations') !SERIAL
 !This subroutine returns all tensor index permutations necessary for converting
-!the tensor contraction specified by <cptrn> into the matrix-matrix multiplication
+!the given tensor contraction specified by <cptrn> into the matrix-matrix multiplication
 !of a given configuration {NN,TN,NT,TT}.
 !INPUT:
 ! - gemm_tl - desired configuration of the left matrix in GEMM: 0 is 'N', 1 is 'T';
 ! - gemm_tr - desired configuration of the right matrix in GEMM: 0 is 'N', 1 is 'T';
 ! - cptrn(1:lrank+rrank) - digital contraction pattern;
-! - conj_bits - complex conjugation bits {0:D,1:L,2:R};
+! - conj_bits - tensor complex conjugation bits {0:D,1:L,2:R};
 !OUTPUT:
 ! - dprm(0:drank) - signed index permutation for the destination tensor (N2O, numeration starts from 1);
 ! - lprm(0:lrank) - signed index permutation for the left tensor argument (O2N, numeration starts from 1);
@@ -5594,7 +5594,7 @@
                                     &' with an untransposed left matrix in GEMM!")')
           ierr=2; return
          endif
- !Destination operand:
+ !Destination tensor operand:
 	 drank=0; dprm(0)=+1
 	 do i=1,lrank; if(cptrn(i).gt.0) then; drank=drank+1; dprm(drank)=cptrn(i); endif; enddo
 	 nlu=drank; simple=(drank.ge.2) !number of the left uncontracted dimensions
@@ -5687,6 +5687,190 @@
 	 end function contr_pattern_ok
 
 	end subroutine get_contr_permutations
+!-------------------------------------------------------------------------------------------------------------------------------
+        subroutine get_contraction_permutations(gemm_tl,gemm_tr,lrank,rrank,cptrn,conj_bits,dprm,lprm,rprm,ncd,nlu,nru,nhu,ierr)&
+                                               &bind(c,name='get_contraction_permutations') !SERIAL
+!This subroutine returns all tensor index permutations necessary for converting
+!the given tensor contraction specified by <cptrn> into the matrix-matrix multiplication
+!of a given configuration {NN,TN,NT,TT}. This version supports hyper-indices.
+!INPUT:
+! - gemm_tl - desired configuration of the left matrix in GEMM: 0 is 'N', 1 is 'T';
+! - gemm_tr - desired configuration of the right matrix in GEMM: 0 is 'N', 1 is 'T';
+! - cptrn(1:lrank+rrank) - digital contraction pattern;
+! - conj_bits - tensor complex conjugation bits {0:D,1:L,2:R};
+!OUTPUT:
+! - dprm(0:drank) - signed index permutation for the destination tensor (N2O, numeration starts from 1);
+! - lprm(0:lrank) - signed index permutation for the left tensor argument (O2N, numeration starts from 1);
+! - rprm(0:rrank) - signed index permutation for the right tensor argument (O2N, numeration starts from 1);
+! - ncd - total number of contracted indices;
+! - nlu - number of left uncontracted indices without hyper-indices;
+! - nru - number of right uncontracted indices without hyper-indices;
+! - nhu - number of uncontracted hyper-indices;
+! - ierr - error code (0:success).
+!NOTES:
+! - The default expected GEMM configuration is assumed to be TN.
+!   When requesting the NN case, the left tensor is not allowed to be conjugated.
+!   When requesting the TN or NN case with the right tensor conjugated, it will
+!   be necessary to switch to the TT or NT case, respectively.
+        implicit none
+!------------------------------------------------
+        logical, parameter:: check_pattern=.TRUE.
+!------------------------------------------------
+        integer(C_INT), intent(in), value:: gemm_tl,gemm_tr
+        integer(C_INT), intent(in), value:: lrank,rrank
+        integer(C_INT), intent(in):: cptrn(1:*)
+        integer(C_INT), intent(in), value:: conj_bits
+        integer(C_INT), intent(out):: dprm(0:*),lprm(0:*),rprm(0:*),ncd,nlu,nru,nhu
+        integer(C_INT), intent(inout):: ierr
+        integer(C_INT):: dtens(0:lrank+rrank),ltens(0:lrank),rtens(0:rrank),drank,i,j,n
+        logical:: pattern_ok,left_conj,right_conj
+
+        ierr=0; ncd=0; nlu=0; nru=0; nhu=0
+        n=lrank+rrank; drank=0; dprm(0)=1; lprm(0)=1; rprm(0)=1
+        pattern_ok=.TRUE.; if(check_pattern) pattern_ok=contr_pattern_ok()
+        if(pattern_ok.and.lrank.ge.0.and.rrank.ge.0) then
+ !Check conjugation bits:
+         left_conj=btest(conj_bits,1)
+         right_conj=btest(conj_bits,2)
+         if(btest(conj_bits,0)) then
+          left_conj=(.not.left_conj); right_conj=(.not.right_conj)
+         endif
+         if((gemm_tl.eq.0).and.left_conj) then
+          if(VERBOSE) write(CONS_OUT,'("#ERROR(CP-TAL:get_contraction_permutations): Left tensor conjugation is not supported'//&
+                           &' with an untransposed left matrix in GEMM!")')
+          ierr=2; return
+         endif
+ !Determine index permutations:
+         if(n.gt.0) then
+  !Label the destination tensor:
+          dtens(1:n)=0
+          do i=1,n
+           j=cptrn(i)
+           if(j.gt.0) then
+            drank=max(drank,j)
+            dtens(j)=dtens(j)+1
+            if(i.le.lrank) then; nlu=nlu+1; else; nru=nru+1; endif
+           elseif(j.lt.0) then
+            ncd=ncd+1
+           endif
+          enddo
+          j=0
+          do i=1,drank
+           if(dtens(i).eq.1) then !simple index
+            j=j+1; dtens(i)=j
+           elseif(dtens(i).eq.2) then !hyper index
+            nhu=nhu+1; dtens(i)=drank+nhu
+           endif
+          enddo
+  !Correct numbers of simple uncontracted indices:
+          nlu=nlu-nhu; nru=nru-nhu
+  !Label the left tensor:
+          j=0
+          do i=1,lrank
+           if(cptrn(i).lt.0) then
+            ltens(i)=-(ncd-j); j=j+1
+           else
+            ltens(i)=dtens(cptrn(i))
+           endif
+          enddo
+  !Label the right tensor:
+          do i=1,rrank
+           if(cptrn(lrank+i).lt.0) then
+            rtens(i)=ltens(-cptrn(lrank+i))
+           else
+            rtens(i)=dtens(cptrn(lrank+i))
+           endif
+          enddo
+  !Sort the labels to produce the necessary permutations:
+          if(lrank.gt.0) then
+           lprm(0:lrank)=(/1,(j,j=1,lrank)/)
+           if(lrank.gt.1) then
+            call merge_sort_key_int(lrank,ltens(1:lrank),dprm) !N2O
+            call permutation_converter(.TRUE.,lrank,dprm,lprm) !O2N
+           endif
+          endif
+          if(rrank.gt.0) then
+           rprm(0:rrank)=(/1,(j,j=1,rrank)/)
+           if(rrank.gt.1) then
+            call merge_sort_key_int(rrank,rtens(1:rrank),dprm) !N2O
+            call permutation_converter(.TRUE.,rrank,dprm,rprm) !O2N
+           endif
+          endif
+          if(drank.gt.0) then
+           dprm(0:drank)=(/1,(j,j=1,drank)/)
+           if(drank.gt.1) call merge_sort_key_int(drank,dtens(1:drank),dprm) !N2O
+          endif
+         endif
+ !Apply conjugation if needed (swap contracted and simple uncontracted positions):
+         if(gemm_tl.eq.0) then !left argument is processed as a transposed matrix by default
+          do i=1,lrank
+           if(lprm(i).le.ncd) then
+            lprm(i)=lprm(i)+nlu
+           elseif(lprm(i).gt.ncd.and.lprm(i).le.(ncd+nlu)) then
+            lprm(i)=lprm(i)-ncd
+           endif
+          enddo
+         endif
+         if((gemm_tr.ne.0).or.right_conj) then !right argument is processed as a normal matrix by default
+          do i=1,rrank
+           if(rprm(i).le.ncd) then
+            rprm(i)=rprm(i)+nru
+           elseif(rprm(i).gt.ncd.and.rprm(i).le.(ncd+nru)) then
+            rprm(i)=rprm(i)-ncd
+           endif
+          enddo
+         endif
+        else !invalid lrank or rrank or cptrn(:)
+         ierr=1
+        endif
+        return
+
+        contains
+
+         logical function contr_pattern_ok()
+         integer(C_INT):: jd(1:lrank+rrank),j0,j1,jc,jl
+
+         contr_pattern_ok=.TRUE.; jl=lrank+rrank
+         if(jl.gt.0) then
+          jd(1:jl)=0; jc=0
+          do j0=1,jl
+           j1=cptrn(j0)
+           if(j1.lt.0) then !contracted index
+            if(j0.le.lrank) then !contacted index from the left tensor
+             if(abs(j1).gt.rrank) then; contr_pattern_ok=.FALSE.; return; endif
+             if(cptrn(lrank+abs(j1)).ne.-j0) then; contr_pattern_ok=.FALSE.; return; endif
+            else !contracted index from the right tensor
+             if(abs(j1).gt.lrank) then; contr_pattern_ok=.FALSE.; return; endif
+             if(cptrn(abs(j1)).ne.-(j0-lrank)) then; contr_pattern_ok=.FALSE.; return; endif
+            endif
+           elseif(j1.gt.0.and.j1.le.jl) then !uncontracted index
+            if(j0.le.lrank) then !uncontacted index from the left tensor
+             if(jd(j1).eq.0) then !simple uncontracted index
+              jd(j1)=jd(j1)+1; jc=jc+1 !new uncontracted index
+             else
+              contr_pattern_ok=.FALSE.; return
+             endif
+            else !uncontracted index from the right tensor
+             if(jd(j1).eq.0) then !simple uncontracted index
+              jd(j1)=jd(j1)+1; jc=jc+1 !new uncontracted index
+             elseif(jd(j1).eq.1) then !hyper-uncontracted index
+              jd(j1)=jd(j1)+1 !this uncontracted index has already been counted
+             else
+              contr_pattern_ok=.FALSE.; return
+             endif
+            endif
+           else
+            contr_pattern_ok=.FALSE.; return
+           endif
+          enddo
+          do j0=1,jc
+           if(jd(j0).ne.1.and.jd(j0).ne.2) then; contr_pattern_ok=.FALSE.; return; endif
+          enddo
+         endif
+         return
+         end function contr_pattern_ok
+
+        end subroutine get_contraction_permutations
 !--------------------------------------------------------------------------------------------------------
         subroutine contr_pattern_rnd(max_tens_arg_rank,max_tens_arg_size,shape0,shape1,shape2,cptrn,ierr) !SERIAL
 !This subroutine returns a random tensor contraction pattern.
