@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/09/03
+!REVISION: 2020/09/18
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -248,7 +248,8 @@
         public tensor_shape_str_create     !creates a tensor shape specification string
         public get_contr_pattern_dig       !converts a symbolic tensor contraction pattern into the digital form (used by tensor_block_contract)
         public get_contr_pattern_sym       !converts a digital tensor contraction pattern into a symbolic form
-        public get_contr_permutations      !given a digital contraction pattern, returns all tensor permutations necessary for the subsequent matrix multiplication
+        public get_contr_permutations      !given a digital contraction pattern, returns all tensor permutations necessary for the subsequent matrix multiplication (no hypercontractions)
+        public get_contraction_permutations!given a digital contraction pattern, returns all tensor permutations necessary for the subsequent matrix multiplication (supports hypercontractions)
         public contr_pattern_rnd           !returns a random digital tensor contraction pattern
         public coherence_control_var       !returns a coherence control variable based on a mnemonic input
         public tensor_block_shape_create   !generates the tensor shape based on either the tensor shape specification string (TSSS) or numeric arguments
@@ -3677,10 +3678,10 @@
 !dtens(:)+=ltens(:)*rtens(:)
 !Author: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
 !Possible cases:
-! A) tensor+=tensor*tensor (no traces!): all tensor operands can be transposed;
-! B) scalar+=tensor*tensor (no traces!): only the left tensor operand can be transposed;
-! C) tensor+=tensor*scalar OR tensor+=scalar*tensor (no traces!): no transpose;
-! D) scalar+=scalar*scalar: no transpose.
+! A) tensor+=tensor*tensor (no traces!): all tensor operands may be transposed;
+! B) scalar+=tensor*tensor (no traces!): only the left tensor operand may be transposed;
+! C) tensor+=tensor*scalar OR tensor+=scalar*tensor (no traces!): no transposes;
+! D) scalar+=scalar*scalar: no transposes.
 !INPUT:
 ! - contr_ptrn(1:left_rank+right_rank) - contraction pattern:
 !                                        contr_ptrn(1:left_rank) refers to indices of the left tensor argument;
@@ -3700,7 +3701,7 @@
 ! - ierr - error code (0: success);
 !NOTES:
 ! - If <data_kind> is not specified then only the highest present data kind will be processed
-!   whereas the present lower-level data kinds of the destination tensor will be syncronized.
+!   whereas the present lower-level data kinds of the destination tensor will be synchronized.
         implicit none
         integer, intent(in):: contr_ptrn(1:*)                     !in: digital contraction pattern (see above)
         type(tensor_block_t), intent(inout), target:: ltens,rtens !inout: left and right tensors: (out) because of <tensor_block_layout> because of <tensor_block_shape_ok>
@@ -3711,15 +3712,17 @@
         character(2), intent(in), optional:: data_kind            !in: preferred data kind
         integer, intent(in), optional:: ord_rest(1:*)             !in: index ordering restrictions (for contracted indices only)
         logical, intent(in), optional:: accumulative              !in: whether or not the tensor contraction is accumulative (into destination tensor)
-!----------------------------------------------------
+!-----------------------------------------------------------
+        logical, parameter:: ENABLE_HYPERCONTRACTION=.FALSE.
+!-------------------------------------------------
         integer, parameter:: PARTIAL_CONTRACTION=1
         integer, parameter:: FULL_CONTRACTION=2
         integer, parameter:: ADD_TENSOR=3
         integer, parameter:: MULTIPLY_SCALARS=4
-!------------------------------------------------
+!----------------------------------------------
         integer:: i,j,k,l,m,n,k0,k1,k2,k3,ks,kf
         integer(LONGINT):: l0,l1,l2,l3,lld,lrd,lcd
-        integer:: nthr,ltb,rtb,dtb,lrank,rrank,drank,nlu,nru,ncd,tst,contr_case,conj,dn2o(0:max_tensor_rank)
+        integer:: nthr,ltb,rtb,dtb,lrank,rrank,drank,ncd,nlu,nru,nhu,tst,contr_case,conj,dn2o(0:max_tensor_rank)
         integer, target:: lo2n(0:max_tensor_rank),ro2n(0:max_tensor_rank),do2n(0:max_tensor_rank)
         integer, pointer:: trn(:)
         type(tensor_block_t), pointer:: tens_in,tens_out,ltp,rtp,dtp
@@ -3800,7 +3803,7 @@
           accum=accumulative
           if(.not.accum) then
            if(ZERO_UNINITIALIZED_OUTPUT) then
-            call tensor_block_init(dtk,dtens,ierr); if(ierr.ne.0) then; ierr=42; return; endif
+            call tensor_block_init(dtk,dtens,ierr); if(ierr.ne.0) then; ierr=7; return; endif
            endif
            dtens%scalar_value=(0d0,0d0)
            beta=(0d0,0d0)
@@ -3808,46 +3811,51 @@
          endif
          if(present(alpha)) then; alf=alpha; else; alf=(1d0,0d0); endif
  !Check the requested contraction pattern:
-         contr_ok=contr_ptrn_ok(contr_ptrn,lrank,rrank,drank)
-         if(present(ord_rest)) contr_ok=contr_ok.and.ord_rest_ok(ord_rest,contr_ptrn,lrank,rrank,drank)
-         if(.not.contr_ok) then; ierr=7; return; endif
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): contraction pattern accepted:",128(1x,i2))') &
-!         contr_ptrn(1:lrank+rrank) !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): tensor layouts (left, right, dest): ",i2,1x,i2,1x,i2)') &
-!         ltb,rtb,dtb !debug
- !Determine index permutations for all tensor operands together with the numbers of contracted/uncontraced indices (ncd/{nlu,nru}):
-         call determine_index_permutations !sets {dtransp,ltransp,rtransp},{do2n,lo2n,ro2n},{ncd,nlu,nru}
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): left uncontr, right uncontr, contr dims: "&
-!         &,i2,1x,i2,1x,i2)') nlu,nru,ncd !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): left index permutation (O2N)  :"&
-!         &,128(1x,i2))') lo2n(1:lrank) !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): right index permutation (O2N) :"&
-!         &,128(1x,i2))') ro2n(1:rrank) !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): result index permutation (O2N):"&
-!         &,128(1x,i2))') do2n(1:drank) !debug
- !Determine complex conjugation for all tensor arguments:
-         ltrm='T'; rtrm='N'
-         if(dtk(1:1).eq.'c'.or.dtk(1:1).eq.'C') then !only complex data types (C4,C8)
+         contr_ok=contr_ptrn_ok(contr_ptrn,lrank,rrank,drank) !supports hyper-indices
+         if(present(ord_rest)) contr_ok=(contr_ok.and.ord_rest_ok(ord_rest,contr_ptrn,lrank,rrank,drank))
+         if(.not.contr_ok) then; ierr=8; return; endif
+!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): contraction pattern accepted:",128(1x,i2))')&
+!        &contr_ptrn(1:lrank+rrank) !debug
+!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): tensor layouts (left, right, dest): ",i2,1x,i2,1x,i2)')&
+!        &ltb,rtb,dtb !debug
+ !Determine index permutations and complex conjugation for all tensor arguments:
+         ltrm='T'; rtrm='N' !GEMM('T','N') by default
   !Determine the need for complex conjugation for all arguments:
+         if(dtk(1:1).eq.'c'.or.dtk(1:1).eq.'C') then !only complex data types (C4,C8)
           k=arg_conj
           dconj=(mod(k,2).eq.1); k=k/2
           lconj=(mod(k,2).eq.1); k=k/2
           rconj=(mod(k,2).eq.1)
-          if(dconj) then; dconj=.FALSE.; lconj=.not.lconj; rconj=.not.rconj; endif
-  !Modify right tensor index permutation if needed:
-          if(lconj) ltrm='C' !'T' -> 'C'
-          if(rconj) then     !'N' -> 'C'
+          if(dconj) then; dconj=.FALSE.; lconj=(.not.lconj); rconj=(.not.rconj); endif
+         else
+          dconj=.FALSE.; lconj=.FALSE.; rconj=.FALSE.
+         endif
+         if(lconj) ltrm='C' !'T' -> 'C'
+         if(rconj) rtrm='C' !'N' -> 'C'
+  !Determine index permutations and modify the right tensor index permutation if needed:
+         if(ENABLE_HYPERCONTRACTION) then
+          call get_contraction_permutations(1,0,lrank,rrank,contr_ptrn,arg_conj,dn2o,lo2n,ro2n,ncd,nlu,nru,nhu,ierr) !sets {dtransp,ltransp,rtransp},{do2n,lo2n,ro2n},{ncd,nlu,nru}
+          if(ierr.ne.0) then; ierr=9; return; endif
+          do2n(0)=dn2o(0); do k=1,drank; do2n(dn2o(k))=k; enddo
+         else
+          call determine_index_permutations() !sets {dtransp,ltransp,rtransp},{do2n,lo2n,ro2n},{ncd,nlu,nru}
+          if(rconj) then !'N' -> 'C'
            if(ncd.gt.0.and.nru.gt.0) then
             dn2o(0)=ro2n(0); do k=1,rrank; dn2o(ro2n(k))=k; enddo
             do k=1,ncd; ro2n(dn2o(k))=nru+k; enddo
             do k=ncd+1,rrank; ro2n(dn2o(k))=k-ncd; enddo
-            rtransp=.not.perm_trivial(rrank,ro2n)
+            rtransp=(.not.perm_trivial(rrank,ro2n))
            endif
-           rtrm='C'
           endif
-         else
-          dconj=.FALSE.; lconj=.FALSE.; rconj=.FALSE.
          endif
+!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): contr dims, left dims, right dims, hyper dims: "&
+!        &,i3,1x,i3,1x,i3,1x,i3)') ncd,nlu,nru,nhu !debug
+!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): left index permutation (O2N)  :"&
+!        &,128(1x,i2))') lo2n(1:lrank) !debug
+!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): right index permutation (O2N) :"&
+!        &,128(1x,i2))') ro2n(1:rrank) !debug
+!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): result index permutation (O2N):"&
+!        &,128(1x,i2))') do2n(1:drank) !debug
  !Transpose/conjugate tensor arguments, if needed:
          nullify(ltp); nullify(rtp); nullify(dtp)
          do k=1,2 !left/right tensor argument switch
@@ -3883,7 +3891,7 @@
            case(scalar_tensor)
            case(dimension_led)
             call tensor_block_copy(tens_in,tens_out,ierr,transp=trn,arg_conj=conj)
-            if(ierr.ne.0) then; ierr=8; goto 999; endif
+            if(ierr.ne.0) then; ierr=10; goto 999; endif
            case(bricked_dense,bricked_ordered)
             !`Future
            case(sparse_list)
@@ -3891,24 +3899,24 @@
            case(compressed)
             !`Future
            case default
-            ierr=9; goto 999
+            ierr=11; goto 999
            end select
            if(k.eq.1) then; ltp=>lta; else; rtp=>rta; endif
            nullify(tens_out); nullify(trn)
           elseif(tens_in%tensor_shape%num_dim.eq.0.or.(.not.transp)) then !scalar tensor or no transpose required
            if(k.eq.1) then; ltp=>ltens; else; rtp=>rtens; endif
           else
-           ierr=10; goto 999
+           ierr=12; goto 999
           endif
           nullify(tens_in)
          enddo !k
          if(dtransp) then !transpose the destination tensor
 !         write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): permutation to be performed for ",i2)') 0 !debug
-          dn2o(0)=+1; do k=1,drank; dn2o(do2n(k))=k; enddo
+          dn2o(0)=do2n(0); do k=1,drank; dn2o(do2n(k))=k; enddo
           select case(dtb)
           case(scalar_tensor)
           case(dimension_led)
-           call tensor_block_copy(dtens,dta,ierr,transp=dn2o); if(ierr.ne.0) then; ierr=11; goto 999; endif
+           call tensor_block_copy(dtens,dta,ierr,transp=dn2o); if(ierr.ne.0) then; ierr=13; goto 999; endif
           case(bricked_dense,bricked_ordered)
            !`Future
           case(sparse_list)
@@ -3916,7 +3924,7 @@
           case(compressed)
            !`Future
           case default
-           ierr=12; goto 999
+           ierr=14; goto 999
           end select
           dtp=>dta
          else !no transpose for the destination tensor
@@ -3924,24 +3932,24 @@
          endif
 !        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): arguments are ready to be processed!")') !debug
  !Calculate matrix dimensions:
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): argument pointer status (l,r,d): ",l1,1x,l1,1x,l1)') &
-!         associated(ltp),associated(rtp),associated(dtp) !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): left index extents  :",128(1x,i4))') &
-!         ltp%tensor_shape%dim_extent(1:lrank) !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): right index extents :",128(1x,i4))') &
-!         rtp%tensor_shape%dim_extent(1:rrank) !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): result index extents:",128(1x,i4))') &
-!         dtp%tensor_shape%dim_extent(1:drank) !debug
-         call calculate_matrix_dimensions(dtb,nlu,nru,dtp,lld,lrd,ierr); if(ierr.ne.0) then; ierr=13; goto 999; endif
-         call calculate_matrix_dimensions(ltb,ncd,nlu,ltp,lcd,l0,ierr); if(ierr.ne.0) then; ierr=14; goto 999; endif
+!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): argument pointer status (l,r,d): ",l1,1x,l1,1x,l1)')&
+!        &associated(ltp),associated(rtp),associated(dtp) !debug
+!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): left index extents  :",128(1x,i4))')&
+!        &ltp%tensor_shape%dim_extent(1:lrank) !debug
+!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): right index extents :",128(1x,i4))')&
+!        &rtp%tensor_shape%dim_extent(1:rrank) !debug
+!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): result index extents:",128(1x,i4))')&
+!        &dtp%tensor_shape%dim_extent(1:drank) !debug
+         call calculate_matrix_dimensions(dtb,nlu,nru,dtp,lld,lrd,ierr); if(ierr.ne.0) then; ierr=15; goto 999; endif
+         call calculate_matrix_dimensions(ltb,ncd,nlu,ltp,lcd,l0,ierr); if(ierr.ne.0) then; ierr=16; goto 999; endif
          if(rtrm.eq.'C') then !R(r,c) matrix shape
-          call calculate_matrix_dimensions(rtb,nru,ncd,rtp,l2,l1,ierr); if(ierr.ne.0) then; ierr=15; goto 999; endif
+          call calculate_matrix_dimensions(rtb,nru,ncd,rtp,l2,l1,ierr); if(ierr.ne.0) then; ierr=17; goto 999; endif
          else !R(c,r) matrix shape
-          call calculate_matrix_dimensions(rtb,ncd,nru,rtp,l1,l2,ierr); if(ierr.ne.0) then; ierr=16; goto 999; endif
+          call calculate_matrix_dimensions(rtb,ncd,nru,rtp,l1,l2,ierr); if(ierr.ne.0) then; ierr=18; goto 999; endif
          endif
 !        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): matrix dimensions (left,right,contr): "&
-!         &,i10,1x,i10,1x,i10)') lld,lrd,lcd !debug
-         if(l0.ne.lld.or.l1.ne.lcd.or.l2.ne.lrd) then; ierr=17; goto 999; endif
+!        &,i10,1x,i10,1x,i10)') lld,lrd,lcd !debug
+         if(l0.ne.lld.or.l1.ne.lcd.or.l2.ne.lrd) then; ierr=19; goto 999; endif
          if(rtrm.eq.'C') then; l2=lrd; else; l2=lcd; endif !leading dimension for the right matrix
  !Multiply two matrices (dtp += ltp * rtp):
 	 start_gemm=thread_wtime()
@@ -3951,34 +3959,34 @@
 	  case('r4','R4')
 #ifdef NO_BLAS
 	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real4,rtp%data_real4,dtp%data_real4,ierr,real(alf,4),real(beta,4))
-	   if(ierr.ne.0) then; ierr=18; goto 999; endif
+	   if(ierr.ne.0) then; ierr=20; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
 	    call sgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),real(alf,4),ltp%data_real4,int(lcd,4),rtp%data_real4,int(l2,4),&
 	              &real(beta,4),dtp%data_real4,int(lld,4))
 	   else
 	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real4,rtp%data_real4,dtp%data_real4,ierr,real(alf,4),real(beta,4))
-	    if(ierr.ne.0) then; ierr=19; goto 999; endif
+	    if(ierr.ne.0) then; ierr=21; goto 999; endif
 	   endif
 #endif
 	  case('r8','R8')
 #ifdef NO_BLAS
 	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real8,rtp%data_real8,dtp%data_real8,ierr,real(alf,8),real(beta,8))
-	   if(ierr.ne.0) then; ierr=20; goto 999; endif
+	   if(ierr.ne.0) then; ierr=22; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
 	    call dgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),real(alf,8),ltp%data_real8,int(lcd,4),rtp%data_real8,int(l2,4),&
 	              &real(beta,8),dtp%data_real8,int(lld,4))
 	   else
 	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_real8,rtp%data_real8,dtp%data_real8,ierr,real(alf,8),real(beta,8))
-	    if(ierr.ne.0) then; ierr=21; goto 999; endif
+	    if(ierr.ne.0) then; ierr=23; goto 999; endif
 	   endif
 #endif
 	  case('c4','C4')
 #ifdef NO_BLAS
 	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx4,rtp%data_cmplx4,dtp%data_cmplx4,ierr,&
                                           &cmplx(alf,kind=4),cmplx(beta,kind=4))
-	   if(ierr.ne.0) then; ierr=22; goto 999; endif
+	   if(ierr.ne.0) then; ierr=24; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
 	    call cgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),cmplx(alf,kind=4),ltp%data_cmplx4,int(lcd,4),&
@@ -3986,20 +3994,20 @@
 	   else
 	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx4,rtp%data_cmplx4,dtp%data_cmplx4,ierr,&
                                            &cmplx(alf,kind=4),cmplx(beta,kind=4))
-	    if(ierr.ne.0) then; ierr=23; goto 999; endif
+	    if(ierr.ne.0) then; ierr=25; goto 999; endif
 	   endif
 #endif
 	  case('c8','C8')
 #ifdef NO_BLAS
 	   call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx8,rtp%data_cmplx8,dtp%data_cmplx8,ierr,alf,beta)
-	   if(ierr.ne.0) then; ierr=24; goto 999; endif
+	   if(ierr.ne.0) then; ierr=26; goto 999; endif
 #else
 	   if(.not.DISABLE_BLAS) then
 	    call zgemm(ltrm,rtrm,int(lld,4),int(lrd,4),int(lcd,4),alf,ltp%data_cmplx8,int(lcd,4),rtp%data_cmplx8,int(l2,4),&
 	              &beta,dtp%data_cmplx8,int(lld,4))
 	   else
 	    call tensor_block_pcontract_dlf(lld,lrd,lcd,ltp%data_cmplx8,rtp%data_cmplx8,dtp%data_cmplx8,ierr,alf,beta)
-	    if(ierr.ne.0) then; ierr=25; goto 999; endif
+	    if(ierr.ne.0) then; ierr=27; goto 999; endif
 	   endif
 #endif
 	  end select
@@ -4008,22 +4016,22 @@
 	  case('r4','R4')
 	   d_r4=0.0
 	   call tensor_block_fcontract_dlf(lcd,ltp%data_real4,rtp%data_real4,d_r4,ierr,real(alf,4),real(beta,4))
-	   if(ierr.ne.0) then; ierr=26; goto 999; endif
+	   if(ierr.ne.0) then; ierr=28; goto 999; endif
 	   dtp%scalar_value=dtp%scalar_value+cmplx(real(d_r4,8),0d0,kind=8)
 	  case('r8','R8')
 	   d_r8=0d0
 	   call tensor_block_fcontract_dlf(lcd,ltp%data_real8,rtp%data_real8,d_r8,ierr,real(alf,8),real(beta,8))
-	   if(ierr.ne.0) then; ierr=27; goto 999; endif
+	   if(ierr.ne.0) then; ierr=29; goto 999; endif
 	   dtp%scalar_value=dtp%scalar_value+cmplx(d_r8,0d0,kind=8)
 	  case('c4','C4')
 	   d_c4=(0.0,0.0)
 	   call tensor_block_fcontract_dlf(lcd,ltp%data_cmplx4,rtp%data_cmplx4,d_c4,ierr,cmplx(alf,kind=4),cmplx(beta,kind=4))
-	   if(ierr.ne.0) then; ierr=28; goto 999; endif
+	   if(ierr.ne.0) then; ierr=30; goto 999; endif
 	   dtp%scalar_value=dtp%scalar_value+cmplx(d_c4,kind=8)
 	  case('c8','C8')
 	   d_c8=(0d0,0d0)
 	   call tensor_block_fcontract_dlf(lcd,ltp%data_cmplx8,rtp%data_cmplx8,d_c8,ierr,alf,beta)
-	   if(ierr.ne.0) then; ierr=29; goto 999; endif
+	   if(ierr.ne.0) then; ierr=31; goto 999; endif
 	   dtp%scalar_value=dtp%scalar_value+d_c8
 	  end select
 	 case(ADD_TENSOR)
@@ -4031,14 +4039,14 @@
 	   if(lconj) then; k=1*2+0; else; k=0; endif !bit 0 -> D; bit 1 -> L
 	   if(rconj) then; d_c8=conjg(rtp%scalar_value); else; d_c8=rtp%scalar_value; endif
 	   call tensor_block_add(dtp,ltp,ierr,scale_fac=d_c8*alf,arg_conj=k,data_kind=dtk,accumulative=accum)
-	   if(ierr.ne.0) then; ierr=30; goto 999; endif
+	   if(ierr.ne.0) then; ierr=32; goto 999; endif
 	  elseif(ltb.eq.scalar_tensor.and.rtb.ne.scalar_tensor) then
 	   if(rconj) then; k=1*2+0; else; k=0; endif !bit 0 -> D; bit 1 -> L
 	   if(lconj) then; d_c8=conjg(ltp%scalar_value); else; d_c8=ltp%scalar_value; endif
 	   call tensor_block_add(dtp,rtp,ierr,scale_fac=d_c8*alf,arg_conj=k,data_kind=dtk,accumulative=accum)
-	   if(ierr.ne.0) then; ierr=31; goto 999; endif
+	   if(ierr.ne.0) then; ierr=33; goto 999; endif
 	  else
-	   ierr=32; goto 999
+	   ierr=34; goto 999
 	  endif
 	 case(MULTIPLY_SCALARS)
 	  if(lconj) then; l_c8=conjg(ltp%scalar_value); else; l_c8=ltp%scalar_value; endif
@@ -4060,7 +4068,7 @@
 	  select case(dtb)
 	  case(scalar_tensor)
 	  case(dimension_led)
-	   call tensor_block_copy(dtp,dtens,ierr,transp=do2n); if(ierr.ne.0) then; ierr=33; goto 999; endif
+	   call tensor_block_copy(dtp,dtens,ierr,transp=do2n); if(ierr.ne.0) then; ierr=35; goto 999; endif
 	  case(bricked_dense,bricked_ordered)
 	   !`Future
 	  case(sparse_list)
@@ -4068,11 +4076,11 @@
 	  case(compressed)
 	   !`Future
 	  case default
-	   ierr=34; goto 999
+	   ierr=36; goto 999
 	  end select
 	 endif
 	 if(DATA_KIND_SYNC) then
-	  call tensor_block_sync(dtens,dtk,ierr); if(ierr.ne.0) then; ierr=35; goto 999; endif
+	  call tensor_block_sync(dtens,dtk,ierr); if(ierr.ne.0) then; ierr=37; goto 999; endif
 	 endif
  !Destroy temporary tensor blocks:
 999	 nullify(ltp); nullify(rtp); nullify(dtp)
@@ -4108,7 +4116,7 @@
 	  &'": GEMM time = ",F10.4,": Total time = ",F10.4)') nthr,gemm_flops,(finish_gemm-start_gemm),(tc_finish-tc_start)
 	 endif
 	else
-	 ierr=36
+	 ierr=38
 	endif
 !	write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): exit error code: ",i5)') ierr !debug
 	return
@@ -4142,7 +4150,7 @@
 	 return
 	 end subroutine calculate_matrix_dimensions
 
-	 subroutine determine_index_permutations !sets {dtransp,ltransp,rtransp},{do2n,lo2n,ro2n},{ncd,nlu,nru}
+	 subroutine determine_index_permutations() !sets {dtransp,ltransp,rtransp},{do2n,lo2n,ro2n},{ncd,nlu,nru}
 	 integer jkey(1:max_tensor_rank),jtrn0(0:max_tensor_rank),jtrn1(0:max_tensor_rank),jj,j0,j1
  !Destination operand:
 	 if(drank.gt.0) then
@@ -4256,6 +4264,9 @@
 	   j1=ptrn(j0)
 	   if(j1.gt.0.and.j1.le.dr) then !uncontracted index
 	    jbus(j1)=jbus(j1)+1; jbus(dr+j0)=jbus(dr+j0)+1
+	    if(jbus(j1).gt.1) then
+	     contr_ptrn_ok=.FALSE.; return
+	    endif
 	    if(ltens%tensor_shape%dim_extent(j0).ne.dtens%tensor_shape%dim_extent(j1)) then
 	     contr_ptrn_ok=.FALSE.; return
 	    endif
@@ -4268,10 +4279,14 @@
 	    contr_ptrn_ok=.FALSE.; return
 	   endif
 	  enddo
+	  jbus(1:dr)=0
 	  do j0=lr+1,lr+rr !right tensor-argument
 	   j1=ptrn(j0)
 	   if(j1.gt.0.and.j1.le.dr) then !uncontracted index
 	    jbus(j1)=jbus(j1)+1; jbus(dr+j0)=jbus(dr+j0)+1
+	    if(jbus(j1).gt.1) then
+	     contr_ptrn_ok=.FALSE.; return
+	    endif
 	    if(rtens%tensor_shape%dim_extent(j0-lr).ne.dtens%tensor_shape%dim_extent(j1)) then
 	     contr_ptrn_ok=.FALSE.; return
 	    endif
@@ -5705,7 +5720,7 @@
 ! - ncd - total number of contracted indices;
 ! - nlu - number of left uncontracted indices without hyper-indices;
 ! - nru - number of right uncontracted indices without hyper-indices;
-! - nhu - number of uncontracted hyper-indices;
+! - nhu - number of uncontracted hyper-indices (present in all three tensors);
 ! - ierr - error code (0:success).
 !NOTES:
 ! - The default expected GEMM configuration is assumed to be TN.
@@ -5728,7 +5743,12 @@
         ierr=0; ncd=0; nlu=0; nru=0; nhu=0
         n=lrank+rrank; drank=0; dprm(0)=1; lprm(0)=1; rprm(0)=1
         pattern_ok=.TRUE.; if(check_pattern) pattern_ok=contr_pattern_ok()
-        if(pattern_ok.and.lrank.ge.0.and.rrank.ge.0) then
+        if(.not.pattern_ok) then
+         if(VERBOSE) write(CONS_OUT,'("#ERROR(CP-TAL:get_contraction_permutations): Invalid digital tensor contraction pattern:"'//&
+                          &',128(1x,i3))') cptrn(1:n)
+         ierr=3; return
+        endif
+        if(lrank.ge.0.and.rrank.ge.0) then
  !Check conjugation bits:
          left_conj=btest(conj_bits,1)
          right_conj=btest(conj_bits,2)
@@ -5746,11 +5766,11 @@
           dtens(1:n)=0
           do i=1,n
            j=cptrn(i)
-           if(j.gt.0) then
+           if(j.gt.0) then !uncontracted index
             drank=max(drank,j)
             dtens(j)=dtens(j)+1
             if(i.le.lrank) then; nlu=nlu+1; else; nru=nru+1; endif
-           elseif(j.lt.0) then
+           elseif(j.lt.0) then !contracted index
             ncd=ncd+1
            endif
           enddo
@@ -5762,7 +5782,7 @@
             nhu=nhu+1; dtens(i)=drank+nhu
            endif
           enddo
-  !Correct numbers of simple uncontracted indices:
+  !Correct the numbers of simple uncontracted indices:
           nlu=nlu-nhu; nru=nru-nhu
   !Label the left tensor:
           j=0
@@ -5821,6 +5841,8 @@
           enddo
          endif
         else !invalid lrank or rrank or cptrn(:)
+         if(VERBOSE) write(CONS_OUT,'("#ERROR(CP-TAL:get_contraction_permutations): Invalid input tensor ranks: ",i11,1x,i11)')&
+                          &lrank,rrank
          ierr=1
         endif
         return
