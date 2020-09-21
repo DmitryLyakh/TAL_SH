@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/09/18
+!REVISION: 2020/09/21
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -202,6 +202,13 @@
          module procedure tensor_block_ptrace_dlf_c8
         end interface tensor_block_ptrace_dlf
 
+        interface tensor_block_pcontract_batch_dlf
+         module procedure tensor_block_pcontract_batch_dlf_r4
+         module procedure tensor_block_pcontract_batch_dlf_r8
+         module procedure tensor_block_pcontract_batch_dlf_c4
+         module procedure tensor_block_pcontract_batch_dlf_c8
+        end interface tensor_block_pcontract_batch_dlf
+
 !FUNCTION VISIBILITY:
         public get_mem_alloc_policy        !gets the current memory allocation policy for sizeable arrays
         public set_mem_alloc_policy        !sets the memory allocation policy for sizeable arrays
@@ -275,6 +282,7 @@
         public tensor_block_pcontract_dlf  !multiplies two matrices derived from tensors to produce a third matrix (left is transposed, right is normal)
         public tensor_block_ftrace_dlf     !takes a full trace of a tensor block
         public tensor_block_ptrace_dlf     !takes a partial trace of a tensor block
+        public tensor_block_pcontract_batch_dlf !batched version of tensor_block_pcontract_dlf
 
        contains
 !-----------------
@@ -3678,7 +3686,7 @@
 !dtens(:)+=ltens(:)*rtens(:)
 !Author: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
 !Possible cases:
-! A) tensor+=tensor*tensor (no traces!): all tensor operands may be transposed;
+! A) tensor+=tensor*tensor (no traces!, hypercontractions are supported): all tensor operands may be transposed;
 ! B) scalar+=tensor*tensor (no traces!): only the left tensor operand may be transposed;
 ! C) tensor+=tensor*scalar OR tensor+=scalar*tensor (no traces!): no transposes;
 ! D) scalar+=scalar*scalar: no transposes.
@@ -3730,7 +3738,7 @@
         character(2):: dtk
         character(1):: ltrm,rtrm
         real(4):: d_r4
-        real(8):: d_r8,start_gemm,finish_gemm,gemm_flops,tc_start,tc_finish
+        real(8):: d_r8,gemm_start,gemm_finish,gemm_flops,tc_start,tc_finish
         complex(4):: d_c4,l_c4,r_c4
         complex(8):: d_c8,l_c8,r_c8,alf,beta
         logical:: contr_ok,ltransp,rtransp,dtransp,transp,lconj,rconj,dconj,accum
@@ -3834,9 +3842,12 @@
          if(rconj) rtrm='C' !'N' -> 'C'
   !Determine index permutations and modify the right tensor index permutation if needed:
          if(ENABLE_HYPERCONTRACTION) then
-          call get_contraction_permutations(1,0,lrank,rrank,contr_ptrn,arg_conj,dn2o,lo2n,ro2n,ncd,nlu,nru,nhu,ierr) !sets {dtransp,ltransp,rtransp},{do2n,lo2n,ro2n},{ncd,nlu,nru}
+          call get_contraction_permutations(1,0,lrank,rrank,contr_ptrn,arg_conj,dn2o,lo2n,ro2n,ncd,nlu,nru,nhu,ierr) !sets {dn2o,lo2n,ro2n},{ncd,nlu,nru,nhu}
           if(ierr.ne.0) then; ierr=9; return; endif
           do2n(0)=dn2o(0); do k=1,drank; do2n(dn2o(k))=k; enddo
+          dtransp=(.not.perm_trivial(drank,do2n))
+          ltransp=(.not.perm_trivial(lrank,lo2n))
+          rtransp=(.not.perm_trivial(rrank,ro2n))
          else
           call determine_index_permutations() !sets {dtransp,ltransp,rtransp},{do2n,lo2n,ro2n},{ncd,nlu,nru}
           if(rconj) then !'N' -> 'C'
@@ -3952,7 +3963,7 @@
          if(l0.ne.lld.or.l1.ne.lcd.or.l2.ne.lrd) then; ierr=19; goto 999; endif
          if(rtrm.eq.'C') then; l2=lrd; else; l2=lcd; endif !leading dimension for the right matrix
  !Multiply two matrices (dtp += ltp * rtp):
-	 start_gemm=thread_wtime()
+	 gemm_start=thread_wtime()
 	 select case(contr_case)
 	 case(PARTIAL_CONTRACTION) !destination is an array
 	  select case(dtk)
@@ -4053,8 +4064,8 @@
 	  if(rconj) then; r_c8=conjg(rtp%scalar_value); else; r_c8=rtp%scalar_value; endif
 	  dtp%scalar_value=dtp%scalar_value+l_c8*r_c8*alf
 	 end select
-	 finish_gemm=thread_wtime()
-	 cpu_flop_time=cpu_flop_time+(finish_gemm-start_gemm)
+	 gemm_finish=thread_wtime()
+	 cpu_flop_time=cpu_flop_time+(gemm_finish-gemm_start)
 	 select case(dtk)
 	 case('r4','R4','r8','R8')
 	  gemm_flops=lld*lrd*lcd*2d0
@@ -4113,7 +4124,7 @@
 	 cpu_contract_time=cpu_contract_time+(tc_finish-tc_start)
 	 if(LOGGING.gt.0) then
 	  write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): Max threads = ",i3,": GEMM Flop count = ",D25.14,'//&
-	  &'": GEMM time = ",F10.4,": Total time = ",F10.4)') nthr,gemm_flops,(finish_gemm-start_gemm),(tc_finish-tc_start)
+	  &'": GEMM time = ",F10.4,": Total time = ",F10.4)') nthr,gemm_flops,(gemm_finish-gemm_start),(tc_finish-tc_start)
 	 endif
 	else
 	 ierr=38
@@ -11188,5 +11199,77 @@
 !        thread_wtime(time_beg),ierr !debug
 	return
 	end subroutine tensor_block_ptrace_dlf_c8
+!----------------------------------------------------------------------------------------------------
+        subroutine tensor_block_pcontract_batch_dlf_r4(dh,dl,dr,dc,ltens,rtens,dtens,ierr,alpha,beta) !PARALLEL
+!This is a batched version of tensor_block_pcontract_dlf_r4.
+        implicit none
+!---------------------------------------
+        integer, parameter:: real_kind=4
+!---------------------------------------
+        integer(LONGINT), intent(in):: dh,dl,dr,dc !matrix dimensions
+        real(real_kind), intent(in):: ltens(0:*),rtens(0:*) !input arguments
+        real(real_kind), intent(inout):: dtens(0:*) !output argument
+        integer, intent(inout):: ierr !error code
+        real(real_kind), intent(in), optional:: alpha !BLAS alpha
+        real(real_kind), intent(in), optional:: beta  !BLAS beta
+
+        ierr=0
+        !`Finish
+        return
+        end subroutine tensor_block_pcontract_batch_dlf_r4
+!----------------------------------------------------------------------------------------------------
+        subroutine tensor_block_pcontract_batch_dlf_r8(dh,dl,dr,dc,ltens,rtens,dtens,ierr,alpha,beta) !PARALLEL
+!This is a batched version of tensor_block_pcontract_dlf_r8.
+        implicit none
+!---------------------------------------
+        integer, parameter:: real_kind=8
+!---------------------------------------
+        integer(LONGINT), intent(in):: dh,dl,dr,dc !matrix dimensions
+        real(real_kind), intent(in):: ltens(0:*),rtens(0:*) !input arguments
+        real(real_kind), intent(inout):: dtens(0:*) !output argument
+        integer, intent(inout):: ierr !error code
+        real(real_kind), intent(in), optional:: alpha !BLAS alpha
+        real(real_kind), intent(in), optional:: beta  !BLAS beta
+
+        ierr=0
+        !`Finish
+        return
+        end subroutine tensor_block_pcontract_batch_dlf_r8
+!----------------------------------------------------------------------------------------------------
+        subroutine tensor_block_pcontract_batch_dlf_c4(dh,dl,dr,dc,ltens,rtens,dtens,ierr,alpha,beta) !PARALLEL
+!This is a batched version of tensor_block_pcontract_dlf_c4.
+        implicit none
+!---------------------------------------
+        integer, parameter:: real_kind=4
+!---------------------------------------
+        integer(LONGINT), intent(in):: dh,dl,dr,dc !matrix dimensions
+        complex(real_kind), intent(in):: ltens(0:*),rtens(0:*) !input arguments
+        complex(real_kind), intent(inout):: dtens(0:*) !output argument
+        integer, intent(inout):: ierr !error code
+        complex(real_kind), intent(in), optional:: alpha !BLAS alpha
+        complex(real_kind), intent(in), optional:: beta  !BLAS beta
+
+        ierr=0
+        !`Finish
+        return
+        end subroutine tensor_block_pcontract_batch_dlf_c4
+!----------------------------------------------------------------------------------------------------
+        subroutine tensor_block_pcontract_batch_dlf_c8(dh,dl,dr,dc,ltens,rtens,dtens,ierr,alpha,beta) !PARALLEL
+!This is a batched version of tensor_block_pcontract_dlf_c8.
+        implicit none
+!---------------------------------------
+        integer, parameter:: real_kind=8
+!---------------------------------------
+        integer(LONGINT), intent(in):: dh,dl,dr,dc !matrix dimensions
+        complex(real_kind), intent(in):: ltens(0:*),rtens(0:*) !input arguments
+        complex(real_kind), intent(inout):: dtens(0:*) !output argument
+        integer, intent(inout):: ierr !error code
+        complex(real_kind), intent(in), optional:: alpha !BLAS alpha
+        complex(real_kind), intent(in), optional:: beta  !BLAS beta
+
+        ierr=0
+        !`Finish
+        return
+        end subroutine tensor_block_pcontract_batch_dlf_c8
 
        end module tensor_algebra_cpu
