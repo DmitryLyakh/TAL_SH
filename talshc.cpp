@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/09/03
+REVISION: 2020/09/23
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -68,7 +68,7 @@ FOR DEVELOPER(s):
 
 //PARAMETERS:
 static int VERBOSE=1;     //verbosity for errors
-static int LOGGING_OPS=0; //logging basic tensor operations
+static int LOGGING_OPS=0; //logging basic tensor operations: Add, Contract
 
 //GLOBALS:
 // General:
@@ -4563,7 +4563,7 @@ int talshTensorAdd(const char * cptrn,   //in: tensor addition pattern
   printf("%s",cptrn); printf(" ");
   talshTensorPrint(dtens); printf(" ");
   talshTensorPrint(ltens); printf(" ");
-  printf(": Flop volume = %llu: Time (s) = ",talshTensorVolume(dtens));
+  printf(": FMA Flop volume = %llu: Time (s) = ",talshTensorVolume(dtens));
   tms=time_high_sec();
  }
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
@@ -4844,7 +4844,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
   talshTensorPrint(dtens); printf(" ");
   talshTensorPrint(ltens); printf(" ");
   talshTensorPrint(rtens); printf(" ");
-  printf(": Flop volume = %llu: Time (s) = ",
+  printf(": FMA Flop volume = %llu: Time (s) = ",
          ((size_t)sqrt((double)(talshTensorVolume(dtens)*talshTensorVolume(ltens)*talshTensorVolume(rtens)))));
   tms=time_high_sec();
  }
