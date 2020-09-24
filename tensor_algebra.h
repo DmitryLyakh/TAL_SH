@@ -1,7 +1,7 @@
 /** ExaTensor::TAL-SH: Lower-level header:
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device agnostic).
-REVISION: 2020/08/28
+REVISION: 2020/09/23
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -269,6 +269,7 @@ int talsh_tens_no_init(const talsh_tens_data_t *, const talsh_tens_shape_t *, co
 //FUNCTION PROTOTYPES:
 extern "C"{
 //Generic:
+ size_t fortran_cptr_int(void * cptr);
  int tens_valid_data_kind(int datk, int * datk_size = NULL);
  int tens_valid_data_kind_(int datk, int * datk_size);
  int permutation_trivial(const int perm_len, const int * perm, const int base = 0);
