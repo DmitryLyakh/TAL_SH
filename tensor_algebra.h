@@ -277,6 +277,8 @@ extern "C"{
                             const int * cptrn_dig, char * cptrn_sym, int * cpl, int * ierr);
  void get_contr_permutations(int gemm_tl, int gemm_tr, int lrank, int rrank, const int *cptrn, int conj_bits,
                              int *dprm, int *lprm, int *rprm, int *ncd, int *nlu, int *nru, int *ierr);
+ void get_contraction_permutations(int gemm_tl, int gemm_tr, int lrank, int rrank, const int *cptrn, int conj_bits,
+                                   int *dprm, int *lprm, int *rprm, int *ncd, int *nlu, int *nru, int *nhu, int *ierr);
 #ifdef USE_CUTENSOR
  int get_contr_pattern_cutensor(const int * dig_ptrn, int drank, int32_t * ptrn_d, int lrank, int32_t * ptrn_l, int rrank, int32_t * ptrn_r);
 #endif
