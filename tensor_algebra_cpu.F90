@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/09/30
+!REVISION: 2020/10/01
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -11249,10 +11249,10 @@
         real(real_kind), pointer, contiguous:: mat(:)
         real(real_kind):: alf(1),bet(1)
         character(1):: transa(1),transb(1)
-        integer:: m(1),n(1),k(1),lda(1),ldb(1),ldc(1),nb
+        integer:: m(1),n(1),k(1),lda(1),ldb(1),ldc(1),nb(1)
         integer(LONGINT):: a(dh),b(dh),c(dh),vol,base,i
 
-        ierr=0; nb=int(dh,kind=INTD)
+        ierr=0; nb(1)=int(dh,kind=INTD)
         transa(:)=tra; transb(:)=trb
         m(:)=int(dl,kind=INTD); n(:)=int(dr,kind=INTD); k(:)=int(dc,kind=INTD)
         alf(:)=alpha; bet(:)=beta
@@ -11276,7 +11276,7 @@
          mat(0:vol-1)=>dtens(base:base+vol-1)
          c(i)=fortran_cptr_int(c_loc(mat))
         enddo
-        call sgemm_batch(transa,transb,m,n,k,alf,ltens,lda,rtens,ldb,bet,dtens,ldc,1,nb)
+        call sgemm_batch(transa,transb,m,n,k,alf,a,lda,b,ldb,bet,c,ldc,1,nb)
         return
         end subroutine tensor_block_pcontract_batch_dlf_r4
 !---------------------------------------------------------
@@ -11324,10 +11324,10 @@
         real(real_kind), pointer, contiguous:: mat(:)
         real(real_kind):: alf(1),bet(1)
         character(1):: transa(1),transb(1)
-        integer:: m(1),n(1),k(1),lda(1),ldb(1),ldc(1),nb
+        integer:: m(1),n(1),k(1),lda(1),ldb(1),ldc(1),nb(1)
         integer(LONGINT):: a(dh),b(dh),c(dh),vol,base,i
 
-        ierr=0; nb=int(dh,kind=INTD)
+        ierr=0; nb(1)=int(dh,kind=INTD)
         transa(:)=tra; transb(:)=trb
         m(:)=int(dl,kind=INTD); n(:)=int(dr,kind=INTD); k(:)=int(dc,kind=INTD)
         alf(:)=alpha; bet(:)=beta
@@ -11351,7 +11351,7 @@
          mat(0:vol-1)=>dtens(base:base+vol-1)
          c(i)=fortran_cptr_int(c_loc(mat))
         enddo
-        call dgemm_batch(transa,transb,m,n,k,alf,ltens,lda,rtens,ldb,bet,dtens,ldc,1,nb)
+        call dgemm_batch(transa,transb,m,n,k,alf,a,lda,b,ldb,bet,c,ldc,1,nb)
         return
         end subroutine tensor_block_pcontract_batch_dlf_r8
 !---------------------------------------------------------
@@ -11399,10 +11399,10 @@
         complex(real_kind), pointer, contiguous:: mat(:)
         complex(real_kind):: alf(1),bet(1)
         character(1):: transa(1),transb(1)
-        integer:: m(1),n(1),k(1),lda(1),ldb(1),ldc(1),nb
+        integer:: m(1),n(1),k(1),lda(1),ldb(1),ldc(1),nb(1)
         integer(LONGINT):: a(dh),b(dh),c(dh),vol,base,i
 
-        ierr=0; nb=int(dh,kind=INTD)
+        ierr=0; nb(1)=int(dh,kind=INTD)
         transa(:)=tra; transb(:)=trb
         m(:)=int(dl,kind=INTD); n(:)=int(dr,kind=INTD); k(:)=int(dc,kind=INTD)
         alf(:)=alpha; bet(:)=beta
@@ -11426,16 +11426,7 @@
          mat(0:vol-1)=>dtens(base:base+vol-1)
          c(i)=fortran_cptr_int(c_loc(mat))
         enddo
-        !print *,m,n,k,alf,lda,ldb,bet,ldc,nb
-        !print *,dtens(0:dl*dr*dh-1)
-        !print *,ltens(0:dc*dl*dh-1)
-        !print *,rtens(0:dc*dr*dh-1)
-        !print *,'OK'
-        !print *,a
-        !print *,b
-        !print *,c
-        !print *,'OK'
-        call cgemm_batch(transa,transb,m,n,k,alf,ltens,lda,rtens,ldb,bet,dtens,ldc,1,nb)
+        call cgemm_batch(transa,transb,m,n,k,alf,a,lda,b,ldb,bet,c,ldc,1,nb)
         return
         end subroutine tensor_block_pcontract_batch_dlf_c4
 !---------------------------------------------------------
@@ -11483,10 +11474,10 @@
         complex(real_kind), pointer, contiguous:: mat(:)
         complex(real_kind):: alf(1),bet(1)
         character(1):: transa(1),transb(1)
-        integer:: m(1),n(1),k(1),lda(1),ldb(1),ldc(1),nb
+        integer:: m(1),n(1),k(1),lda(1),ldb(1),ldc(1),nb(1)
         integer(LONGINT):: a(dh),b(dh),c(dh),vol,base,i
 
-        ierr=0; nb=int(dh,kind=INTD)
+        ierr=0; nb(1)=int(dh,kind=INTD)
         transa(:)=tra; transb(:)=trb
         m(:)=int(dl,kind=INTD); n(:)=int(dr,kind=INTD); k(:)=int(dc,kind=INTD)
         alf(:)=alpha; bet(:)=beta
@@ -11510,7 +11501,7 @@
          mat(0:vol-1)=>dtens(base:base+vol-1)
          c(i)=fortran_cptr_int(c_loc(mat))
         enddo
-        call zgemm_batch(transa,transb,m,n,k,alf,ltens,lda,rtens,ldb,bet,dtens,ldc,1,nb)
+        call zgemm_batch(transa,transb,m,n,k,alf,a,lda,b,ldb,bet,c,ldc,1,nb)
         return
         end subroutine tensor_block_pcontract_batch_dlf_c8
 !---------------------------------------------------------

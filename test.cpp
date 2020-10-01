@@ -410,13 +410,12 @@ void test_talsh_hyper(int * ierr)
 
  //Test body (scoped):
  {
+  std::complex<float> ltens_val{0.001f,-0.0001f};
+  std::complex<float> rtens_val{0.002f,-0.0002f};
   //Create tensors:
-  talsh::Tensor dtens({2,4,8},std::complex<float>{0.0f,0.0f}); assert(!dtens.isEmpty());
-  talsh::Tensor ltens({8,2,2,4},std::complex<float>{0.001f,-0.0001f}); assert(!ltens.isEmpty());
-  talsh::Tensor rtens({4,8,2,4},std::complex<float>{0.002f,-0.0002f}); assert(!rtens.isEmpty());
-  //talsh::Tensor dtens({16,24,32},std::complex<float>{0.0f,0.0f}); assert(!dtens.isEmpty());
-  //talsh::Tensor ltens({32,16,16,24},std::complex<float>{0.001f,-0.0001f}); assert(!ltens.isEmpty());
-  //talsh::Tensor rtens({24,32,16,24},std::complex<float>{0.002f,-0.0002f}); assert(!rtens.isEmpty());
+  talsh::Tensor dtens({48,24,32},std::complex<float>{0.0f,0.0f}); assert(!dtens.isEmpty());
+  talsh::Tensor ltens({32,48,48,24},ltens_val); assert(!ltens.isEmpty());
+  talsh::Tensor rtens({24,32,48,24},rtens_val); assert(!rtens.isEmpty());
   //Hyper-contraction:
   double tm = time_sys_sec();
   *ierr = dtens.contractAccumulate(nullptr,
@@ -429,7 +428,9 @@ void test_talsh_hyper(int * ierr)
   //Check the norm:
   double norm1;
   dtens.norm1(nullptr,&norm1);
-  std::cout << " Destination tensor 1-norm = " << norm1 << std::endl;
+  std::cout << " Destination tensor 1-norm = " << norm1;
+  norm1 = std::abs(std::complex<float>{48.0*24.0}*std::abs(ltens_val*rtens_val)*std::complex<float>{48.0*24.0*32.0})*(0.5);
+  std::cout << " VS correct = " << norm1 << std::endl;
  }
 
  //Shutdown TAL-SH:
