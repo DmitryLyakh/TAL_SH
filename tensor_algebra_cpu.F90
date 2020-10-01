@@ -3824,10 +3824,10 @@
          contr_ok=contr_ptrn_ok(contr_ptrn,lrank,rrank,drank) !supports hyper-indices
          if(present(ord_rest)) contr_ok=(contr_ok.and.ord_rest_ok(ord_rest,contr_ptrn,lrank,rrank,drank))
          if(.not.contr_ok) then; ierr=8; return; endif
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): contraction pattern accepted:",128(1x,i2))')&
-!        &contr_ptrn(1:lrank+rrank) !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): tensor layouts (left, right, dest): ",i2,1x,i2,1x,i2)')&
-!        &ltb,rtb,dtb !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): contraction pattern accepted:",128(1x,i2))')&
+         !&contr_ptrn(1:lrank+rrank) !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): tensor layouts (left, right, dest): ",i2,1x,i2,1x,i2)')&
+         !&ltb,rtb,dtb !debug
  !Determine index permutations and complex conjugation for all tensor arguments:
          ltrm='T'; rtrm='N' !GEMM('T','N') by default
   !Determine the need for complex conjugation for all arguments:
@@ -3844,9 +3844,8 @@
          if(rconj) rtrm='C' !'N' -> 'C'
   !Determine index permutations and modify the right tensor index permutation if needed:
          if(ENABLE_HYPERCONTRACTION) then
-          call get_contraction_permutations(1,0,lrank,rrank,contr_ptrn,arg_conj,dn2o,lo2n,ro2n,ncd,nlu,nru,nhu,ierr) !sets {dn2o,lo2n,ro2n},{ncd,nlu,nru,nhu}
+          call get_contraction_permutations(1,0,lrank,rrank,contr_ptrn,arg_conj,do2n,lo2n,ro2n,ncd,nlu,nru,nhu,ierr) !sets {do2n,lo2n,ro2n},{ncd,nlu,nru,nhu}
           if(ierr.ne.0) then; ierr=9; return; endif
-          do2n(0)=dn2o(0); do k=1,drank; do2n(dn2o(k))=k; enddo
           dtransp=(.not.perm_trivial(drank,do2n))
           ltransp=(.not.perm_trivial(lrank,lo2n))
           rtransp=(.not.perm_trivial(rrank,ro2n))
@@ -3856,7 +3855,7 @@
          else
           nhu=0
           call determine_index_permutations() !sets {dtransp,ltransp,rtransp},{do2n,lo2n,ro2n},{ncd,nlu,nru}
-          if(rconj) then !'N' -> 'C'
+          if(rconj) then !'N' -> 'C': Update ro2n
            if(ncd.gt.0.and.nru.gt.0) then
             dn2o(0)=ro2n(0); do k=1,rrank; dn2o(ro2n(k))=k; enddo
             do k=1,ncd; ro2n(dn2o(k))=nru+k; enddo
@@ -3865,14 +3864,20 @@
            endif
           endif
          endif
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): contr dims, left dims, right dims, hyper dims: "&
-!        &,i3,1x,i3,1x,i3,1x,i3)') ncd,nlu,nru,nhu !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): left index permutation (O2N)  :"&
-!        &,128(1x,i2))') lo2n(1:lrank) !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): right index permutation (O2N) :"&
-!        &,128(1x,i2))') ro2n(1:rrank) !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): result index permutation (O2N):"&
-!        &,128(1x,i2))') do2n(1:drank) !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): left index extents  :",128(1x,i4))')&
+         !&ltens%tensor_shape%dim_extent(1:lrank) !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): right index extents :",128(1x,i4))')&
+         !&rtens%tensor_shape%dim_extent(1:rrank) !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): result index extents:",128(1x,i4))')&
+         !&dtens%tensor_shape%dim_extent(1:drank) !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): contr dims, left dims, right dims, hyper dims: "&
+         !&,i3,1x,i3,1x,i3,1x,i3)') ncd,nlu,nru,nhu !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): left index permutation (O2N)  :"&
+         !&,128(1x,i2))') lo2n(1:lrank) !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): right index permutation (O2N) :"&
+         !&,128(1x,i2))') ro2n(1:rrank) !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): result index permutation (N2O):"&
+         !&,128(1x,i2))') do2n(1:drank) !debug
  !Transpose/conjugate tensor arguments, if needed:
          nullify(ltp); nullify(rtp); nullify(dtp)
          do k=1,2 !left/right tensor argument switch
@@ -3928,7 +3933,7 @@
           nullify(tens_in)
          enddo !k
          if(dtransp) then !transpose the destination tensor
-!         write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): permutation to be performed for ",i2)') 0 !debug
+          !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): permutation to be performed for ",i2)') 0 !debug
           dn2o(0)=do2n(0); do k=1,drank; dn2o(do2n(k))=k; enddo
           select case(dtb)
           case(scalar_tensor)
@@ -3949,14 +3954,14 @@
          endif
 !        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): arguments are ready to be processed!")') !debug
  !Calculate matrix dimensions:
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): argument pointer status (l,r,d): ",l1,1x,l1,1x,l1)')&
-!        &associated(ltp),associated(rtp),associated(dtp) !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): left index extents  :",128(1x,i4))')&
-!        &ltp%tensor_shape%dim_extent(1:lrank) !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): right index extents :",128(1x,i4))')&
-!        &rtp%tensor_shape%dim_extent(1:rrank) !debug
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): result index extents:",128(1x,i4))')&
-!        &dtp%tensor_shape%dim_extent(1:drank) !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): argument pointer status (l,r,d): ",l1,1x,l1,1x,l1)')&
+         !&associated(ltp),associated(rtp),associated(dtp) !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): left index extents  :",128(1x,i4))')&
+         !&ltp%tensor_shape%dim_extent(1:lrank) !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): right index extents :",128(1x,i4))')&
+         !&rtp%tensor_shape%dim_extent(1:rrank) !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): result index extents:",128(1x,i4))')&
+         !&dtp%tensor_shape%dim_extent(1:drank) !debug
          call calculate_matrix_dimensions(dtb,nlu,nru,nhu,dtp,lld,lrd,lhd,ierr); if(ierr.ne.0) then; ierr=15; goto 999; endif
          call calculate_matrix_dimensions(ltb,ncd,nlu,nhu,ltp,lcd,l0,l3,ierr); if(ierr.ne.0) then; ierr=16; goto 999; endif
          if(rtrm.eq.'C') then !R(r,c) matrix shape
@@ -3964,8 +3969,10 @@
          else !R(c,r) matrix shape
           call calculate_matrix_dimensions(rtb,ncd,nru,nhu,rtp,l1,l2,l4,ierr); if(ierr.ne.0) then; ierr=18; goto 999; endif
          endif
-!        write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): matrix dimensions (left,right,contr): "&
-!        &,i10,1x,i10,1x,i10)') lld,lrd,lcd !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): matrix dimensions (contr,left,right,hyper): "&
+         !&,i10,1x,i10,1x,i10,1x,i10)') lcd,lld,lrd,lhd !debug
+         !write(CONS_OUT,'("DEBUG(tensor_algebra::tensor_block_contract): matrix dimensions (contr,left,right,hyper): "&
+         !&,i10,1x,i10,1x,i10,1x,i10,1x,i10)') l1,l0,l2,l3,l4 !debug
          if(l0.ne.lld.or.l1.ne.lcd.or.l2.ne.lrd.or.l3.ne.lhd.or.l4.ne.lhd) then; ierr=19; goto 999; endif
          if(rtrm.eq.'C') then; l2=lrd; else; l2=lcd; endif !leading dimension for the right matrix
  !Multiply two matrices (dtp += ltp * rtp):
@@ -5776,7 +5783,7 @@
         integer(C_INT), intent(in), value:: conj_bits
         integer(C_INT), intent(out):: dprm(0:*),lprm(0:*),rprm(0:*),ncd,nlu,nru,nhu
         integer(C_INT), intent(inout):: ierr
-        integer(C_INT):: dtens(0:lrank+rrank),ltens(0:lrank),rtens(0:rrank),drank,i,j,n
+        integer(C_INT):: dtens(0:lrank+rrank),ltens(0:lrank),rtens(0:rrank),drank,i,j,k,n
         logical:: pattern_ok,left_conj,right_conj
 
         ierr=0; ncd=0; nlu=0; nru=0; nhu=0
@@ -5801,7 +5808,7 @@
          endif
  !Determine index permutations:
          if(n.gt.0) then
-  !Label the destination tensor:
+  !Count index kinds:
           dtens(1:n)=0
           do i=1,n
            j=cptrn(i)
@@ -5814,6 +5821,7 @@
            endif
           enddo
           ncd=ncd/2
+  !Label the destination tensor:
           j=0
           do i=1,drank
            if(dtens(i).eq.1) then !simple index
@@ -5842,24 +5850,32 @@
            endif
           enddo
   !Sort the labels to produce the necessary permutations:
+          k=0
           if(lrank.gt.0) then
            dprm(0:lrank)=(/1,(j,j=1,lrank)/)
-           if(lrank.gt.1) then
-            call merge_sort_key_int(lrank,ltens(1:lrank),dprm) !N2O
-            call permutation_converter(.TRUE.,lrank,dprm,lprm) !O2N
-           endif
+           if(lrank.gt.1) call merge_sort_key_int(lrank,ltens(1:lrank),dprm) !N2O
+           do i=1,lrank
+            j=dprm(i) !old position
+            if(ltens(j).ge.1.and.ltens(j).le.drank) then
+             k=k+1; dtens(k)=ltens(j)
+            endif
+           enddo
+           call permutation_converter(.TRUE.,lrank,dprm,lprm) !O2N
           endif
           if(rrank.gt.0) then
            dprm(0:rrank)=(/1,(j,j=1,rrank)/)
-           if(rrank.gt.1) then
-            call merge_sort_key_int(rrank,rtens(1:rrank),dprm) !N2O
-            call permutation_converter(.TRUE.,rrank,dprm,rprm) !O2N
-           endif
+           if(rrank.gt.1) call merge_sort_key_int(rrank,rtens(1:rrank),dprm) !N2O
+           do i=1,rrank
+            j=dprm(i) !old position
+            if(rtens(j).ge.1.and.rtens(j).le.drank) then
+             k=k+1; dtens(k)=rtens(j)
+            elseif(rtens(j).gt.drank) then
+             k=k+1; dtens(k)=k
+            endif
+           enddo
+           call permutation_converter(.TRUE.,rrank,dprm,rprm) !O2N
           endif
-          if(drank.gt.0) then
-           dprm(0:drank)=(/1,(j,j=1,drank)/)
-           if(drank.gt.1) call merge_sort_key_int(drank,dtens(1:drank),dprm) !N2O
-          endif
+          if(drank.gt.0) dprm(0:drank)=(/1,dtens(1:drank)/) !N2O
          endif
  !Apply conjugation if needed (swap contracted and simple uncontracted positions):
          if(gemm_tl.eq.0) then !left argument is processed as a transposed matrix by default

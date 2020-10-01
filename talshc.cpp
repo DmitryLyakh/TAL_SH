@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/09/23
+REVISION: 2020/10/01
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -5398,7 +5398,7 @@ int talshTensorDecomposeSVD(const char * cptrn,   //in: C-string: symbolic decom
                             int dev_id,           //in: device id (flat or kind-specific)
                             int dev_kind)         //in: device kind (if present, <dev_id> is kind-specific)
 {
- int errc,ier,devid,dvn,dvk,cpl,drnk,lrnk,rrnk,srnk,conj_bits,ncd,nlu,nru,i,j,k,l;
+ int errc,ier,devid,dvn,dvk,cpl,drnk,lrnk,rrnk,srnk,conj_bits,ncd,nlu,nru,nhu,i,j,k,l;
  int contr_ptrn[MAX_TENSOR_RANK*2],dimg,limg,rimg,simg,dcp,lcp,rcp,scp,dtr,ltr,rtr;
  int dprm[1+MAX_TENSOR_RANK],lprm[1+MAX_TENSOR_RANK],rprm[1+MAX_TENSOR_RANK],dims[MAX_TENSOR_RANK];
  const int *ddims,*ldims,*rdims,*sdims;
@@ -5425,7 +5425,8 @@ int talshTensorDecomposeSVD(const char * cptrn,   //in: C-string: symbolic decom
  if(errc) return TALSH_INVALID_ARGS;
  if(drnk <= 0 || lrnk <= 0 || rrnk <= 0) return TALSH_INVALID_ARGS;
  cpl=lrnk+rrnk;
- get_contr_permutations(0,0,lrnk,rrnk,contr_ptrn,0,dprm,lprm,rprm,&ncd,&nlu,&nru,&errc);
+ //get_contr_permutations(0,0,lrnk,rrnk,contr_ptrn,0,dprm,lprm,rprm,&ncd,&nlu,&nru,&errc);
+ get_contraction_permutations(0,0,lrnk,rrnk,contr_ptrn,0,dprm,lprm,rprm,&ncd,&nlu,&nru,&nhu,&errc);
  if(errc) return TALSH_FAILURE;
  if(nlu <= 0 || nru <= 0 || ncd <= 0) return TALSH_INVALID_ARGS;
  dtr=permutation_trivial(drnk,&(dprm[1]),1); //base 1
