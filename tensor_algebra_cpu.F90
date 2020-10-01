@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/09/23
+!REVISION: 2020/09/30
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -4317,12 +4317,11 @@
 	    contr_ptrn_ok=.FALSE.; return
 	   endif
 	  enddo
-	  jbus(1:dr)=0
 	  do j0=lr+1,lr+rr !right tensor-argument
 	   j1=ptrn(j0)
 	   if(j1.gt.0.and.j1.le.dr) then !uncontracted index
 	    jbus(j1)=jbus(j1)+1; jbus(dr+j0)=jbus(dr+j0)+1
-	    if(jbus(j1).gt.1) then
+	    if(jbus(j1).gt.2) then
 	     contr_ptrn_ok=.FALSE.; return
 	    endif
 	    if(rtens%tensor_shape%dim_extent(j0-lr).ne.dtens%tensor_shape%dim_extent(j1)) then
@@ -4338,7 +4337,9 @@
 	   endif
 	  enddo
 	  do j0=1,jl
-	   if(jbus(j0).ne.1) then; contr_ptrn_ok=.FALSE.; return; endif
+	   if(.not.(jbus(j0).eq.1.or.(jbus(j0).eq.2.and.j0.le.dr))) then
+	    contr_ptrn_ok=.FALSE.; return
+	   endif
 	  enddo
 	 endif
 	 return
@@ -5812,6 +5813,7 @@
             ncd=ncd+1
            endif
           enddo
+          ncd=ncd/2
           j=0
           do i=1,drank
            if(dtens(i).eq.1) then !simple index
@@ -5841,14 +5843,14 @@
           enddo
   !Sort the labels to produce the necessary permutations:
           if(lrank.gt.0) then
-           lprm(0:lrank)=(/1,(j,j=1,lrank)/)
+           dprm(0:lrank)=(/1,(j,j=1,lrank)/)
            if(lrank.gt.1) then
             call merge_sort_key_int(lrank,ltens(1:lrank),dprm) !N2O
             call permutation_converter(.TRUE.,lrank,dprm,lprm) !O2N
            endif
           endif
           if(rrank.gt.0) then
-           rprm(0:rrank)=(/1,(j,j=1,rrank)/)
+           dprm(0:rrank)=(/1,(j,j=1,rrank)/)
            if(rrank.gt.1) then
             call merge_sort_key_int(rrank,rtens(1:rrank),dprm) !N2O
             call permutation_converter(.TRUE.,rrank,dprm,rprm) !O2N
@@ -11424,6 +11426,15 @@
          mat(0:vol-1)=>dtens(base:base+vol-1)
          c(i)=fortran_cptr_int(c_loc(mat))
         enddo
+        !print *,m,n,k,alf,lda,ldb,bet,ldc,nb
+        !print *,dtens(0:dl*dr*dh-1)
+        !print *,ltens(0:dc*dl*dh-1)
+        !print *,rtens(0:dc*dr*dh-1)
+        !print *,'OK'
+        !print *,a
+        !print *,b
+        !print *,c
+        !print *,'OK'
         call cgemm_batch(transa,transb,m,n,k,alf,ltens,lda,rtens,ldb,bet,dtens,ldc,1,nb)
         return
         end subroutine tensor_block_pcontract_batch_dlf_c4
