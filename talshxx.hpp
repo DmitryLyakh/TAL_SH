@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2020/07/21
+REVISION: 2020/10/02
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -270,6 +270,14 @@ public:
               const int device_kind = DEV_HOST,            //in: execution device kind
               const int device_id = 0,                     //in: execution device id
               const T scalar_value = TensorData<T>::zero); //in: scalar value
+
+ /** Performs tensor scaling by some scalar value.
+     Returns an error code (0:success). **/
+ template <typename T = double>
+ int scale(TensorTask * task_handle,                       //out: task handle associated with this operation or nullptr (synchronous)
+           const T scalar_value,                           //in: scalar value
+           const int device_kind = DEV_HOST,               //in: execution device kind
+           const int device_id = 0);                       //in: execution device id
 
  /** Computes the 1-norm of the tensor. **/
  int norm1(TensorTask * task_handle,                       //out: task handle associated with this operation or nullptr (synchronous)
@@ -813,6 +821,40 @@ int Tensor::setValue(TensorTask * task_handle, //out: task handle associated wit
   errc = talshTensorInit(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_M);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::setValue): talshTensorInit error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+ }
+ return errc;
+}
+
+
+/** Performs tensor scaling by some scalar value. **/
+template <typename T>
+int Tensor::scale(TensorTask * task_handle, //out: task handle associated with this operation or nullptr (synchronous)
+                  const T scalar_value,     //in: scalar value
+                  const int device_kind,    //in: execution device kind
+                  const int device_id)      //in: execution device id
+{
+ int errc = TALSH_SUCCESS;
+ this->completeWriteTask();
+ talsh_tens_t * dtens = this->getTalshTensorPtr();
+ if(task_handle != nullptr){ //asynchronous
+  bool task_empty = task_handle->isEmpty(); assert(task_empty);
+  talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
+  errc = talshTensorScale(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_M,task_hl);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::scale): talshTensorScale error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+  if(errc == TALSH_SUCCESS){
+   task_handle->used_tensors_[0] = this;
+   task_handle->num_tensors_ = 1;
+   this->resetWriteTask(task_handle);
+  }else{
+   task_handle->clean();
+  }
+ }else{ //synchronous
+  errc = talshTensorScale(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_M);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::scale): talshTensorScale error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
  }
  return errc;

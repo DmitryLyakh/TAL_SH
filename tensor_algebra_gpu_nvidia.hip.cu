@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2020/08/02
+REVISION: 2020/10/02
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -4481,11 +4481,11 @@ NOTES:
    break;
   case C4:
    hipLaunchKernelGGL(gpu_array_init__, dim3(bx), dim3(THRDS_ARRAY_INIT), 0, *hip_stream, vol_d,(talshComplex4*)darg,
-                                                            talshComplex4Set((float)val_real,(float)val_imag));
+                      talshComplex4Set((float)val_real,(float)val_imag));
    break;
   case C8:
    hipLaunchKernelGGL(gpu_array_init__, dim3(bx), dim3(THRDS_ARRAY_INIT), 0, *hip_stream, vol_d,(talshComplex8*)darg,
-                                                            talshComplex8Set(val_real,val_imag));
+                      talshComplex8Set(val_real,val_imag));
    break;
   default:
    errc=cuda_task_record(cuda_task,coh_ctrl,48); errc=gpu_activate(cur_gpu); return 48;
@@ -4522,6 +4522,269 @@ NOTES:
  if(err != hipSuccess){
   err_msg=hipGetErrorString(err);
   if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_init): Unable to record the finish event: %s\n",err_msg);
+  errc=cuda_task_record(cuda_task,coh_ctrl,58); errc=gpu_activate(cur_gpu); return 58;
+ }
+//Record the successfully scheduled CUDA task and update the Last Task:
+ errc=cuda_task_record(cuda_task,coh_ctrl,0);
+ LastTask[gpu_num]=cuda_task;
+ if(gpu_num != cur_gpu) errc=gpu_activate(cur_gpu);
+ return stat; //either 0 (success) or NOT_CLEAN (warning)
+}
+//-------------------------------------------------------------------------------------------
+// TENSOR SCALING (non-blocking):
+__host__ int gpu_tensor_block_scale(tensBlck_t *dtens, double val_real, double val_imag,
+                                    unsigned int coh_ctrl, cudaTask_t *cuda_task, int gpu_id)
+/**
+dtens(:)*=scalar_value
+INPUT:
+ # (val_real,val_imag) - scaling scalar value;
+ # coh_ctrl - one of the COPY_X parameters regulating the data presence for each tensor argument;
+ # cuda_task - pointer to an empty (clean) CUDA task;
+ # gpu_id - suggested GPU ID on which the operation is to be scheduled (-1: defaults to the optimal one);
+OUTPUT:
+ # dtens - scaled destination tensor;
+ # cuda_task - recorded CUDA task (either successfully scheduled or failed).
+NOTES:
+ # If the tensor operation has been scheduled successfully, a recorded (active) CUDA task
+   will be returned along with zero return status. A scheduling error results in either
+   a negative (at early stages) or positive (at later stages) return status. In the former case
+   the CUDA task is left clean, while at the latter case it will be recorded as failed (error).
+ # Special return statuses TRY_LATER and DEVICE_UNABLE are not errors but merely indicators
+   of the current or permanent lack of resources, respectively. However, the CUDA task status
+   in these cases will still be set to an error (always check the function return status!).
+ # If <gpu_id> is out of the legitimate GPU range, it will be replaced by an optimal one,
+   based on argument residence and the current load of GPU(s).
+**/
+{
+ int i,j,drank,tds_d,gpu_d,gpu_num,cur_gpu,targ_dev,bx,errc,stat;
+ size_t vol_d,dsize;
+ unsigned int coh;
+ const unsigned int TWO_BITS_SET = 3; //two right bits are set
+ void *darg;
+ float fval;
+ hipStream_t *hip_stream;
+ hipEvent_t *cuda_start,*cuda_comput,*cuda_output,*cuda_finish,*dep_event;
+#ifdef GPU_FINE_TIMING
+ hipEvent_t *cuda_mmbeg,*cuda_mmend;
+#endif
+ hipError_t err;
+ const char *err_msg;
+
+ //if(DEBUG) printf("\n#DEBUG(tensor_algebra_gpu_nvidia:gpu_tensor_block_scale): GPU Tensor Scaling:\n"); //debug
+ stat=0; //return status in case of successful scheduling
+//Check function arguments:
+ if(dtens == NULL || cuda_task == NULL) return -1;
+ if(tensBlck_present(dtens) != YEP) return -2; //tensor block must reside in some device memory
+ if(cuda_task_gpu_id(cuda_task) >= 0) return -3; //CUDA task is not clean (destruct/clean it first)
+//Check tensor arguments:
+ drank=(dtens->shape).num_dim; //destination tensor rank
+ if(drank < 0 || drank > MAX_TENSOR_RANK) return -4;
+ if(tens_valid_data_kind(dtens->data_kind,&tds_d) != YEP) return -5; //tds_d: destination tensor element size in bytes
+ if(dtens->data_kind <= 0) return -6; //tensor must have been previsously allocated with a certain data kind
+ if(dtens->src_rsc == NULL) return -7; //source resource must always be present
+ if(tensDevRsc_is_empty(dtens->src_rsc) != NOPE) return -8; //source resource must be present (tensor body)
+//Activate the right GPU:
+ if(gpu_id < 0 || gpu_id >= MAX_GPUS_PER_NODE){gpu_num=tens_op_best_gpu(dtens);}else{gpu_num=gpu_id;}
+ if(gpu_is_mine(gpu_num) <= GPU_OFF) return -28; //GPU is not mine or error
+ gpu_stats[gpu_num].tasks_submitted++;
+ gpu_d=decode_device_id(dtens->src_rsc->dev_id,&j); if(gpu_d < 0) return -29; //destination tensor source device id
+ if(j == DEV_NVIDIA_GPU){
+  if(gpu_d != gpu_num){
+   err=hipDeviceCanAccessPeer(&j,gpu_num,gpu_d); if(err != hipSuccess || j == 0) return DEVICE_UNABLE; //peer access impossible for this GPU device
+  }
+ }else if(j == DEV_HOST){
+  gpu_d=-1; //data is in Host memory
+ }else{
+  return DEVICE_UNABLE; //data is not in Host or GPU memory
+ }
+ cur_gpu=gpu_in_focus(); //save the current GPU
+ if(gpu_num != cur_gpu){errc=gpu_activate(gpu_num); if(errc){errc=gpu_activate(cur_gpu); return -32;}} //activate the target GPU
+ err=hipGetLastError(); err=hipSuccess; //clear the GPU error status
+ targ_dev=encode_device_id(DEV_NVIDIA_GPU,gpu_num); //flat device id
+//Construct a CUDA task (acquire CUDA resources) for the target GPU:
+ errc=cuda_task_construct(cuda_task,gpu_num);
+ if(errc){i=gpu_activate(cur_gpu); if(errc == TRY_LATER || errc == DEVICE_UNABLE){return errc;}else{return -33;}}
+
+// *** From this point all error codes must be positive and the CUDA task must be recorded! ***
+//Set up tensor arguments (allocates additional resources for each tensor argument):
+// Destination argument:
+ errc=cuda_task_set_arg(cuda_task,0,dtens);
+ if(errc){
+  if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+   i=cuda_task_record(cuda_task,coh_ctrl,NVTAL_DEFERRED); i=gpu_activate(cur_gpu); //not an error if TRY_LATER or DEVICE_UNABLE are returned
+   return errc;
+  }else{
+   i=cuda_task_record(cuda_task,coh_ctrl,1); i=gpu_activate(cur_gpu);
+   return 1;
+  }
+ }
+//Associate CUDA stream and event pointers locally for convenience:
+ hip_stream=cuda_stream_ptr(cuda_task->gpu_id,cuda_task->stream_hl);
+ if(hip_stream == NULL){errc=cuda_task_record(cuda_task,coh_ctrl,4); errc=gpu_activate(cur_gpu); return 4;}
+ cuda_start=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_start_hl);
+ if(cuda_start == NULL){errc=cuda_task_record(cuda_task,coh_ctrl,5); errc=gpu_activate(cur_gpu); return 5;}
+ cuda_comput=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_comput_hl);
+ if(cuda_comput == NULL){errc=cuda_task_record(cuda_task,coh_ctrl,6); errc=gpu_activate(cur_gpu); return 6;}
+ cuda_output=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_output_hl);
+ if(cuda_output == NULL){errc=cuda_task_record(cuda_task,coh_ctrl,7); errc=gpu_activate(cur_gpu); return 7;}
+ cuda_finish=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_finish_hl);
+ if(cuda_finish == NULL){errc=cuda_task_record(cuda_task,coh_ctrl,8); errc=gpu_activate(cur_gpu); return 8;}
+#ifdef GPU_FINE_TIMING
+ cuda_mmbeg=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_mmbeg_hl);
+ if(cuda_mmbeg == NULL){errc=cuda_task_record(cuda_task,coh_ctrl,8); errc=gpu_activate(cur_gpu); return 8;}
+ cuda_mmend=cuda_event_ptr(cuda_task->gpu_id,cuda_task->event_mmend_hl);
+ if(cuda_mmend == NULL){errc=cuda_task_record(cuda_task,coh_ctrl,8); errc=gpu_activate(cur_gpu); return 8;}
+#endif
+ vol_d=tensBlck_volume(dtens); //tensor block volume
+ dsize=vol_d*tds_d;            //tensor argument size in bytes
+//Acquire global memory resources for tensor arguments if needed:
+// Set up destination memory resources in all tensors:
+//  Destination tensor:
+ if(dtens->dst_rsc == dtens->src_rsc) dtens->dst_rsc = NULL; //destination resource was pointing to the source resource
+ if(gpu_d != gpu_num){ //data is on a different GPU device or Host
+  if(dtens->dst_rsc == NULL){
+   errc=tensDevRsc_create(&(dtens->dst_rsc)); if(errc){i=cuda_task_record(cuda_task,coh_ctrl,11); i=gpu_activate(cur_gpu); return 11;}
+  }else{
+   if(tensDevRsc_is_empty(dtens->dst_rsc) == NOPE){errc=tensDevRsc_release_all(dtens->dst_rsc); if(errc) stat=NOT_CLEAN;}
+  }
+  errc=tensDevRsc_allocate_mem(dtens->dst_rsc,targ_dev,dsize,YEP);
+  if(errc){
+   if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+    i=cuda_task_record(cuda_task,coh_ctrl,NVTAL_DEFERRED); i=gpu_activate(cur_gpu);
+    return errc;
+   }else{
+    i=cuda_task_record(cuda_task,coh_ctrl,12); i=gpu_activate(cur_gpu);
+    return 12;
+   }
+  }
+ }else{
+  if(dtens->dst_rsc != NULL){
+   if(tensDevRsc_is_empty(dtens->dst_rsc) == NOPE){errc=tensDevRsc_release_all(dtens->dst_rsc); if(errc) stat=NOT_CLEAN;}
+  }
+  dtens->dst_rsc=dtens->src_rsc; //destination and source resources are the same (because the data is already on the computing GPU)
+ }
+#ifdef DEBUG_GPU
+//DEBUG begin:
+ if(DEBUG){
+  printf("\n#DEBUG(tensor_algebra_gpu_nvidia:gpu_tensor_block_scale):\n");
+  printf(" Const args (d)     : %d\n",cuda_task->tens_args[0].const_mem_entry); //debug
+  printf(" Block sizes (d)    : %lu\n",dsize); //debug
+  printf(" Block ranks (d)    : %d\n",dtens->shape.num_dim); //debug
+  printf("\n#END OF DEBUG\n");
+ }
+//DEBUG end.
+#endif /*DEBUG_GPU*/
+//Start scheduling CUDA calls:
+ err=hipEventRecord(*cuda_start,*hip_stream);
+ if(err != hipSuccess){
+  err_msg=hipGetErrorString(err);
+  if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_scale): Unable to record the start event: %s\n",err_msg);
+  errc=cuda_task_record(cuda_task,coh_ctrl,23); errc=gpu_activate(cur_gpu); return 23;
+ }
+ if(LastTask[gpu_num] != NULL){ //`This should be done atomically for thread safety
+  dep_event=cuda_event_ptr(LastTask[gpu_num]->gpu_id,LastTask[gpu_num]->event_comput_hl);
+  err=hipStreamWaitEvent(*hip_stream,*dep_event,0); //input transfers should only begin after the previous task input transfers have completed
+  if(err != hipSuccess){
+   err_msg=hipGetErrorString(err);
+   if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_scale): Unable to create a task dependency: %s\n",err_msg);
+   errc=cuda_task_record(cuda_task,coh_ctrl,24); errc=gpu_activate(cur_gpu); return 24;
+  }
+ }
+//Schedule forward data transfers for all tensors if needed:
+// Destination tensor:
+ if(cuda_task->tens_args[0].const_mem_entry >= 0){ //GPU constant memory entry will contain tensor dimension extents and the matricization permutation (if any)
+  err=hipMemcpyToSymbolAsync(HIP_SYMBOL(const_args_dims),(void*)(dtens->shape.dims),sizeof(int)*((size_t)drank),
+                sizeof(int)*((size_t)(MAX_TENSOR_RANK*(cuda_task->tens_args[0].const_mem_entry))),hipMemcpyHostToDevice,*hip_stream); //tensor dimension extents
+  if(err != hipSuccess){
+   err_msg=hipGetErrorString(err);
+   if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_scale): Destination tensor dims H2D copy failed: %s\n",err_msg);
+   errc=cuda_task_record(cuda_task,coh_ctrl,33); errc=gpu_activate(cur_gpu); return 33;
+  }
+  gpu_stats[gpu_num].traffic_in+=sizeof(int)*((size_t)drank);
+  if(gpu_d != gpu_num){ //data is not on the computing GPU
+   err=hipMemcpyAsync(dtens->dst_rsc->gmem_p,dtens->src_rsc->gmem_p,dsize,hipMemcpyDefault,*hip_stream);
+   if(err != hipSuccess){
+    err_msg=hipGetErrorString(err);
+    if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_scale): Destination tensor body copy failed: %s\n",err_msg);
+    errc=cuda_task_record(cuda_task,coh_ctrl,35); errc=gpu_activate(cur_gpu); return 35;
+   }
+   gpu_stats[gpu_num].traffic_in+=dsize;
+  }
+ }else{
+  errc=cuda_task_record(cuda_task,coh_ctrl,36); errc=gpu_activate(cur_gpu); return 36;
+ }
+// Record a CUDA event:
+ err=hipEventRecord(*cuda_comput,*hip_stream);
+ if(err != hipSuccess){
+  err_msg=hipGetErrorString(err);
+  if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_scale): Unable to record the compute event: %s\n",err_msg);
+  errc=cuda_task_record(cuda_task,coh_ctrl,37); errc=gpu_activate(cur_gpu); return 37;
+ }
+//Destination tensor argument does not need transposing:
+ darg=dtens->dst_rsc->gmem_p;
+//Schedule the appropriate computation kernel:
+#ifdef GPU_FINE_TIMING
+// Record a CUDA event:
+ err=hipEventRecord(*cuda_mmbeg,*hip_stream);
+ if(err != hipSuccess){
+  err_msg=hipGetErrorString(err);
+  if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_scale): Unable to record the mmbeg event: %s\n",err_msg);
+  errc=cuda_task_record(cuda_task,coh_ctrl,66); errc=gpu_activate(cur_gpu); return 66;
+ }
+#endif
+// Scaling kernel:
+ bx=1+(vol_d-1)/THRDS_ARRAY_SCALE; if(bx > MAX_CUDA_BLOCKS) bx=MAX_CUDA_BLOCKS;
+ switch(dtens->data_kind){
+  case R4:
+   fval=(float)val_real;
+   hipLaunchKernelGGL(gpu_array_scale__, dim3(bx), dim3(THRDS_ARRAY_SCALE), 0, *hip_stream, vol_d,(float*)darg,fval);
+   break;
+  case R8:
+   hipLaunchKernelGGL(gpu_array_scale__, dim3(bx), dim3(THRDS_ARRAY_SCALE), 0, *hip_stream, vol_d,(double*)darg,val_real);
+   break;
+  case C4:
+   hipLaunchKernelGGL(gpu_array_scale__, dim3(bx), dim3(THRDS_ARRAY_SCALE), 0, *hip_stream, vol_d,(talshComplex4*)darg,
+                      talshComplex4Set((float)val_real,(float)val_imag));
+   break;
+  case C8:
+   hipLaunchKernelGGL(gpu_array_scale__, dim3(bx), dim3(THRDS_ARRAY_SCALE), 0, *hip_stream, vol_d,(talshComplex8*)darg,
+                      talshComplex8Set(val_real,val_imag));
+   break;
+  default:
+   errc=cuda_task_record(cuda_task,coh_ctrl,48); errc=gpu_activate(cur_gpu); return 48;
+ }
+#ifdef GPU_FINE_TIMING
+// Record a CUDA event:
+ err=hipEventRecord(*cuda_mmend,*hip_stream);
+ if(err != hipSuccess){
+  err_msg=hipGetErrorString(err);
+  if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_scale): Unable to record the mmend event: %s\n",err_msg);
+  errc=cuda_task_record(cuda_task,coh_ctrl,67); errc=gpu_activate(cur_gpu); return 67;
+ }
+#endif
+//Record a CUDA event (output ready on GPU):
+ err=hipEventRecord(*cuda_output,*hip_stream);
+ if(err != hipSuccess){
+  err_msg=hipGetErrorString(err);
+  if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_scale): Unable to record the output event: %s\n",err_msg);
+  errc=cuda_task_record(cuda_task,coh_ctrl,56); errc=gpu_activate(cur_gpu); return 56;
+ }
+//Transfer back the updated destination tensor if needed ("T","K" coherence control):
+ coh=(coh_ctrl)&(TWO_BITS_SET); //select bits 0,1 (destination tensor coherence)
+ if(gpu_d != gpu_num && coh >= 2){ //data is not on the computing GPU and coherence control = 2("T") or (3)"K":
+  err=hipMemcpyAsync(dtens->src_rsc->gmem_p,dtens->dst_rsc->gmem_p,dsize,hipMemcpyDefault,*hip_stream);
+  if(err != hipSuccess){
+   err_msg=hipGetErrorString(err);
+   if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_scale): Destination tensor body back copy failed: %s\n",err_msg);
+   errc=cuda_task_record(cuda_task,coh_ctrl,57); errc=gpu_activate(cur_gpu); return 57;
+  }
+  gpu_stats[gpu_num].traffic_out+=dsize;
+ }
+//Record a CUDA event (task finished):
+ err=hipEventRecord(*cuda_finish,*hip_stream);
+ if(err != hipSuccess){
+  err_msg=hipGetErrorString(err);
+  if(VERBOSE) printf("\n#ERROR(tensor_algebra_gpu_nvidia:gpu_tensor_block_scale): Unable to record the finish event: %s\n",err_msg);
   errc=cuda_task_record(cuda_task,coh_ctrl,58); errc=gpu_activate(cur_gpu); return 58;
  }
 //Record the successfully scheduled CUDA task and update the Last Task:
@@ -4852,11 +5115,11 @@ NOTES:
     break;
    case C4:
     hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
-      (talshComplex4*)(larg),(talshComplex4*)(darg));
+                       (talshComplex4*)(larg),(talshComplex4*)(darg));
     break;
    case C8:
     hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
-      (talshComplex8*)(larg),(talshComplex8*)(darg));
+                       (talshComplex8*)(larg),(talshComplex8*)(darg));
     break;
    default:
     errc=cuda_task_record(cuda_task,coh_ctrl,40); errc=gpu_activate(cur_gpu); return 40;
@@ -4885,11 +5148,11 @@ NOTES:
     break;
    case C4:
     hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
-      (talshComplex4*)(larg),(talshComplex4*)(darg));
+                       (talshComplex4*)(larg),(talshComplex4*)(darg));
     break;
    case C8:
     hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
-      (talshComplex8*)(larg),(talshComplex8*)(darg));
+                       (talshComplex8*)(larg),(talshComplex8*)(darg));
     break;
    default:
     errc=cuda_task_record(cuda_task,coh_ctrl,41); errc=gpu_activate(cur_gpu); return 41;
@@ -5312,11 +5575,11 @@ NOTES:
      break;
     case C4:
      hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,1,drank,cuda_task->tens_args[0].const_mem_entry,
-       (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
+                        (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
      break;
     case C8:
      hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,1,drank,cuda_task->tens_args[0].const_mem_entry,
-       (talshComplex8*)(dtens->dst_rsc->gmem_p),(talshComplex8*)(dtens->tmp_rsc->gmem_p));
+                        (talshComplex8*)(dtens->dst_rsc->gmem_p),(talshComplex8*)(dtens->tmp_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,38); errc=gpu_activate(cur_gpu); return 38;
@@ -5345,11 +5608,11 @@ NOTES:
      break;
     case C4:
      hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 0,1,drank,cuda_task->tens_args[0].const_mem_entry,
-       (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
+                        (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
      break;
     case C8:
      hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 0,1,drank,cuda_task->tens_args[0].const_mem_entry,
-       (talshComplex8*)(dtens->dst_rsc->gmem_p),(talshComplex8*)(dtens->tmp_rsc->gmem_p));
+                        (talshComplex8*)(dtens->dst_rsc->gmem_p),(talshComplex8*)(dtens->tmp_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,39); errc=gpu_activate(cur_gpu); return 39;
@@ -5374,11 +5637,11 @@ NOTES:
      break;
     case C4:
      hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
-       (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
+                        (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
      break;
     case C8:
      hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
-       (talshComplex8*)(ltens->dst_rsc->gmem_p),(talshComplex8*)(ltens->tmp_rsc->gmem_p));
+                        (talshComplex8*)(ltens->dst_rsc->gmem_p),(talshComplex8*)(ltens->tmp_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,40); errc=gpu_activate(cur_gpu); return 40;
@@ -5407,11 +5670,11 @@ NOTES:
      break;
     case C4:
      hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
-       (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
+                        (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
      break;
     case C8:
      hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
-       (talshComplex8*)(ltens->dst_rsc->gmem_p),(talshComplex8*)(ltens->tmp_rsc->gmem_p));
+                        (talshComplex8*)(ltens->dst_rsc->gmem_p),(talshComplex8*)(ltens->tmp_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,41); errc=gpu_activate(cur_gpu); return 41;
@@ -5479,11 +5742,11 @@ NOTES:
      break;
     case C4:
      hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 1,0,drank,cuda_task->tens_args[0].const_mem_entry,
-       (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
+                        (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
      break;
     case C8:
      hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 1,0,drank,cuda_task->tens_args[0].const_mem_entry,
-       (talshComplex8*)(dtens->tmp_rsc->gmem_p),(talshComplex8*)(dtens->dst_rsc->gmem_p));
+                        (talshComplex8*)(dtens->tmp_rsc->gmem_p),(talshComplex8*)(dtens->dst_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,54); errc=gpu_activate(cur_gpu); return 54;
@@ -5513,11 +5776,11 @@ NOTES:
      break;
     case C4:
      hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 1,0,drank,cuda_task->tens_args[0].const_mem_entry,
-       (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
+                        (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
      break;
     case C8:
      hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 1,0,drank,cuda_task->tens_args[0].const_mem_entry,
-       (talshComplex8*)(dtens->tmp_rsc->gmem_p),(talshComplex8*)(dtens->dst_rsc->gmem_p));
+                        (talshComplex8*)(dtens->tmp_rsc->gmem_p),(talshComplex8*)(dtens->dst_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,55); errc=gpu_activate(cur_gpu); return 55;
@@ -6128,15 +6391,15 @@ NOTES:
      case C4:
       if(fast_math == YEP){
        hipLaunchKernelGGL(gpu_tensor_block_copy_cmplx_split_out_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,1,drank,cuda_task->tens_args[0].const_mem_entry,
-         (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
+                          (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
       }else{
        hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,1,drank,cuda_task->tens_args[0].const_mem_entry,
-         (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
+                          (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
       }
       break;
      case C8:
       hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,1,drank,cuda_task->tens_args[0].const_mem_entry,
-        (talshComplex8*)(dtens->dst_rsc->gmem_p),(talshComplex8*)(dtens->tmp_rsc->gmem_p));
+                         (talshComplex8*)(dtens->dst_rsc->gmem_p),(talshComplex8*)(dtens->tmp_rsc->gmem_p));
       break;
      default:
       errc=cuda_task_record(cuda_task,coh_ctrl,40); errc=gpu_activate(cur_gpu); return 40;
@@ -6165,11 +6428,11 @@ NOTES:
       break;
      case C4:
       hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 0,1,drank,cuda_task->tens_args[0].const_mem_entry,
-        (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
+                         (talshComplex4*)(dtens->dst_rsc->gmem_p),(talshComplex4*)(dtens->tmp_rsc->gmem_p));
       break;
      case C8:
       hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 0,1,drank,cuda_task->tens_args[0].const_mem_entry,
-        (talshComplex8*)(dtens->dst_rsc->gmem_p),(talshComplex8*)(dtens->tmp_rsc->gmem_p));
+                         (talshComplex8*)(dtens->dst_rsc->gmem_p),(talshComplex8*)(dtens->tmp_rsc->gmem_p));
       break;
      default:
       errc=cuda_task_record(cuda_task,coh_ctrl,44); errc=gpu_activate(cur_gpu); return 44;
@@ -6211,15 +6474,15 @@ NOTES:
     case C4:
      if(fast_math == YEP){
       hipLaunchKernelGGL(gpu_tensor_block_copy_cmplx_split_out_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
-        (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
+                         (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
      }else{
       hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
-        (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
+                         (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
      }
      break;
     case C8:
      hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
-       (talshComplex8*)(ltens->dst_rsc->gmem_p),(talshComplex8*)(ltens->tmp_rsc->gmem_p));
+                        (talshComplex8*)(ltens->dst_rsc->gmem_p),(talshComplex8*)(ltens->tmp_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,48); errc=gpu_activate(cur_gpu); return 48;
@@ -6248,11 +6511,11 @@ NOTES:
      break;
     case C4:
      hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
-       (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
+                        (talshComplex4*)(ltens->dst_rsc->gmem_p),(talshComplex4*)(ltens->tmp_rsc->gmem_p));
      break;
     case C8:
      hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 0,0,lrank,cuda_task->tens_args[1].const_mem_entry,
-       (talshComplex8*)(ltens->dst_rsc->gmem_p),(talshComplex8*)(ltens->tmp_rsc->gmem_p));
+                        (talshComplex8*)(ltens->dst_rsc->gmem_p),(talshComplex8*)(ltens->tmp_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,52); errc=gpu_activate(cur_gpu); return 52;
@@ -6278,15 +6541,15 @@ NOTES:
     case C4:
      if(fast_math == YEP){
       hipLaunchKernelGGL(gpu_tensor_block_copy_cmplx_split_out_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,0,rrank,cuda_task->tens_args[2].const_mem_entry,
-        (talshComplex4*)(rtens->dst_rsc->gmem_p),(talshComplex4*)(rtens->tmp_rsc->gmem_p));
+                         (talshComplex4*)(rtens->dst_rsc->gmem_p),(talshComplex4*)(rtens->tmp_rsc->gmem_p));
      }else{
       hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,0,rrank,cuda_task->tens_args[2].const_mem_entry,
-        (talshComplex4*)(rtens->dst_rsc->gmem_p),(talshComplex4*)(rtens->tmp_rsc->gmem_p));
+                         (talshComplex4*)(rtens->dst_rsc->gmem_p),(talshComplex4*)(rtens->tmp_rsc->gmem_p));
      }
      break;
     case C8:
      hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 0,0,rrank,cuda_task->tens_args[2].const_mem_entry,
-       (talshComplex8*)(rtens->dst_rsc->gmem_p),(talshComplex8*)(rtens->tmp_rsc->gmem_p));
+                        (talshComplex8*)(rtens->dst_rsc->gmem_p),(talshComplex8*)(rtens->tmp_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,54); errc=gpu_activate(cur_gpu); return 54;
@@ -6315,11 +6578,11 @@ NOTES:
      break;
     case C4:
      hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 0,0,rrank,cuda_task->tens_args[2].const_mem_entry,
-       (talshComplex4*)(rtens->dst_rsc->gmem_p),(talshComplex4*)(rtens->tmp_rsc->gmem_p));
+                        (talshComplex4*)(rtens->dst_rsc->gmem_p),(talshComplex4*)(rtens->tmp_rsc->gmem_p));
      break;
     case C8:
      hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 0,0,rrank,cuda_task->tens_args[2].const_mem_entry,
-       (talshComplex8*)(rtens->dst_rsc->gmem_p),(talshComplex8*)(rtens->tmp_rsc->gmem_p));
+                        (talshComplex8*)(rtens->dst_rsc->gmem_p),(talshComplex8*)(rtens->tmp_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,58); errc=gpu_activate(cur_gpu); return 58;
@@ -6428,12 +6691,12 @@ NOTES:
    case C4:
     scale_cmplx4 = talshComplex4Set((float)scale_real,(float)scale_imag);
     hipLaunchKernelGGL(gpu_scalar_multiply__, dim3(1), dim3(1), 0, *hip_stream, (talshComplex4*)larg,(talshComplex4*)rarg,(talshComplex4*)darg,
-                                                  scale_cmplx4,conj_l,conj_r);
+                       scale_cmplx4,conj_l,conj_r);
     break;
    case C8:
     scale_cmplx8 = talshComplex8Set(scale_real,scale_imag);
     hipLaunchKernelGGL(gpu_scalar_multiply__, dim3(1), dim3(1), 0, *hip_stream, (talshComplex8*)larg,(talshComplex8*)rarg,(talshComplex8*)darg,
-                                                  scale_cmplx8,conj_l,conj_r);
+                       scale_cmplx8,conj_l,conj_r);
     break;
    default:
     errc=cuda_task_record(cuda_task,coh_ctrl,67); errc=gpu_activate(cur_gpu); return 67;
@@ -6451,12 +6714,12 @@ NOTES:
    case C4:
     scale_cmplx4 = talshComplex4Set((float)scale_real,(float)scale_imag);
     hipLaunchKernelGGL(gpu_array_add__, dim3(bx), dim3(THRDS_ARRAY_ADD), 0, *hip_stream, vol_d,(talshComplex4*)(darg),(talshComplex4*)(rarg),
-                                                           (talshComplex4*)(larg),scale_cmplx4,conj_r);
+                       (talshComplex4*)(larg),scale_cmplx4,conj_r);
     break;
    case C8:
     scale_cmplx8 = talshComplex8Set(scale_real,scale_imag);
     hipLaunchKernelGGL(gpu_array_add__, dim3(bx), dim3(THRDS_ARRAY_ADD), 0, *hip_stream, vol_d,(talshComplex8*)(darg),(talshComplex8*)(rarg),
-                                                           (talshComplex8*)(larg),scale_cmplx8,conj_r);
+                       (talshComplex8*)(larg),scale_cmplx8,conj_r);
     break;
    default:
     errc=cuda_task_record(cuda_task,coh_ctrl,68); errc=gpu_activate(cur_gpu); return 68;
@@ -6474,12 +6737,12 @@ NOTES:
    case C4:
     scale_cmplx4 = talshComplex4Set((float)scale_real,(float)scale_imag);
     hipLaunchKernelGGL(gpu_array_add__, dim3(bx), dim3(THRDS_ARRAY_ADD), 0, *hip_stream, vol_d,(talshComplex4*)(darg),(talshComplex4*)(larg),
-                                                           (talshComplex4*)(rarg),scale_cmplx4,conj_l);
+                       (talshComplex4*)(rarg),scale_cmplx4,conj_l);
     break;
    case C8:
     scale_cmplx8 = talshComplex8Set(scale_real,scale_imag);
     hipLaunchKernelGGL(gpu_array_add__, dim3(bx), dim3(THRDS_ARRAY_ADD), 0, *hip_stream, vol_d,(talshComplex8*)(darg),(talshComplex8*)(larg),
-                                                           (talshComplex8*)(rarg),scale_cmplx8,conj_l);
+                       (talshComplex8*)(rarg),scale_cmplx8,conj_l);
     break;
    default:
     errc=cuda_task_record(cuda_task,coh_ctrl,69); errc=gpu_activate(cur_gpu); return 69;
@@ -6496,11 +6759,13 @@ NOTES:
     break;
    case C4:
     scale_cmplx4 = talshComplex4Set((float)scale_real,(float)scale_imag);
-    hipLaunchKernelGGL(gpu_array_dot_product__, dim3(bx), dim3(THRDS_ARRAY_SCALE), THRDS_ARRAY_SCALE*sizeof(talshComplex4), *hip_stream, vol_l,(talshComplex4*)larg,(talshComplex4*)rarg,(talshComplex4*)darg,scale_cmplx4,conj_l,conj_r);
+    hipLaunchKernelGGL(gpu_array_dot_product__, dim3(bx), dim3(THRDS_ARRAY_SCALE), THRDS_ARRAY_SCALE*sizeof(talshComplex4), *hip_stream,
+                       vol_l,(talshComplex4*)larg,(talshComplex4*)rarg,(talshComplex4*)darg,scale_cmplx4,conj_l,conj_r);
     break;
    case C8:
     scale_cmplx8 = talshComplex8Set(scale_real,scale_imag);
-    hipLaunchKernelGGL(gpu_array_dot_product__, dim3(bx), dim3(THRDS_ARRAY_SCALE), THRDS_ARRAY_SCALE*sizeof(talshComplex8), *hip_stream, vol_l,(talshComplex8*)larg,(talshComplex8*)rarg,(talshComplex8*)darg,scale_cmplx8,conj_l,conj_r);
+    hipLaunchKernelGGL(gpu_array_dot_product__, dim3(bx), dim3(THRDS_ARRAY_SCALE), THRDS_ARRAY_SCALE*sizeof(talshComplex8), *hip_stream,
+                       vol_l,(talshComplex8*)larg,(talshComplex8*)rarg,(talshComplex8*)darg,scale_cmplx8,conj_l,conj_r);
     break;
    default:
     errc=cuda_task_record(cuda_task,coh_ctrl,70); errc=gpu_activate(cur_gpu); return 70;
@@ -6518,11 +6783,13 @@ NOTES:
     break;
    case C4:
     scale_cmplx4 = talshComplex4Set((float)scale_real,(float)scale_imag);
-    hipLaunchKernelGGL(gpu_array_product__, dim3(blcks), dim3(THRDS_ARRAY_PRODUCT), 0, *hip_stream, vol_l,(talshComplex4*)larg,vol_r,(talshComplex4*)rarg,(talshComplex4*)darg,scale_cmplx4,conj_l,conj_r);
+    hipLaunchKernelGGL(gpu_array_product__, dim3(blcks), dim3(THRDS_ARRAY_PRODUCT), 0, *hip_stream, vol_l,(talshComplex4*)larg,
+                       vol_r,(talshComplex4*)rarg,(talshComplex4*)darg,scale_cmplx4,conj_l,conj_r);
     break;
    case C8:
     scale_cmplx8 = talshComplex8Set(scale_real,scale_imag);
-    hipLaunchKernelGGL(gpu_array_product__, dim3(blcks), dim3(THRDS_ARRAY_PRODUCT), 0, *hip_stream, vol_l,(talshComplex8*)larg,vol_r,(talshComplex8*)rarg,(talshComplex8*)darg,scale_cmplx8,conj_l,conj_r);
+    hipLaunchKernelGGL(gpu_array_product__, dim3(blcks), dim3(THRDS_ARRAY_PRODUCT), 0, *hip_stream, vol_l,(talshComplex8*)larg,
+                       vol_r,(talshComplex8*)rarg,(talshComplex8*)darg,scale_cmplx8,conj_l,conj_r);
     break;
    default:
     errc=cuda_task_record(cuda_task,coh_ctrl,71); errc=gpu_activate(cur_gpu); return 71;
@@ -6775,15 +7042,15 @@ NOTES:
     case C4:
      if(fast_math == YEP){
       hipLaunchKernelGGL(gpu_tensor_block_copy_cmplx_split_in_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 1,0,drank,cuda_task->tens_args[0].const_mem_entry,
-        (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
+                         (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
      }else{
       hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 1,0,drank,cuda_task->tens_args[0].const_mem_entry,
-        (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
+                         (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
      }
      break;
     case C8:
      hipLaunchKernelGGL(gpu_tensor_block_copy_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY), 0, *hip_stream, 1,0,drank,cuda_task->tens_args[0].const_mem_entry,
-       (talshComplex8*)(dtens->tmp_rsc->gmem_p),(talshComplex8*)(dtens->dst_rsc->gmem_p));
+                        (talshComplex8*)(dtens->tmp_rsc->gmem_p),(talshComplex8*)(dtens->dst_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,77); errc=gpu_activate(cur_gpu); return 77;
@@ -6813,11 +7080,11 @@ NOTES:
      break;
     case C4:
      hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 1,0,drank,cuda_task->tens_args[0].const_mem_entry,
-       (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
+                        (talshComplex4*)(dtens->tmp_rsc->gmem_p),(talshComplex4*)(dtens->dst_rsc->gmem_p));
      break;
     case C8:
      hipLaunchKernelGGL(gpu_tensor_block_copy_scatter_dlf__, dim3(bx), dim3(THRDS_TENSOR_COPY_SCAT), 0, *hip_stream, 1,0,drank,cuda_task->tens_args[0].const_mem_entry,
-       (talshComplex8*)(dtens->tmp_rsc->gmem_p),(talshComplex8*)(dtens->dst_rsc->gmem_p));
+                        (talshComplex8*)(dtens->tmp_rsc->gmem_p),(talshComplex8*)(dtens->dst_rsc->gmem_p));
      break;
     default:
      errc=cuda_task_record(cuda_task,coh_ctrl,81); errc=gpu_activate(cur_gpu); return 81;
