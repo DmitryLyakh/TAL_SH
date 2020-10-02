@@ -1,7 +1,7 @@
 /** ExaTensor::TAL-SH: Lower-level header:
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device agnostic).
-REVISION: 2020/09/23
+REVISION: 2020/10/01
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -112,6 +112,7 @@ FOR DEVELOPERS ONLY:
 #define DEVICE_UNABLE -546372819
 #define TRY_LATER -918273645
 #define NOT_CLEAN -192837465
+#define NUM_INSTABILITY -374628195
 
 #define EVERYTHING 0
 #define SOURCE 1
