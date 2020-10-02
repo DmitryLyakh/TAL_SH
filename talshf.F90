@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2020/09/14
+!REVISION: 2020/10/01
 
 !Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -1805,29 +1805,35 @@
          real(C_DOUBLE), value:: scale_imag         !in: scaling prefactor (imaginary part)
          integer(C_INT), value:: arg_conj           !in: argument complex conjugation bits (0:D,1:L)
          type(tensor_block_t), pointer:: dtp,ltp
+         type(tensor_block_t):: lta
+         integer:: transp(0:MAX_TENSOR_RANK),n,i,conj_bits,ierr
          complex(8):: scale_fac
-         integer:: i,conj_bits,ierr
          logical:: permute
 
          cpu_tensor_block_add=0; conj_bits=arg_conj
          if(c_associated(dtens_p).and.c_associated(ltens_p)) then
           call c_f_pointer(dtens_p,dtp); call c_f_pointer(ltens_p,ltp)
           if(associated(dtp).and.associated(ltp)) then
-           permute=.FALSE.
-           do i=1,dtp%tensor_shape%num_dim
+           scale_fac=cmplx(scale_real,scale_imag,8)
+           n=ltp%tensor_shape%num_dim; permute=.FALSE.
+           do i=1,n
             if(contr_ptrn(i).ne.i) then; permute=.TRUE.; exit; endif
            enddo
-           if(permute) then !`Add this feature
-            write(CONS_OUT,'("#FATAL(talshf:cpu_tensor_block_add): addition with permutation is not implemented for CPU target!")')
-            stop
-           endif
-           if(dabs(scale_real-1d0).gt.ZERO_THRESH.or.dabs(scale_imag-0d0).gt.ZERO_THRESH) then
-            scale_fac=cmplx(scale_real,scale_imag,8)
-            call tensor_block_add(dtp,ltp,ierr,scale_fac,conj_bits)
+           if(permute) then
+            transp(0:n)=(/1,contr_ptrn(1:n)/) !O2N
+            call tensor_block_copy(ltp,lta,ierr,transp)
+            if(ierr.eq.0) then
+             call tensor_block_add(dtp,lta,ierr,scale_fac,conj_bits)
+             if(ierr.ne.0) cpu_tensor_block_add=ierr
+             call tensor_block_destroy(lta,ierr)
+             if(ierr.ne.0.and.cpu_tensor_block_add.eq.0) cpu_tensor_block_add=ierr
+            else
+             cpu_tensor_block_add=ierr
+            endif
            else
-            call tensor_block_add(dtp,ltp,ierr,arg_conj=conj_bits)
+            call tensor_block_add(dtp,ltp,ierr,scale_fac,conj_bits)
+            cpu_tensor_block_add=ierr
            endif
-           cpu_tensor_block_add=ierr
           else
            cpu_tensor_block_add=-2
           endif

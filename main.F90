@@ -26,7 +26,7 @@
         logical, parameter:: TEST_CXX_TALSH=.TRUE.
         logical, parameter:: TEST_XL_TALSH=.TRUE.
         logical, parameter:: TEST_HYPER_TALSH=.TRUE.
-        logical, parameter:: TEST_SVD_TALSH=.FALSE.
+        logical, parameter:: TEST_SVD_TALSH=.TRUE.
         logical, parameter:: TEST_F_TALSH=.TRUE.
         logical, parameter:: TEST_XLF_TALSH=.TRUE.
         logical, parameter:: TEST_QC_TALSH=.TRUE.
