@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/10/01
+!REVISION: 2020/10/02
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -4473,6 +4473,8 @@
                 if(info.eq.0) then
                  do i=1,nfound; stens%data_real4(i-1)=sv4(i); enddo !converged singular values
                  do i=nfound+1,nv; stens%data_real4(i-1)=0.0; enddo !unconverged singular values
+                elseif(info.gt.0) then
+                 ierr=NUM_INSTABILITY
                 else
                  if(VERBOSE) then
                   write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): SGESVDX error ",i11)') info
@@ -4524,6 +4526,8 @@
                 if(info.eq.0) then
                  do i=1,nfound; stens%data_real8(i-1)=sv8(i); enddo !converged singular values
                  do i=nfound+1,nv; stens%data_real8(i-1)=0d0; enddo !unconverged singular values
+                elseif(info.gt.0) then
+                 ierr=NUM_INSTABILITY
                 else
                  if(VERBOSE) then
                   write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): DGESVDX error ",i11)') info
@@ -4578,6 +4582,8 @@
                  if(info.eq.0) then
                   do i=1,nfound; stens%data_cmplx4(i-1)=cmplx(sv4(i),0.0,kind=4); enddo !converged singular values
                   do i=nfound+1,nv; stens%data_cmplx4(i-1)=(0.0,0.0); enddo !unconverged singular values
+                 elseif(info.gt.0) then
+                  ierr=NUM_INSTABILITY
                  else
                   if(VERBOSE) then
                    write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): CGESVDX error ",i11)') info
@@ -4636,6 +4642,8 @@
                  if(info.eq.0) then
                   do i=1,nfound; stens%data_cmplx8(i-1)=cmplx(sv8(i),0d0,kind=8); enddo !converged singular values
                   do i=nfound+1,nv; stens%data_cmplx8(i-1)=(0d0,0d0); enddo !unconverged singular values
+                 elseif(info.gt.0) then
+                  ierr=NUM_INSTABILITY
                  else
                   if(VERBOSE) then
                    write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): ZGESVDX error ",i11)') info
