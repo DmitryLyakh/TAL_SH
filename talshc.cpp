@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/10/02
+REVISION: 2020/10/05
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -5620,6 +5620,8 @@ int talshTensorDecomposeSVD(const char * cptrn,   //in: C-string: symbolic decom
                             int dev_id,           //in: device id (flat or kind-specific)
                             int dev_kind)         //in: device kind (if present, <dev_id> is kind-specific)
 {
+ const double svd_scale_max = 1e31;
+ const double svd_scale_fac = 1e2;
  int errc,ier,devid,dvn,dvk,cpl,drnk,lrnk,rrnk,srnk,conj_bits,ncd,nlu,nru,nhu,i,j,k,l;
  int contr_ptrn[MAX_TENSOR_RANK*2],dimg,limg,rimg,simg,dcp,lcp,rcp,scp,dtr,ltr,rtr;
  int dprm[1+MAX_TENSOR_RANK],lprm[1+MAX_TENSOR_RANK],rprm[1+MAX_TENSOR_RANK],dims[MAX_TENSOR_RANK];
@@ -5950,8 +5952,8 @@ int talshTensorDecomposeSVD(const char * cptrn,   //in: C-string: symbolic decom
     return TALSH_FAILURE;
   }
   if(errc == NUM_INSTABILITY){ //retry
-   if(svd_scale < 1e6){
-    svd_scale*=10.0;
+   if(svd_scale < svd_scale_max){
+    svd_scale*=svd_scale_fac;
     ier=talshTensorInit(&ztens,0.0,0.0,dvn,dvk);
     if(ier == TALSH_SUCCESS){
      i=0; j=0; get_contr_pattern_sym(&drnk,&j,&i,&(dprm[1]),perm_sym,&l,&ier);
