@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/10/02
+!REVISION: 2020/10/05
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -4874,7 +4874,7 @@
         else
          ierr=32
         endif
-        if(VERBOSE.and.ierr.ne.0) then
+        if(VERBOSE.and.(ierr.ne.0.and.ierr.ne.NUM_INSTABILITY)) then
          write(CONS_OUT,'("#ERROR(CP-TAL:tensor_block_decompose_svd): Error ",i11)') ierr
         endif
         if(PRINT_INFO) then

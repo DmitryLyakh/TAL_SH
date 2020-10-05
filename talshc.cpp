@@ -5951,6 +5951,7 @@ int talshTensorDecomposeSVD(const char * cptrn,   //in: C-string: symbolic decom
    default:
     return TALSH_FAILURE;
   }
+  //if(svd_scale == 1.0) errc = NUM_INSTABILITY; //debug
   if(errc == NUM_INSTABILITY){ //retry
    if(svd_scale < svd_scale_max){
     svd_scale*=svd_scale_fac;
@@ -5977,6 +5978,16 @@ int talshTensorDecomposeSVD(const char * cptrn,   //in: C-string: symbolic decom
  //Rescale back the singular values tensor if needed:
  if(errc == TALSH_SUCCESS && svd_scale != 1.0){
   errc=talshTensorScale(stens,1/svd_scale,0.0,dvn,dvk);
+  if(errc == TALSH_SUCCESS){
+   if(absorb == 'L'){
+    errc=talshTensorScale(utens,1/svd_scale,0.0,dvn,dvk);
+   }else if(absorb == 'R'){
+    errc=talshTensorScale(vtens,1/svd_scale,0.0,dvn,dvk);
+   }else if(absorb == 'S'){
+    errc=talshTensorScale(utens,1/sqrt(svd_scale),0.0,dvn,dvk);
+    if(errc == TALSH_SUCCESS) errc=talshTensorScale(vtens,1/sqrt(svd_scale),0.0,dvn,dvk);
+   }
+  }
  }
  //Destroy the copy of the destination tensor:
  ier=talshTensorDestruct(&ztens);
