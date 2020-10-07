@@ -8,12 +8,15 @@ set(USE_OPENMP @USE_OPENMP@)
 set(WITH_CUTENSOR @WITH_CUTENSOR@)
 set(TALSH_FINE_TIMING @TALSH_FINE_TIMING@)
 
+enable_language(Fortran)
+
 # include( CMakeFindDependencyMacro )
 if(USE_OPENMP)
     find_package(OpenMP REQUIRED)
 endif()
 
 if(TALSH_GPU)
+    enable_language(CUDA)
     find_package(CUDAToolkit REQUIRED COMPONENTS cublas)
 endif() 
 
