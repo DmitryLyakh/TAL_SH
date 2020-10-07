@@ -1,13 +1,17 @@
+cmake_minimum_required(VERSION 3.17.0 FATAL_ERROR)
 
 @PACKAGE_INIT@
 
 set(USE_HIP @USE_HIP@)
 set(TALSH_GPU @TALSH_GPU@)
+set(USE_OPENMP @USE_OPENMP@) 
 set(WITH_CUTENSOR @WITH_CUTENSOR@)
 set(TALSH_FINE_TIMING @TALSH_FINE_TIMING@)
 
 # include( CMakeFindDependencyMacro )
-find_package(OpenMP REQUIRED)
+if(USE_OPENMP)
+    find_package(OpenMP REQUIRED)
+endif()
 
 if(TALSH_GPU)
     find_package(CUDAToolkit REQUIRED COMPONENTS cublas)
