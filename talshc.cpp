@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/10/05
+REVISION: 2020/10/07
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -64,7 +64,9 @@ FOR DEVELOPER(s):
 #include <cstdlib>
 #include <ctime>
 
+#ifndef NO_OMP
 #include <omp.h>
+#endif
 
 //PARAMETERS:
 static int VERBOSE=1;     //verbosity for errors
@@ -73,7 +75,9 @@ static int LOGGING_OPS=0; //logging basic tensor operations: Add, Contract
 //GLOBALS:
 // General:
 static int talsh_on=0;             //TAL-SH initialization flag (1:initalized; 0:not)
+#ifndef NO_OMP
 static omp_nest_lock_t talsh_lock; //TAL-SH global lock for thread safety
+#endif
 static clock_t talsh_begin_time;   //TAL-SH begin time (zero time reference)
 // Accelerator configuration:
 static int talsh_gpu_beg;          //first Nvidia GPU in the assigned range
@@ -615,7 +619,9 @@ int talshInit(size_t * host_buf_size,    //inout: Host Argument Buffer size in b
  }
 #endif
  talsh_gpu_beg=gpu_beg; talsh_gpu_end=gpu_end;
+#ifndef NO_OMP
  omp_init_nest_lock(&talsh_lock);
+#endif
  talsh_on=1; talsh_begin_time=clock();
 #pragma omp flush
  return TALSH_SUCCESS;
@@ -635,7 +641,9 @@ int talshShutdown()
  for(i=0;i<MAX_GPUS_PER_NODE;i++) talsh_gpu[i]=DEV_OFF;
  for(i=0;i<MAX_MICS_PER_NODE;i++) talsh_mic[i]=DEV_OFF;
  for(i=0;i<MAX_AMDS_PER_NODE;i++) talsh_amd[i]=DEV_OFF;
+#ifndef NO_OMP
  omp_destroy_nest_lock(&talsh_lock);
+#endif
 #pragma omp flush
  if(errc) return TALSH_FAILURE;
  return TALSH_SUCCESS;

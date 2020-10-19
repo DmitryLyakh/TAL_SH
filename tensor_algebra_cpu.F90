@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/10/05
+!REVISION: 2020/10/07
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -3747,9 +3747,13 @@
 
         ierr=0
         tc_start=thread_wtime()
+#ifndef NO_OMP
         nthr=omp_get_max_threads()
 #ifdef USE_MKL
         call mkl_set_num_threads(nthr)
+#endif
+#else
+        nthr=1
 #endif
 !Check NaN in input tensors:
         if(CHECK_NAN) then
