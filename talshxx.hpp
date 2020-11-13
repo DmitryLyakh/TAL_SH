@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2020/10/02
+REVISION: 2020/11/13
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -232,6 +232,10 @@ public:
      If no image is available on Host, returns false.  **/
  template<typename T>
  bool getDataAccessHostConst(const T ** data_ptr);
+
+ /** Tensor element access by its multi-index (slow) **/
+ template <typename T, typename IntegralType>
+ T & operator[](const std::initializer_list<IntegralType> mlndx) const;
 
  /** Use count increment/decrement. **/
  Tensor & operator++(); //increments tensor use count
@@ -790,6 +794,21 @@ bool Tensor::getDataAccessHostConst(const T ** data_ptr)
   return false;
  }
  return true;
+}
+
+
+/** Tensor element access by its multi-index **/
+template <typename T, typename IntegralType>
+T & Tensor::operator[](const std::initializer_list<IntegralType> mlndx) const
+{
+ static_assert(std::is_integral<IntegralType>::value,"FATAL(talsh::Tensor::operator[]): Non-integral multi-index!");
+ T * body;
+ auto access_granted = getDataAccessHost(&body); assert(access_granted);
+ unsigned int num_dims = 0;
+ const auto * dims = getDimExtents(num_dims); assert(num_dims == mlndx.size());
+ std::size_t offset = 0;
+ for(int i = num_dims-1; i >= 0; --i) offset = offset * dims[i] + mlndx[i];
+ return body[offset];
 }
 
 
