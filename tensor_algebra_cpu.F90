@@ -1,6 +1,6 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/10/07
+!REVISION: 2020/11/20
 
 !Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -3835,20 +3835,21 @@
  !Determine index permutations and complex conjugation for all tensor arguments:
          ltrm='T'; rtrm='N' !GEMM('T','N') by default
   !Determine the need for complex conjugation for all arguments:
+         conj=0; if(present(arg_conj)) conj=arg_conj
          if(dtk(1:1).eq.'c'.or.dtk(1:1).eq.'C') then !only complex data types (C4,C8)
-          k=arg_conj
+          k=conj
           dconj=(mod(k,2).eq.1); k=k/2
           lconj=(mod(k,2).eq.1); k=k/2
           rconj=(mod(k,2).eq.1)
           if(dconj) then; dconj=.FALSE.; lconj=(.not.lconj); rconj=(.not.rconj); endif
          else
-          dconj=.FALSE.; lconj=.FALSE.; rconj=.FALSE.
+          conj=0; dconj=.FALSE.; lconj=.FALSE.; rconj=.FALSE.
          endif
          if(lconj) ltrm='C' !'T' -> 'C'
          if(rconj) rtrm='C' !'N' -> 'C'
   !Determine index permutations and modify the right tensor index permutation if needed:
          if(ENABLE_HYPERCONTRACTION) then
-          call get_contraction_permutations(1,0,lrank,rrank,contr_ptrn,arg_conj,do2n,lo2n,ro2n,ncd,nlu,nru,nhu,ierr) !sets {do2n,lo2n,ro2n},{ncd,nlu,nru,nhu}
+          call get_contraction_permutations(1,0,lrank,rrank,contr_ptrn,conj,do2n,lo2n,ro2n,ncd,nlu,nru,nhu,ierr) !sets {do2n,lo2n,ro2n},{ncd,nlu,nru,nhu}
           if(ierr.ne.0) then; ierr=9; return; endif
           dtransp=(.not.perm_trivial(drank,do2n))
           ltransp=(.not.perm_trivial(lrank,lo2n))
