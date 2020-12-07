@@ -317,7 +317,7 @@ endif
 
 #HIP LIBS:
 ifeq ($(USE_HIP),YES)
-HIP_LINK = -L$(PATH_HIP_LIB) -L$(PATH_HIPBLAS_LIB) -lhipblas
+HIP_LINK = -fPIC -L$(PATH_HIP_LIB) -L$(PATH_HIPBLAS_LIB) -lhipblas -lamdhip64
 else
 HIP_LINK = -L.
 endif
@@ -361,6 +361,8 @@ endif
 else
 CUDA_FLAGS = -D_FORCE_INLINES
 endif
+
+HIP_FLAGS = -c -g -O3 -D_FORCE_INLINES -fno-gpu-rdc -fPIC --amdgpu-target=gfx906,gfx908 #-fopenmp
 
 #Accelerator support:
 ifeq ($(TOOLKIT),IBM)
@@ -445,7 +447,7 @@ LTHREAD = $(LTHREAD_$(TOOLKIT))
 
 #LINKING:
 ifeq ($(USE_HIP),YES)
-LFLAGS = $(MPI_LINK) $(LA_LINK) $(LTHREAD) $(HIP_LINK) $(CUDA_LINK) $(LIB)
+LFLAGS = $(MPI_LINK) $(LA_LINK) $(LTHREAD) $(HIP_LINK) $(LIB)
 OBJS =  ./OBJ/dil_basic.o ./OBJ/stsubs.o ./OBJ/combinatoric.o ./OBJ/symm_index.o ./OBJ/timer.o ./OBJ/timers.o ./OBJ/nvtx_profile.o \
 	./OBJ/byte_packet.o ./OBJ/tensor_algebra.o ./OBJ/tensor_algebra_cpu.o ./OBJ/tensor_algebra_cpu_phi.o \
 	./OBJ/mem_manager.hip.o ./OBJ/tensor_algebra_gpu.o ./OBJ/tensor_algebra_gpu_nvidia.hip.o \
@@ -525,7 +527,7 @@ endif
 
 ifeq ($(USE_HIP),YES)
 ./OBJ/mem_manager.hip.o: mem_manager.hip.cpp mem_manager.h tensor_algebra.h device_algebra.hip.h
-	$(HIP_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(HIP_INC) $(CUDA_INC) $(CUDA_FLAGS) mem_manager.hip.cpp -o ./OBJ/mem_manager.hip.o
+	$(HIP_COMP) $(INC) $(MPI_INC) $(HIP_INC) $(HIP_FLAGS) mem_manager.hip.cpp -o ./OBJ/mem_manager.hip.o
 else
 ./OBJ/mem_manager.o: mem_manager.cpp mem_manager.h tensor_algebra.h device_algebra.h
 	$(CPPCOMP) $(INC) $(MPI_INC) $(CUDA_INC) $(CPPFLAGS) mem_manager.cpp -o ./OBJ/mem_manager.o
@@ -536,7 +538,7 @@ endif
 
 ifeq ($(USE_HIP),YES)
 ./OBJ/tensor_algebra_gpu_nvidia.hip.o: tensor_algebra_gpu_nvidia.hip.cu tensor_algebra.h device_algebra.hip.h talsh_complex.hip.h
-	$(HIP_COMP) -ccbin $(CUDA_HOST_COMPILER) $(INC) $(MPI_INC) $(HIP_INC) $(CUDA_INC) $(CUDA_FLAGS) tensor_algebra_gpu_nvidia.hip.cu -o ./OBJ/tensor_algebra_gpu_nvidia.hip.o
+	$(HIP_COMP) $(INC) $(MPI_INC) $(HIP_INC) $(HIP_FLAGS) tensor_algebra_gpu_nvidia.hip.cu -o ./OBJ/tensor_algebra_gpu_nvidia.hip.o
 else
 ./OBJ/tensor_algebra_gpu_nvidia.o: tensor_algebra_gpu_nvidia.cu tensor_algebra.h device_algebra.h talsh_complex.h
 ifeq ($(GPU_CUDA),CUDA)

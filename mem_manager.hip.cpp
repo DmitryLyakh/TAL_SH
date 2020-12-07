@@ -1661,7 +1661,7 @@ static int mi_entry_init()
   if(VERBOSE) printf("#ERROR(mem_manager:mi_entry_init): Unable to register the multi-index bank: Error %d\n",errc);
 #ifndef NO_OMP
   omp_unset_nest_lock(&mem_lock);
-#endfif
+#endif
   return -1;
  }
 #pragma omp flush
