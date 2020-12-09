@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2020/11/13
+REVISION: 2020/12/09
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -114,6 +114,37 @@ double imagPart(std::complex<double> number);
 class Tensor{
 
 public:
+
+ /** Tensor body slice view for a quick access (host-side) **/
+ template <typename FloatingType>
+ class View{
+ public:
+
+  View(FloatingType * body,
+       const std::vector<std::size_t> & full_extents,
+       const std::vector<std::size_t> & extents,
+       const std::vector<std::size_t> & bases):
+   body_(body), full_extents_(full_extents), extents_(extents), bases_(bases)
+  {}
+
+  template <typename IntegralType>
+  FloatingType & operator[](const std::initializer_list<IntegralType> mlndx){
+   static_assert(std::is_integral<IntegralType>::value,"FATAL(talsh::Tensor::View::operator[]): Non-integral multi-index!");
+   unsigned int num_dims = full_extents_.size(); assert(mlndx.size() == num_dims);
+   std::size_t offset = 0;
+   for(int i = num_dims-1; i >= 0; --i){
+    assert(mlndx.begin()[i] < extents_[i]);
+    offset = offset * full_extents_[i] + (bases_[i] + mlndx.begin()[i]);
+   }
+   return body_[offset];
+  }
+
+ private:
+  FloatingType * body_;
+  const std::vector<std::size_t> full_extents_;
+  const std::vector<std::size_t> extents_;
+  const std::vector<std::size_t> bases_;
+ };
 
  /** NOTE: talsh::Tensor constructors may return an empty tensor in case they experience
      a temporary shortage of RAM, which can be queried by talsh::Tensor::isEmpty() method. **/
@@ -233,9 +264,22 @@ public:
  template<typename T>
  bool getDataAccessHostConst(const T ** data_ptr);
 
- /** Tensor element access by its multi-index (slow) **/
+ /** Returns a typed view of the full tensor. **/
+ template<typename T>
+ View<T> getSliceView();
+
+ /** Returns a typed view of a slice of the tensor without base offsets. **/
+ template<typename T, typename IntegralType>
+ View<T> getSliceView(const std::initializer_list<IntegralType> slice_extents);
+
+ /** Returns a typed view of a slice of the tensor with base offsets. **/
+ template<typename T, typename IntegralType>
+ View<T> getSliceView(const std::initializer_list<IntegralType> slice_extents,
+                      const std::initializer_list<IntegralType> slice_bases);
+
+ /** Tensor element access by its multi-index (slow). **/
  template <typename T, typename IntegralType>
- T & operator[](const std::initializer_list<IntegralType> mlndx) const;
+ T & operator[](const std::initializer_list<IntegralType> mlndx);
 
  /** Use count increment/decrement. **/
  Tensor & operator++(); //increments tensor use count
@@ -797,9 +841,55 @@ bool Tensor::getDataAccessHostConst(const T ** data_ptr)
 }
 
 
-/** Tensor element access by its multi-index **/
+/** Returns a typed view of the full tensor. **/
+template<typename T>
+Tensor::View<T> Tensor::getSliceView()
+{
+ auto synced = sync(DEV_HOST,0,pimpl_->host_mem_,true); assert(synced);
+ T * body;
+ auto access_granted = getDataAccessHost(&body); assert(access_granted);
+ unsigned int num_dims = 0;
+ const auto * dims = getDimExtents(num_dims);
+ std::vector<std::size_t> full_extents(num_dims);
+ for(int i = 0; i < num_dims; ++i) full_extents[i] = dims[i];
+ return Tensor::View<T>(body,full_extents,full_extents,std::vector<std::size_t>(num_dims,0));
+}
+
+/** Returns a typed view of a slice of the tensor without base offsets. **/
+template<typename T, typename IntegralType>
+Tensor::View<T> Tensor::getSliceView(const std::initializer_list<IntegralType> slice_extents)
+{
+ static_assert(std::is_integral<IntegralType>::value,"FATAL(talsh::Tensor::getSliceView): Non-integral argument!");
+ auto synced = sync(DEV_HOST,0,pimpl_->host_mem_,true); assert(synced);
+ T * body;
+ auto access_granted = getDataAccessHost(&body); assert(access_granted);
+ unsigned int num_dims = 0;
+ const auto * dims = getDimExtents(num_dims);
+ std::vector<std::size_t> full_extents(num_dims);
+ for(int i = 0; i < num_dims; ++i) full_extents[i] = dims[i];
+ return Tensor::View<T>(body,full_extents,std::vector<std::size_t>(slice_extents),std::vector<std::size_t>(num_dims,0));
+}
+
+/** Returns a typed view of a slice of the tensor with base offsets. **/
+template<typename T, typename IntegralType>
+Tensor::View<T> Tensor::getSliceView(const std::initializer_list<IntegralType> slice_extents,
+                                     const std::initializer_list<IntegralType> slice_bases)
+{
+ static_assert(std::is_integral<IntegralType>::value,"FATAL(talsh::Tensor::getSliceView): Non-integral argument!");
+ auto synced = sync(DEV_HOST,0,pimpl_->host_mem_,true); assert(synced);
+ T * body;
+ auto access_granted = getDataAccessHost(&body); assert(access_granted);
+ unsigned int num_dims = 0;
+ const auto * dims = getDimExtents(num_dims);
+ std::vector<std::size_t> full_extents(num_dims);
+ for(int i = 0; i < num_dims; ++i) full_extents[i] = dims[i];
+ return Tensor::View<T>(body,full_extents,std::vector<std::size_t>(slice_extents),std::vector<std::size_t>(slice_bases));
+}
+
+
+/** Tensor element access by its multi-index. **/
 template <typename T, typename IntegralType>
-T & Tensor::operator[](const std::initializer_list<IntegralType> mlndx) const
+T & Tensor::operator[](const std::initializer_list<IntegralType> mlndx)
 {
  static_assert(std::is_integral<IntegralType>::value,"FATAL(talsh::Tensor::operator[]): Non-integral multi-index!");
  T * body;
@@ -807,7 +897,7 @@ T & Tensor::operator[](const std::initializer_list<IntegralType> mlndx) const
  unsigned int num_dims = 0;
  const auto * dims = getDimExtents(num_dims); assert(num_dims == mlndx.size());
  std::size_t offset = 0;
- for(int i = num_dims-1; i >= 0; --i) offset = offset * dims[i] + mlndx[i];
+ for(int i = num_dims-1; i >= 0; --i) offset = offset * dims[i] + mlndx.begin()[i];
  return body[offset];
 }
 

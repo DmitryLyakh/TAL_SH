@@ -234,6 +234,10 @@ void test_talsh_cxx(int * ierr)
     std::cout << "Destination tensor first element value = " << data_ptr[0] <<
                 " (reference = " << 0.01*0.001*VDIM*VDIM << ")" << std::endl;
     data_ptr=nullptr;
+    //Access the destination tensor body via Tensor::View:
+    auto view = dtens.getSliceView<double>(); //full tensor view
+    std::cout << "Destination tensor first element value via view = " << view[{0,0,0,0}] <<
+                " (reference = " << 0.01*0.001*VDIM*VDIM << ")" << std::endl;
    }
   }
  }
