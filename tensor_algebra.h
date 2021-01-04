@@ -1,7 +1,7 @@
 /** ExaTensor::TAL-SH: Lower-level header:
     Parameters, derived types, and function prototypes
     used at the lower level of TAL-SH (device agnostic).
-REVISION: 2020/08/28
+REVISION: 2020/10/01
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -112,6 +112,7 @@ FOR DEVELOPERS ONLY:
 #define DEVICE_UNABLE -546372819
 #define TRY_LATER -918273645
 #define NOT_CLEAN -192837465
+#define NUM_INSTABILITY -374628195
 
 #define EVERYTHING 0
 #define SOURCE 1
@@ -269,6 +270,7 @@ int talsh_tens_no_init(const talsh_tens_data_t *, const talsh_tens_shape_t *, co
 //FUNCTION PROTOTYPES:
 extern "C"{
 //Generic:
+ size_t fortran_cptr_int(void * cptr);
  int tens_valid_data_kind(int datk, int * datk_size = NULL);
  int tens_valid_data_kind_(int datk, int * datk_size);
  int permutation_trivial(const int perm_len, const int * perm, const int base = 0);
@@ -276,6 +278,8 @@ extern "C"{
                             const int * cptrn_dig, char * cptrn_sym, int * cpl, int * ierr);
  void get_contr_permutations(int gemm_tl, int gemm_tr, int lrank, int rrank, const int *cptrn, int conj_bits,
                              int *dprm, int *lprm, int *rprm, int *ncd, int *nlu, int *nru, int *ierr);
+ void get_contraction_permutations(int gemm_tl, int gemm_tr, int lrank, int rrank, const int *cptrn, int conj_bits,
+                                   int *dprm, int *lprm, int *rprm, int *ncd, int *nlu, int *nru, int *nhu, int *ierr);
 #ifdef USE_CUTENSOR
  int get_contr_pattern_cutensor(const int * dig_ptrn, int drank, int32_t * ptrn_d, int lrank, int32_t * ptrn_l, int rrank, int32_t * ptrn_r);
 #endif

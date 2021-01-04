@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2020/08/11
+REVISION: 2020/10/02
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -462,7 +462,7 @@ extern "C"{
                              int dev_id,               //in: device id (flat or kind-specific)
                              int dev_kind = DEV_NULL); //in: device kind (if present, <dev_id> is kind-specific)
  int talshTensorDiscardOther_(talsh_tens_t * tens, int dev_id, int dev_kind);
-//  Tensor initialization:
+//  Tensor initialization to a scalar value:
  int talshTensorInit(talsh_tens_t * dtens,              //inout: tensor block
                      double val_real,                   //in: initialization value (real part)
                      double val_imag,                   //in: initialization value (imaginary part)
@@ -471,6 +471,15 @@ extern "C"{
                      int copy_ctrl = COPY_M,            //in: copy control (COPY_X), defaults to COPY_M
                      talsh_task_t * talsh_task = NULL); //inout: TAL-SH task handle
  int talshTensorInit_(talsh_tens_t * dtens, double val_real, double val_imag, int dev_id, int dev_kind, int copy_ctrl, talsh_task_t * talsh_task);
+//  Tensor scaling by a scalar value:
+ int talshTensorScale(talsh_tens_t * dtens,              //inout: tensor block
+                      double val_real,                   //in: scaling value (real part)
+                      double val_imag,                   //in: scaling value (imaginary part)
+                      int dev_id = DEV_DEFAULT,          //in: device id (flat or kind-specific)
+                      int dev_kind = DEV_DEFAULT,        //in: device kind (if present, <dev_id> is kind-specific)
+                      int copy_ctrl = COPY_M,            //in: copy control (COPY_X), defaults to COPY_M
+                      talsh_task_t * talsh_task = NULL); //inout: TAL-SH task handle
+ int talshTensorScale_(talsh_tens_t * dtens, double val_real, double val_imag, int dev_id, int dev_kind, int copy_ctrl, talsh_task_t * talsh_task);
 //  Tensor slicing:
  int talshTensorSlice(talsh_tens_t * dtens,                  //inout: destination tensor block (tensor slice)
                       talsh_tens_t * ltens,                  //inout: source tensor block

@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/09/03
+REVISION: 2020/10/07
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -64,16 +64,20 @@ FOR DEVELOPER(s):
 #include <cstdlib>
 #include <ctime>
 
+#ifndef NO_OMP
 #include <omp.h>
+#endif
 
 //PARAMETERS:
 static int VERBOSE=1;     //verbosity for errors
-static int LOGGING_OPS=0; //logging basic tensor operations
+static int LOGGING_OPS=0; //logging basic tensor operations: Add, Contract
 
 //GLOBALS:
 // General:
 static int talsh_on=0;             //TAL-SH initialization flag (1:initalized; 0:not)
+#ifndef NO_OMP
 static omp_nest_lock_t talsh_lock; //TAL-SH global lock for thread safety
+#endif
 static clock_t talsh_begin_time;   //TAL-SH begin time (zero time reference)
 // Accelerator configuration:
 static int talsh_gpu_beg;          //first Nvidia GPU in the assigned range
@@ -98,6 +102,7 @@ typedef struct{
 extern "C"{
 // CP-TAL tensor operations:
 int cpu_tensor_block_init(void * dftr, double val_real, double val_imag, int arg_conj);
+int cpu_tensor_block_scale(void * dftr, double val_real, double val_imag, int arg_conj);
 int cpu_tensor_block_slice(void * lftr, void * dftr, const int * offsets, int accumulative);
 int cpu_tensor_block_insert(void * lftr, void * dftr, const int * offsets, int accumulative);
 int cpu_tensor_block_copy(const int * contr_ptrn, void * lftr, void * dftr, int arg_conj);
@@ -614,7 +619,9 @@ int talshInit(size_t * host_buf_size,    //inout: Host Argument Buffer size in b
  }
 #endif
  talsh_gpu_beg=gpu_beg; talsh_gpu_end=gpu_end;
+#ifndef NO_OMP
  omp_init_nest_lock(&talsh_lock);
+#endif
  talsh_on=1; talsh_begin_time=clock();
 #pragma omp flush
  return TALSH_SUCCESS;
@@ -634,7 +641,9 @@ int talshShutdown()
  for(i=0;i<MAX_GPUS_PER_NODE;i++) talsh_gpu[i]=DEV_OFF;
  for(i=0;i<MAX_MICS_PER_NODE;i++) talsh_mic[i]=DEV_OFF;
  for(i=0;i<MAX_AMDS_PER_NODE;i++) talsh_amd[i]=DEV_OFF;
+#ifndef NO_OMP
  omp_destroy_nest_lock(&talsh_lock);
+#endif
 #pragma omp flush
  if(errc) return TALSH_FAILURE;
  return TALSH_SUCCESS;
@@ -3640,7 +3649,7 @@ int talshTensorInit(talsh_tens_t * dtens,
    dtens->avail[0] = NOPE;
    //Schedule tensor operation via the device-kind specific runtime:
    ctm=clock();
-   errc=cpu_tensor_block_init(dftr,val_real,val_imag,0); //blocking call (`no conjugation bits)
+   errc=cpu_tensor_block_init(dftr,val_real,val_imag,0); //blocking call
    if(errc == TALSH_SUCCESS && talshTensorRank(dtens) == 0){ //an explicit update is needed for scalar destinations
     j=talsh_update_f_scalar(dftr,dtens->data_kind[0],dtens->dev_rsc[0].gmem_p);
     if(j) errc=TALSH_FAILURE;
@@ -3745,6 +3754,227 @@ int talshTensorInit_(talsh_tens_t * dtens, double val_real, double val_imag, int
                      int copy_ctrl, talsh_task_t * talsh_task) //Fortran wrapper
 {
  return talshTensorInit(dtens,val_real,val_imag,dev_id,dev_kind,copy_ctrl,talsh_task);
+}
+
+int talshTensorScale(talsh_tens_t * dtens,
+                     double val_real,
+                     double val_imag,
+                     int dev_id,
+                     int dev_kind,
+                     int copy_ctrl,
+                     talsh_task_t * talsh_task)
+/** Tensor scaling dispatcher **/
+{
+ int j,devid,dvk,dvn,dimg,dcp,errc;
+ unsigned int coh_ctrl,coh,cohd;
+ talsh_task_t * tsk;
+ host_task_t * host_task;
+ void *dftr;
+ clock_t ctm;
+#ifndef NO_GPU
+ cudaTask_t * cuda_task;
+ tensBlck_t *dctr;
+#endif
+
+#pragma omp flush
+ if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
+ //Create a TAL-SH task:
+ if(talsh_task == NULL){
+  errc=talshTaskCreate(&tsk); if(errc) return errc; if(tsk == NULL) return TALSH_FAILURE;
+ }else{
+  tsk=talsh_task;
+ }
+ coh_ctrl=copy_ctrl;
+ //Check function arguments:
+ if(dtens == NULL){
+  tsk->task_error=100; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_INVALID_ARGS;
+ }
+ if(talshTensorIsEmpty(dtens) != NOPE){
+  tsk->task_error=101; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_OBJECT_IS_EMPTY;
+ }
+ if(talshTensorIsHealthy(dtens) != YEP){
+  tsk->task_error=102; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
+ }
+ //Determine the execution device (devid:[dvk,dvn]):
+ if(dev_kind == DEV_DEFAULT){ //device kind is not specified explicitly
+  if(dev_id == DEV_DEFAULT){ //neither specific device nor device kind are specified: Find one
+   devid=talshDetermineOptimalDevice(dtens);
+   if(devid < 0 || devid >= DEV_MAX){
+    tsk->task_error=103; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
+   }
+  }else{ //<dev_id> is a flat device id
+   devid=dev_id;
+  }
+  dvn=talshKindDevId(devid,&dvk);
+  if(dvn < 0){tsk->task_error=104; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_INVALID_ARGS;}
+ }else{ //device kind is specified explicitly
+  if(valid_device_kind(dev_kind) != YEP){
+   tsk->task_error=105; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_INVALID_ARGS;
+  }
+  dvk=dev_kind;
+  if(dev_id == DEV_DEFAULT){ //kind-specific device id is not specified: Implicit
+   dvn=-1; //kind-specific device id will be chosen by the corresponding runtime
+  }else{ //kind-specific device id is specified
+   dvn=dev_id;
+   if(talshFlatDevId(dvk,dvn) >= DEV_MAX){
+    tsk->task_error=106; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_INVALID_ARGS;
+   }
+  }
+ }
+ //Tensor operation will be executed on device of kind <dvk>.
+ errc=TALSH_SUCCESS;
+ //Choose the tensor body image for each tensor argument and adjust the coherence control:
+ cohd=argument_coherence_get_value(coh_ctrl,1,0);
+ dimg=talsh_choose_image_for_device(dtens,cohd,&dcp,dvk,dvn);
+ /*
+ if(dcp != 0){ //an intermediate copy was introduced on Host
+  if(cohd == COPY_K){ //adjust coherence control
+   cohd=COPY_M; j=argument_coherence_set_value(&coh_ctrl,1,0,cohd);
+  }else if(cohd == COPY_T){
+   cohd=COPY_D; j=argument_coherence_set_value(&coh_ctrl,1,0,cohd);
+  }
+ } */
+ if(dimg < 0){
+  tsk->task_error=107; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
+ }
+ //Construct the TAL-SH task:
+ if(talshTaskStatus(tsk) == TALSH_TASK_EMPTY){
+  errc=talshTaskConstruct(tsk,dvk,coh_ctrl,dtens->data_kind[dimg]);
+  if(errc){tsk->task_error=108; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return errc;}
+  errc=talshTaskSetArg(tsk,dtens,dimg);
+  if(errc){tsk->task_error=109; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return errc;}
+ }else{
+  tsk->task_error=110; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_OBJECT_NOT_EMPTY;
+ }
+ //Schedule the tensor operation via the device-kind specific runtime:
+ switch(dvk){
+  case DEV_HOST:
+   //Associate TAL-SH tensor images with <tensor_block_t> objects:
+   errc=talsh_tensor_f_assoc(dtens,dimg,&dftr);
+   if(errc || dftr == NULL){
+    tsk->task_error=111; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
+   }
+   //Get the Host task:
+   host_task=(host_task_t*)(tsk->task_p);
+   devid=talshFlatDevId(DEV_HOST,0); //execution device
+   //Discard all output images except the source one:
+   errc=talsh_tensor_image_discard_other(dtens,dimg); //the only remaining image 0 is the source image
+   if(errc != TALSH_SUCCESS){
+    j=talsh_tensor_f_dissoc(dftr); if(j) errc=TALSH_FAILURE;
+    j=host_task_record(host_task,coh_ctrl,13);
+    j=host_task_destroy(host_task); tsk->task_p=NULL; if(j) errc=TALSH_FAILURE;
+    tsk->task_error=112; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+    return errc;
+   }
+   //Mark soure images unavailable:
+   dtens->avail[0] = NOPE;
+   //Schedule tensor operation via the device-kind specific runtime:
+   ctm=clock();
+   errc=cpu_tensor_block_scale(dftr,val_real,val_imag,0); //blocking call
+   if(errc == TALSH_SUCCESS && talshTensorRank(dtens) == 0){ //an explicit update is needed for scalar destinations
+    j=talsh_update_f_scalar(dftr,dtens->data_kind[0],dtens->dev_rsc[0].gmem_p);
+    if(j) errc=TALSH_FAILURE;
+   }
+   tsk->exec_time=((double)(clock()-ctm))/CLOCKS_PER_SEC;
+   //Dissociate <tensor_block_t> objects:
+   j=talsh_tensor_f_dissoc(dftr); if(j) errc=TALSH_FAILURE;
+   //Host task finalization and coherence control:
+   if(errc){ //task error
+    if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+     dtens->avail[0] = YEP;
+    }else{
+     errc=TALSH_FAILURE;
+    }
+    j=host_task_record(host_task,coh_ctrl,13);
+    j=host_task_destroy(host_task); tsk->task_p=NULL; if(j) errc=TALSH_FAILURE;
+    tsk->task_error=113; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+    return errc;
+   }else{ //task success (host tasks perform finalization here)
+    errc=host_task_record(host_task,coh_ctrl,0); //record task success (finalized, no deferred coherence control on Host)
+    if(errc){tsk->task_error=114; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;}
+    dtens->avail[0] = YEP;
+   }
+   //If blocking call, complete it here:
+   if(errc == TALSH_SUCCESS && talsh_task == NULL){
+    errc=talshTaskWait(tsk,&j); if(errc == TALSH_SUCCESS && j != TALSH_TASK_COMPLETED) errc=TALSH_TASK_ERROR;
+    j=talshTaskDestroy(tsk); if(j != TALSH_SUCCESS && errc == TALSH_SUCCESS) errc=j;
+   }
+   break;
+  case DEV_NVIDIA_GPU:
+#ifndef NO_GPU
+   //Associate TAL-SH tensor images with <tensBlck_t> objects:
+   errc=talsh_tensor_c_assoc(dtens,dimg,&dctr);
+   if(errc || dctr == NULL){
+    tsk->task_error=115; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+    if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
+   }
+   //Get the CUDA task:
+   cuda_task=(cudaTask_t*)(tsk->task_p);
+   devid=talshFlatDevId(dvk,dvn); //execution device
+   //Discard all output images except the source one:
+   errc=talsh_tensor_image_discard_other(dtens,dimg); //the only remaining image 0 is the source image
+   if(errc != TALSH_SUCCESS){
+    j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
+    j=cuda_task_destroy(cuda_task); tsk->task_p=NULL; if(j) errc=TALSH_FAILURE;
+    tsk->task_error=116; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+    return errc;
+   }
+   //Mark source images unavailable:
+   dtens->avail[0] = NOPE;
+   //Schedule tensor operation via the device-kind specific runtime:
+   errc=gpu_tensor_block_scale(dctr,val_real,val_imag,coh_ctrl,cuda_task,dvn); //non-blocking call
+   dvn=cuda_task_gpu_id(cuda_task);
+   if(errc || dvn < 0){ //in case of error, CUDA task has already been finalized (with error) without coherence control
+    if(errc == TRY_LATER || errc == DEVICE_UNABLE){
+     dtens->avail[0] = YEP;
+    }else{
+     errc=TALSH_FAILURE;
+    }
+    j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
+    j=cuda_task_destroy(cuda_task); tsk->task_p=NULL; if(j) errc=TALSH_FAILURE;
+    tsk->task_error=117; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+    return errc;
+   }
+   //If blocking call, complete it here:
+   if(errc == TALSH_SUCCESS && talsh_task == NULL){
+    errc=talshTaskWait(tsk,&j); if(errc == TALSH_SUCCESS && j != TALSH_TASK_COMPLETED) errc=TALSH_TASK_ERROR;
+    j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
+    j=talshTaskDestroy(tsk); if(j != TALSH_SUCCESS && errc == TALSH_SUCCESS) errc=j;
+   }
+#else
+   tsk->task_error=118; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+   return TALSH_NOT_AVAILABLE;
+#endif
+   break;
+  case DEV_INTEL_MIC:
+#ifndef NO_PHI
+   tsk->task_error=119; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+   return TALSH_NOT_IMPLEMENTED; //`Future
+#else
+   tsk->task_error=120; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+   return TALSH_NOT_AVAILABLE;
+#endif
+   //break;
+  case DEV_AMD_GPU:
+#ifndef NO_AMD
+   tsk->task_error=121; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+   return TALSH_NOT_IMPLEMENTED; //`Future
+#else
+   tsk->task_error=122; if(talsh_task == NULL) j=talshTaskDestroy(tsk);
+   return TALSH_NOT_AVAILABLE;
+#endif
+   //break;
+  default:
+  tsk->task_error=123; if(talsh_task == NULL) j=talshTaskDestroy(tsk); return TALSH_FAILURE;
+ }
+#pragma omp flush
+ return errc;
+}
+
+int talshTensorScale_(talsh_tens_t * dtens, double val_real, double val_imag, int dev_id, int dev_kind,
+                      int copy_ctrl, talsh_task_t * talsh_task) //Fortran wrapper
+{
+ return talshTensorScale(dtens,val_real,val_imag,dev_id,dev_kind,copy_ctrl,talsh_task);
 }
 
 int talshTensorSlice(talsh_tens_t * dtens, //inout: destination tensor block (tensor slice)
@@ -4563,7 +4793,7 @@ int talshTensorAdd(const char * cptrn,   //in: tensor addition pattern
   printf("%s",cptrn); printf(" ");
   talshTensorPrint(dtens); printf(" ");
   talshTensorPrint(ltens); printf(" ");
-  printf(": Flop volume = %llu: Time (s) = ",talshTensorVolume(dtens));
+  printf(": FMA Flop volume = %llu: Time (s) = ",talshTensorVolume(dtens));
   tms=time_high_sec();
  }
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
@@ -4844,7 +5074,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
   talshTensorPrint(dtens); printf(" ");
   talshTensorPrint(ltens); printf(" ");
   talshTensorPrint(rtens); printf(" ");
-  printf(": Flop volume = %llu: Time (s) = ",
+  printf(": FMA Flop volume = %llu: Time (s) = ",
          ((size_t)sqrt((double)(talshTensorVolume(dtens)*talshTensorVolume(ltens)*talshTensorVolume(rtens)))));
   tms=time_high_sec();
  }
@@ -5398,16 +5628,19 @@ int talshTensorDecomposeSVD(const char * cptrn,   //in: C-string: symbolic decom
                             int dev_id,           //in: device id (flat or kind-specific)
                             int dev_kind)         //in: device kind (if present, <dev_id> is kind-specific)
 {
- int errc,ier,devid,dvn,dvk,cpl,drnk,lrnk,rrnk,srnk,conj_bits,ncd,nlu,nru,i,j,k,l;
+ const double svd_scale_max = 1e31;
+ const double svd_scale_fac = 1e2;
+ int errc,ier,devid,dvn,dvk,cpl,drnk,lrnk,rrnk,srnk,conj_bits,ncd,nlu,nru,nhu,i,j,k,l;
  int contr_ptrn[MAX_TENSOR_RANK*2],dimg,limg,rimg,simg,dcp,lcp,rcp,scp,dtr,ltr,rtr;
  int dprm[1+MAX_TENSOR_RANK],lprm[1+MAX_TENSOR_RANK],rprm[1+MAX_TENSOR_RANK],dims[MAX_TENSOR_RANK];
  const int *ddims,*ldims,*rdims,*sdims;
- char perm_sym[512];
+ char perm_sym[1024];
  void *dftr,*lftr,*rftr,*sftr;
  talsh_tens_t xtens,ytens,ztens,*utens,*vtens;
 #ifndef NO_GPU
  tensBlck_t *dctr,*lctr,*rctr,*sctr;
 #endif
+ double svd_scale;
 
 #pragma omp flush
  //Check function arguments:
@@ -5425,7 +5658,8 @@ int talshTensorDecomposeSVD(const char * cptrn,   //in: C-string: symbolic decom
  if(errc) return TALSH_INVALID_ARGS;
  if(drnk <= 0 || lrnk <= 0 || rrnk <= 0) return TALSH_INVALID_ARGS;
  cpl=lrnk+rrnk;
- get_contr_permutations(0,0,lrnk,rrnk,contr_ptrn,0,dprm,lprm,rprm,&ncd,&nlu,&nru,&errc);
+ //get_contr_permutations(0,0,lrnk,rrnk,contr_ptrn,0,dprm,lprm,rprm,&ncd,&nlu,&nru,&errc);
+ get_contraction_permutations(0,0,lrnk,rrnk,contr_ptrn,0,dprm,lprm,rprm,&ncd,&nlu,&nru,&nhu,&errc);
  if(errc) return TALSH_FAILURE;
  if(nlu <= 0 || nru <= 0 || ncd <= 0) return TALSH_INVALID_ARGS;
  dtr=permutation_trivial(drnk,&(dprm[1]),1); //base 1
@@ -5557,170 +5791,211 @@ int talshTensorDecomposeSVD(const char * cptrn,   //in: C-string: symbolic decom
   vtens=rtens;
  }
  // Schedule tensor operation via the device-kind specific runtime:
- switch(dvk){
-  case DEV_HOST:
-   //Associate TAL-SH tensor images with <tensor_block_t> objects:
-   errc=talsh_tensor_f_assoc(&ztens,dimg,&dftr);
-   if(errc || dftr == NULL){
-    return TALSH_FAILURE;
-   }
-   errc=talsh_tensor_f_assoc(utens,limg,&lftr);
-   if(errc || lftr == NULL){
-    errc=talsh_tensor_f_dissoc(dftr);
-    return TALSH_FAILURE;
-   }
-   errc=talsh_tensor_f_assoc(vtens,rimg,&rftr);
-   if(errc || rftr == NULL){
-    errc=talsh_tensor_f_dissoc(lftr);
-    errc=talsh_tensor_f_dissoc(dftr);
-    return TALSH_FAILURE;
-   }
-   errc=talsh_tensor_f_assoc(stens,simg,&sftr);
-   if(errc || sftr == NULL){
-    errc=talsh_tensor_f_dissoc(rftr);
-    errc=talsh_tensor_f_dissoc(lftr);
-    errc=talsh_tensor_f_dissoc(dftr);
-    return TALSH_FAILURE;
-   }
-   devid=talshFlatDevId(DEV_HOST,0); //execution device
-   //Discard all output images except the source one:
-   errc=talsh_tensor_image_discard_other(utens,limg); //the only remaining image 0 is the source image
-   if(errc != TALSH_SUCCESS){
+ errc=NUM_INSTABILITY; svd_scale=1.0;
+ while(errc == NUM_INSTABILITY){
+  errc=TALSH_SUCCESS;
+  switch(dvk){
+   case DEV_HOST:
+    //Associate TAL-SH tensor images with <tensor_block_t> objects:
+    errc=talsh_tensor_f_assoc(&ztens,dimg,&dftr);
+    if(errc || dftr == NULL){
+     return TALSH_FAILURE;
+    }
+    errc=talsh_tensor_f_assoc(utens,limg,&lftr);
+    if(errc || lftr == NULL){
+     errc=talsh_tensor_f_dissoc(dftr);
+     return TALSH_FAILURE;
+    }
+    errc=talsh_tensor_f_assoc(vtens,rimg,&rftr);
+    if(errc || rftr == NULL){
+     errc=talsh_tensor_f_dissoc(lftr);
+     errc=talsh_tensor_f_dissoc(dftr);
+     return TALSH_FAILURE;
+    }
+    errc=talsh_tensor_f_assoc(stens,simg,&sftr);
+    if(errc || sftr == NULL){
+     errc=talsh_tensor_f_dissoc(rftr);
+     errc=talsh_tensor_f_dissoc(lftr);
+     errc=talsh_tensor_f_dissoc(dftr);
+     return TALSH_FAILURE;
+    }
+    devid=talshFlatDevId(DEV_HOST,0); //execution device
+    //Discard all output images except the source one:
+    errc=talsh_tensor_image_discard_other(utens,limg); //the only remaining image 0 is the source image
+    if(errc != TALSH_SUCCESS){
+     j=talsh_tensor_f_dissoc(sftr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_f_dissoc(rftr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_f_dissoc(lftr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_f_dissoc(dftr); if(j) errc=TALSH_FAILURE;
+     return errc;
+    }
+    errc=talsh_tensor_image_discard_other(vtens,rimg); //the only remaining image 0 is the source image
+    if(errc != TALSH_SUCCESS){
+     j=talsh_tensor_f_dissoc(sftr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_f_dissoc(rftr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_f_dissoc(lftr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_f_dissoc(dftr); if(j) errc=TALSH_FAILURE;
+     return errc;
+    }
+    errc=talsh_tensor_image_discard_other(stens,simg); //the only remaining image 0 is the source image
+    if(errc != TALSH_SUCCESS){
+     j=talsh_tensor_f_dissoc(sftr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_f_dissoc(rftr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_f_dissoc(lftr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_f_dissoc(dftr); if(j) errc=TALSH_FAILURE;
+     return errc;
+    }
+    //Mark source images unavailable:
+    ztens.avail[dimg] = NOPE;
+    utens->avail[0] = NOPE;
+    vtens->avail[0] = NOPE;
+    stens->avail[0] = NOPE;
+    //Schedule tensor operation via the device-kind specific runtime:
+    errc=cpu_tensor_block_decompose_svd(absorb,dftr,lftr,rftr,sftr); //blocking call
+    //printf("#DEBUG(talshTensorDecomposeSVD): Executed SVD on CPU with status %d\n",errc);
+    //Dissociate <tensor_block_t> objects:
     j=talsh_tensor_f_dissoc(sftr); if(j) errc=TALSH_FAILURE;
     j=talsh_tensor_f_dissoc(rftr); if(j) errc=TALSH_FAILURE;
     j=talsh_tensor_f_dissoc(lftr); if(j) errc=TALSH_FAILURE;
     j=talsh_tensor_f_dissoc(dftr); if(j) errc=TALSH_FAILURE;
-    return errc;
-   }
-   errc=talsh_tensor_image_discard_other(vtens,rimg); //the only remaining image 0 is the source image
-   if(errc != TALSH_SUCCESS){
-    j=talsh_tensor_f_dissoc(sftr); if(j) errc=TALSH_FAILURE;
-    j=talsh_tensor_f_dissoc(rftr); if(j) errc=TALSH_FAILURE;
-    j=talsh_tensor_f_dissoc(lftr); if(j) errc=TALSH_FAILURE;
-    j=talsh_tensor_f_dissoc(dftr); if(j) errc=TALSH_FAILURE;
-    return errc;
-   }
-   errc=talsh_tensor_image_discard_other(stens,simg); //the only remaining image 0 is the source image
-   if(errc != TALSH_SUCCESS){
-    j=talsh_tensor_f_dissoc(sftr); if(j) errc=TALSH_FAILURE;
-    j=talsh_tensor_f_dissoc(rftr); if(j) errc=TALSH_FAILURE;
-    j=talsh_tensor_f_dissoc(lftr); if(j) errc=TALSH_FAILURE;
-    j=talsh_tensor_f_dissoc(dftr); if(j) errc=TALSH_FAILURE;
-    return errc;
-   }
-   //Mark source images unavailable:
-   ztens.avail[dimg] = NOPE;
-   utens->avail[0] = NOPE;
-   vtens->avail[0] = NOPE;
-   stens->avail[0] = NOPE;
-   //Schedule tensor operation via the device-kind specific runtime:
-   errc=cpu_tensor_block_decompose_svd(absorb,dftr,lftr,rftr,sftr); //blocking call
-   //printf("#DEBUG(talshTensorDecomposeSVD): Executed SVD on CPU with status %d\n",errc);
-   //Dissociate <tensor_block_t> objects:
-   j=talsh_tensor_f_dissoc(sftr); if(j) errc=TALSH_FAILURE;
-   j=talsh_tensor_f_dissoc(rftr); if(j) errc=TALSH_FAILURE;
-   j=talsh_tensor_f_dissoc(lftr); if(j) errc=TALSH_FAILURE;
-   j=talsh_tensor_f_dissoc(dftr); if(j) errc=TALSH_FAILURE;
-   //Coherence control:
-   ztens.avail[dimg] = YEP;
-   utens->avail[0] = YEP;
-   vtens->avail[0] = YEP;
-   stens->avail[0] = YEP;
-   if(errc){ //task error
-    if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=TALSH_FAILURE;
-   }
-   break;
-  case DEV_NVIDIA_GPU:
+    //Coherence control:
+    ztens.avail[dimg] = YEP;
+    utens->avail[0] = YEP;
+    vtens->avail[0] = YEP;
+    stens->avail[0] = YEP;
+    if(errc){ //task error
+     if(errc != TRY_LATER && errc != DEVICE_UNABLE && errc != NUM_INSTABILITY) errc=TALSH_FAILURE;
+    }
+    break;
+   case DEV_NVIDIA_GPU:
 #ifndef NO_GPU
-   //Associate TAL-SH tensor images with <tensBlck_t> objects:
-   errc=talsh_tensor_c_assoc(&ztens,dimg,&dctr);
-   if(errc || dctr == NULL){
-    if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
-   }
-   errc=talsh_tensor_c_assoc(utens,limg,&lctr);
-   if(errc || lctr == NULL){
-    j=talsh_tensor_c_dissoc(dctr);
-    if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
-   }
-   errc=talsh_tensor_c_assoc(vtens,rimg,&rctr);
-   if(errc || rctr == NULL){
-    j=talsh_tensor_c_dissoc(lctr);
-    j=talsh_tensor_c_dissoc(dctr);
-    if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
-   }
-   errc=talsh_tensor_c_assoc(stens,simg,&sctr);
-   if(errc || sctr == NULL){
-    j=talsh_tensor_c_dissoc(rctr);
-    j=talsh_tensor_c_dissoc(lctr);
-    j=talsh_tensor_c_dissoc(dctr);
-    if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
-   }
-   devid=talshFlatDevId(dvk,dvn); //execution device
-   //Discard all output images except the source one:
-   errc=talsh_tensor_image_discard_other(utens,limg); //the only remaining image 0 is the source image
-   if(errc != TALSH_SUCCESS){
+    //Associate TAL-SH tensor images with <tensBlck_t> objects:
+    errc=talsh_tensor_c_assoc(&ztens,dimg,&dctr);
+    if(errc || dctr == NULL){
+     if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
+    }
+    errc=talsh_tensor_c_assoc(utens,limg,&lctr);
+    if(errc || lctr == NULL){
+     j=talsh_tensor_c_dissoc(dctr);
+     if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
+    }
+    errc=talsh_tensor_c_assoc(vtens,rimg,&rctr);
+    if(errc || rctr == NULL){
+     j=talsh_tensor_c_dissoc(lctr);
+     j=talsh_tensor_c_dissoc(dctr);
+     if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
+    }
+    errc=talsh_tensor_c_assoc(stens,simg,&sctr);
+    if(errc || sctr == NULL){
+     j=talsh_tensor_c_dissoc(rctr);
+     j=talsh_tensor_c_dissoc(lctr);
+     j=talsh_tensor_c_dissoc(dctr);
+     if(errc != TRY_LATER){return TALSH_FAILURE;}else{return errc;}
+    }
+    devid=talshFlatDevId(dvk,dvn); //execution device
+    //Discard all output images except the source one:
+    errc=talsh_tensor_image_discard_other(utens,limg); //the only remaining image 0 is the source image
+    if(errc != TALSH_SUCCESS){
+     j=talsh_tensor_c_dissoc(sctr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_c_dissoc(rctr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_c_dissoc(lctr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
+     return errc;
+    }
+    errc=talsh_tensor_image_discard_other(vtens,rimg); //the only remaining image 0 is the source image
+    if(errc != TALSH_SUCCESS){
+     j=talsh_tensor_c_dissoc(sctr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_c_dissoc(rctr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_c_dissoc(lctr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
+     return errc;
+    }
+    errc=talsh_tensor_image_discard_other(stens,simg); //the only remaining image 0 is the source image
+    if(errc != TALSH_SUCCESS){
+     j=talsh_tensor_c_dissoc(sctr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_c_dissoc(rctr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_c_dissoc(lctr); if(j) errc=TALSH_FAILURE;
+     j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
+     return errc;
+    }
+    //Mark source images unavailable:
+    ztens.avail[dimg] = NOPE;
+    utens->avail[0] = NOPE;
+    vtens->avail[0] = NOPE;
+    stens->avail[0] = NOPE;
+    //Schedule tensor operation via the device-kind specific runtime:
+    errc=gpu_tensor_block_decompose_svd(absorb,dctr,lctr,rctr,sctr,dvn);
+    //Dissociate <tensBlck_t> objects:
     j=talsh_tensor_c_dissoc(sctr); if(j) errc=TALSH_FAILURE;
     j=talsh_tensor_c_dissoc(rctr); if(j) errc=TALSH_FAILURE;
     j=talsh_tensor_c_dissoc(lctr); if(j) errc=TALSH_FAILURE;
     j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
-    return errc;
-   }
-   errc=talsh_tensor_image_discard_other(vtens,rimg); //the only remaining image 0 is the source image
-   if(errc != TALSH_SUCCESS){
-    j=talsh_tensor_c_dissoc(sctr); if(j) errc=TALSH_FAILURE;
-    j=talsh_tensor_c_dissoc(rctr); if(j) errc=TALSH_FAILURE;
-    j=talsh_tensor_c_dissoc(lctr); if(j) errc=TALSH_FAILURE;
-    j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
-    return errc;
-   }
-   errc=talsh_tensor_image_discard_other(stens,simg); //the only remaining image 0 is the source image
-   if(errc != TALSH_SUCCESS){
-    j=talsh_tensor_c_dissoc(sctr); if(j) errc=TALSH_FAILURE;
-    j=talsh_tensor_c_dissoc(rctr); if(j) errc=TALSH_FAILURE;
-    j=talsh_tensor_c_dissoc(lctr); if(j) errc=TALSH_FAILURE;
-    j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
-    return errc;
-   }
-   //Mark source images unavailable:
-   ztens.avail[dimg] = NOPE;
-   utens->avail[0] = NOPE;
-   vtens->avail[0] = NOPE;
-   stens->avail[0] = NOPE;
-   //Schedule tensor operation via the device-kind specific runtime:
-   errc=gpu_tensor_block_decompose_svd(absorb,dctr,lctr,rctr,sctr,dvn);
-   //Dissociate <tensBlck_t> objects:
-   j=talsh_tensor_c_dissoc(sctr); if(j) errc=TALSH_FAILURE;
-   j=talsh_tensor_c_dissoc(rctr); if(j) errc=TALSH_FAILURE;
-   j=talsh_tensor_c_dissoc(lctr); if(j) errc=TALSH_FAILURE;
-   j=talsh_tensor_c_dissoc(dctr); if(j) errc=TALSH_FAILURE;
-   //Coherence control:
-   ztens.avail[dimg] = YEP;
-   utens->avail[0] = YEP;
-   vtens->avail[0] = YEP;
-   stens->avail[0] = YEP;
-   if(errc){ //task error
-    if(errc != TRY_LATER && errc != DEVICE_UNABLE) errc=TALSH_FAILURE;
-   }
+    //Coherence control:
+    ztens.avail[dimg] = YEP;
+    utens->avail[0] = YEP;
+    vtens->avail[0] = YEP;
+    stens->avail[0] = YEP;
+    if(errc){ //task error
+     if(errc != TRY_LATER && errc != DEVICE_UNABLE && errc != NUM_INSTABILITY) errc=TALSH_FAILURE;
+    }
 #else
-   return TALSH_NOT_AVAILABLE;
+    return TALSH_NOT_AVAILABLE;
 #endif
-   break;
-  case DEV_INTEL_MIC:
+    break;
+   case DEV_INTEL_MIC:
 #ifndef NO_PHI
-   return TALSH_NOT_IMPLEMENTED; //`Future
+    return TALSH_NOT_IMPLEMENTED; //`Future
 #else
-   return TALSH_NOT_AVAILABLE;
+    return TALSH_NOT_AVAILABLE;
 #endif
-   //break;
-  case DEV_AMD_GPU:
+    //break;
+   case DEV_AMD_GPU:
 #ifndef NO_AMD
-   return TALSH_NOT_IMPLEMENTED; //`Future
+    return TALSH_NOT_IMPLEMENTED; //`Future
 #else
-   return TALSH_NOT_AVAILABLE;
+    return TALSH_NOT_AVAILABLE;
 #endif
-   //break;
-  default:
-   return TALSH_FAILURE;
+    //break;
+   default:
+    return TALSH_FAILURE;
+  }
+  //if(svd_scale == 1.0) errc = NUM_INSTABILITY; //debug
+  if(errc == NUM_INSTABILITY){ //retry
+   if(svd_scale < svd_scale_max){
+    svd_scale*=svd_scale_fac;
+    ier=talshTensorInit(&ztens,0.0,0.0,dvn,dvk);
+    if(ier == TALSH_SUCCESS){
+     i=0; j=0; get_contr_pattern_sym(&drnk,&j,&i,&(dprm[1]),perm_sym,&l,&ier);
+     if(ier == TALSH_SUCCESS){
+      ier=talshTensorAdd(perm_sym,&ztens,dtens,svd_scale,0.0,dvn,dvk);
+      if(ier != TALSH_SUCCESS){
+       errc=ier; break;
+      }
+     }else{
+      errc=ier; break;
+     }
+    }else{
+     errc=ier; break;
+    }
+   }else{
+    if(VERBOSE) printf("#ERROR(talshTensorDecomposeSVD): Unable to converge LAPACK SVDX procedure!\n");
+    break;
+   }
+  }
+ }
+ //Rescale back the singular values tensor if needed:
+ if(errc == TALSH_SUCCESS && svd_scale != 1.0){
+  errc=talshTensorScale(stens,1/svd_scale,0.0,dvn,dvk);
+  if(errc == TALSH_SUCCESS){
+   if(absorb == 'L'){
+    errc=talshTensorScale(utens,1/svd_scale,0.0,dvn,dvk);
+   }else if(absorb == 'R'){
+    errc=talshTensorScale(vtens,1/svd_scale,0.0,dvn,dvk);
+   }else if(absorb == 'S'){
+    errc=talshTensorScale(utens,1/sqrt(svd_scale),0.0,dvn,dvk);
+    if(errc == TALSH_SUCCESS) errc=talshTensorScale(vtens,1/sqrt(svd_scale),0.0,dvn,dvk);
+   }
+  }
  }
  //Destroy the copy of the destination tensor:
  ier=talshTensorDestruct(&ztens);

@@ -1,5 +1,5 @@
 !ExaTensor::TAL-SH: Device-unified user-level API:
-!REVISION: 2020/09/14
+!REVISION: 2020/10/02
 
 !Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -436,6 +436,19 @@
           integer(C_INT), value, intent(in):: copy_ctrl
           type(talsh_task_t), intent(inout):: talsh_task
          end function talshTensorInit_
+  !Tensor scaling:
+         integer(C_INT) function talshTensorScale_(dtens,val_real,val_imag,dev_id,dev_kind,copy_ctrl,talsh_task)&
+                                                   &bind(c,name='talshTensorScale_')
+          import
+          implicit none
+          type(talsh_tens_t), intent(inout):: dtens
+          real(C_DOUBLE), value, intent(in):: val_real
+          real(C_DOUBLE), value, intent(in):: val_imag
+          integer(C_INT), value, intent(in):: dev_id
+          integer(C_INT), value, intent(in):: dev_kind
+          integer(C_INT), value, intent(in):: copy_ctrl
+          type(talsh_task_t), intent(inout):: talsh_task
+         end function talshTensorScale_
   !Tensor slicing:
          integer(C_INT) function talshTensorSlice_(dtens,ltens,offsets,dev_id,dev_kind,copy_ctrl,accumulative,talsh_task)&
                                                   &bind(c,name='talshTensorSlice_')
@@ -603,7 +616,7 @@
         public talsh_tensor_discard
         public talsh_tensor_discard_other
         public talsh_tensor_init
-!       public talsh_tensor_scale
+        public talsh_tensor_scale
 !       public talsh_tensor_norm1
 !       public talsh_tensor_norm2
         public talsh_tensor_slice
@@ -1446,6 +1459,37 @@
          endif
          return
         end function talsh_tensor_init
+!-----------------------------------------------------------------------------------------------
+        function talsh_tensor_scale(dtens,val,dev_id,dev_kind,copy_ctrl,talsh_task) result(ierr)
+         implicit none
+         integer(C_INT):: ierr                            !out: error code (0:success)
+         type(talsh_tens_t), intent(inout):: dtens        !inout: destination tensor block
+         complex(8), intent(in):: val                     !in: scaling value
+         integer(C_INT), intent(in), optional:: dev_id    !in: device id (flat or kind-specific)
+         integer(C_INT), intent(in), optional:: dev_kind  !in: device kind (if present, <dev_id> is kind-specific)
+         integer(C_INT), intent(in), optional:: copy_ctrl !in: copy control (COPY_XXX), defaults to COPY_MT
+         type(talsh_task_t), intent(inout), optional:: talsh_task !inout: TAL-SH task (must be clean)
+         integer(C_INT):: coh_ctrl,devn,devk,sts
+         real(C_DOUBLE):: val_real,val_imag
+         type(talsh_task_t):: tsk
+
+         ierr=TALSH_SUCCESS
+         if(present(copy_ctrl)) then; coh_ctrl=copy_ctrl; else; coh_ctrl=COPY_M; endif
+         val_real=dble(val); val_imag=dimag(val)
+         if(present(dev_id)) then; devn=dev_id; else; devn=DEV_DEFAULT; endif
+         if(present(dev_kind)) then; devk=dev_kind; else; devk=DEV_DEFAULT; endif
+         if(present(talsh_task)) then
+          ierr=talshTensorScale_(dtens,val_real,val_imag,devn,devk,coh_ctrl,talsh_task)
+         else
+          ierr=talsh_task_clean(tsk)
+          ierr=talshTensorScale_(dtens,val_real,val_imag,devn,devk,coh_ctrl,tsk)
+          if(ierr.eq.TALSH_SUCCESS) then
+           ierr=talsh_task_wait(tsk,sts); if(sts.ne.TALSH_TASK_COMPLETED) ierr=TALSH_TASK_ERROR
+          endif
+          sts=talsh_task_destruct(tsk)
+         endif
+         return
+        end function talsh_tensor_scale
 !----------------------------------------------------------------------------------------------------------------------
         function talsh_tensor_slice(dtens,ltens,offsets,dev_id,dev_kind,copy_ctrl,accumulative,talsh_task) result(ierr)
          implicit none
@@ -1703,7 +1747,8 @@
           if(associated(dtp)) then
            dtk=tensor_master_data_kind(dtp,ierr)
            if(ierr.eq.0) then
-            val=cmplx(val_real,val_imag,8); if(mod(arg_conj,2_C_INT).ne.0) val=conjg(val)
+            val=cmplx(val_real,val_imag,8)
+            if(mod(arg_conj,2_C_INT).ne.0) val=conjg(val)
             call tensor_block_init(dtk,dtp,ierr,val_c8=val)
            endif
            cpu_tensor_block_init=ierr
@@ -1715,6 +1760,33 @@
          endif
          return
         end function cpu_tensor_block_init
+!-------------------------------------------------------------------------------------------------------------------------------
+        integer(C_INT) function cpu_tensor_block_scale(dtens_p,val_real,val_imag,arg_conj) bind(c,name='cpu_tensor_block_scale')
+         implicit none
+         type(C_PTR), value:: dtens_p               !inout: destination tensor argument
+         real(C_DOUBLE), value:: val_real           !in: scaling prefactor (real part)
+         real(C_DOUBLE), value:: val_imag           !in: scaling prefactor (imaginary part)
+         integer(C_INT), value:: arg_conj           !in: argument complex conjugation bits (0:D)
+         type(tensor_block_t), pointer:: dtp
+         complex(8):: val
+         integer:: ierr
+
+         cpu_tensor_block_scale=0
+         if(c_associated(dtens_p)) then
+          call c_f_pointer(dtens_p,dtp)
+          if(associated(dtp)) then
+           val=cmplx(val_real,val_imag,8)
+           if(mod(arg_conj,2_C_INT).ne.0) val=conjg(val)
+           call tensor_block_scale(dtp,val,ierr)
+           cpu_tensor_block_scale=ierr
+          else
+           cpu_tensor_block_scale=-2
+          endif
+         else
+          cpu_tensor_block_scale=-1
+         endif
+         return
+        end function cpu_tensor_block_scale
 !--------------------------------------------------------------------------------------------
         integer(C_INT) function cpu_tensor_block_slice(ltens_p,dtens_p,offsets,accumulative)&
                        bind(c,name='cpu_tensor_block_slice')
@@ -1805,29 +1877,35 @@
          real(C_DOUBLE), value:: scale_imag         !in: scaling prefactor (imaginary part)
          integer(C_INT), value:: arg_conj           !in: argument complex conjugation bits (0:D,1:L)
          type(tensor_block_t), pointer:: dtp,ltp
+         type(tensor_block_t):: lta
+         integer:: transp(0:MAX_TENSOR_RANK),n,i,conj_bits,ierr
          complex(8):: scale_fac
-         integer:: i,conj_bits,ierr
          logical:: permute
 
          cpu_tensor_block_add=0; conj_bits=arg_conj
          if(c_associated(dtens_p).and.c_associated(ltens_p)) then
           call c_f_pointer(dtens_p,dtp); call c_f_pointer(ltens_p,ltp)
           if(associated(dtp).and.associated(ltp)) then
-           permute=.FALSE.
-           do i=1,dtp%tensor_shape%num_dim
+           scale_fac=cmplx(scale_real,scale_imag,8)
+           n=ltp%tensor_shape%num_dim; permute=.FALSE.
+           do i=1,n
             if(contr_ptrn(i).ne.i) then; permute=.TRUE.; exit; endif
            enddo
-           if(permute) then !`Add this feature
-            write(CONS_OUT,'("#FATAL(talshf:cpu_tensor_block_add): addition with permutation is not implemented for CPU target!")')
-            stop
-           endif
-           if(dabs(scale_real-1d0).gt.ZERO_THRESH.or.dabs(scale_imag-0d0).gt.ZERO_THRESH) then
-            scale_fac=cmplx(scale_real,scale_imag,8)
-            call tensor_block_add(dtp,ltp,ierr,scale_fac,conj_bits)
+           if(permute) then
+            transp(0:n)=(/1,contr_ptrn(1:n)/) !O2N
+            call tensor_block_copy(ltp,lta,ierr,transp)
+            if(ierr.eq.0) then
+             call tensor_block_add(dtp,lta,ierr,scale_fac,conj_bits)
+             if(ierr.ne.0) cpu_tensor_block_add=ierr
+             call tensor_block_destroy(lta,ierr)
+             if(ierr.ne.0.and.cpu_tensor_block_add.eq.0) cpu_tensor_block_add=ierr
+            else
+             cpu_tensor_block_add=ierr
+            endif
            else
-            call tensor_block_add(dtp,ltp,ierr,arg_conj=conj_bits)
+            call tensor_block_add(dtp,ltp,ierr,scale_fac,conj_bits)
+            cpu_tensor_block_add=ierr
            endif
-           cpu_tensor_block_add=ierr
           else
            cpu_tensor_block_add=-2
           endif

@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h" when appropriate!
-!REVISION: 2019/04/01
+!REVISION: 2020/10/01
 
 !Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -48,6 +48,7 @@
         integer(C_INT), parameter, public:: EFF_TRN_OFF=0               !disables efficient tensor transpose algorithm
         integer(C_INT), parameter, public:: EFF_TRN_ON=1                !enables efficient tensor transpose algorithm
         integer(C_INT), parameter, public:: DEVICE_UNABLE=-546372819    !device is unsuitable for the given task: KEEP THIS UNIQUE!
+        integer(C_INT), parameter, public:: NUM_INSTABILITY=-374628195  !numerical instability
 
         integer(C_INT), parameter, public:: EVERYTHING=0                !everything (source, destination, temporary)
         integer(C_INT), parameter, public:: SOURCE=1                    !source
@@ -239,6 +240,12 @@
 !C FUNCTION INTERFACES (for Fortran):
         interface
  !Generic:
+  !Convert a C_PTR to INTEGER:
+         integer(C_SIZE_T) function fortran_cptr_int(cptr) bind(c,name='fortran_cptr_int')
+          import
+          implicit none
+          type(C_PTR), value:: cptr
+         end function fortran_cptr_int
   !Numeric data kind validity check:
          integer(C_INT) function tens_valid_data_kind(datk,datk_size) bind(c,name='tens_valid_data_kind_')
           import

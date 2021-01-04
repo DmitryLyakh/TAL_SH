@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2020/07/21
+REVISION: 2020/12/09
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -114,6 +114,37 @@ double imagPart(std::complex<double> number);
 class Tensor{
 
 public:
+
+ /** Tensor body slice view for a quick access (host-side) **/
+ template <typename FloatingType>
+ class View{
+ public:
+
+  View(FloatingType * body,
+       const std::vector<std::size_t> & full_extents,
+       const std::vector<std::size_t> & extents,
+       const std::vector<std::size_t> & bases):
+   body_(body), full_extents_(full_extents), extents_(extents), bases_(bases)
+  {}
+
+  template <typename IntegralType>
+  FloatingType & operator[](const std::initializer_list<IntegralType> mlndx){
+   static_assert(std::is_integral<IntegralType>::value,"FATAL(talsh::Tensor::View::operator[]): Non-integral multi-index!");
+   unsigned int num_dims = full_extents_.size(); assert(mlndx.size() == num_dims);
+   std::size_t offset = 0;
+   for(int i = num_dims-1; i >= 0; --i){
+    assert(mlndx.begin()[i] < extents_[i]);
+    offset = offset * full_extents_[i] + (bases_[i] + mlndx.begin()[i]);
+   }
+   return body_[offset];
+  }
+
+ private:
+  FloatingType * body_;
+  const std::vector<std::size_t> full_extents_;
+  const std::vector<std::size_t> extents_;
+  const std::vector<std::size_t> bases_;
+ };
 
  /** NOTE: talsh::Tensor constructors may return an empty tensor in case they experience
      a temporary shortage of RAM, which can be queried by talsh::Tensor::isEmpty() method. **/
@@ -233,6 +264,23 @@ public:
  template<typename T>
  bool getDataAccessHostConst(const T ** data_ptr);
 
+ /** Returns a typed view of the full tensor. **/
+ template<typename T>
+ View<T> getSliceView();
+
+ /** Returns a typed view of a slice of the tensor without base offsets. **/
+ template<typename T, typename IntegralType>
+ View<T> getSliceView(const std::initializer_list<IntegralType> slice_extents);
+
+ /** Returns a typed view of a slice of the tensor with base offsets. **/
+ template<typename T, typename IntegralType>
+ View<T> getSliceView(const std::initializer_list<IntegralType> slice_extents,
+                      const std::initializer_list<IntegralType> slice_bases);
+
+ /** Tensor element access by its multi-index (slow). **/
+ template <typename T, typename IntegralType>
+ T & operator[](const std::initializer_list<IntegralType> mlndx);
+
  /** Use count increment/decrement. **/
  Tensor & operator++(); //increments tensor use count
  Tensor & operator--(); //decrements tensor use count
@@ -270,6 +318,14 @@ public:
               const int device_kind = DEV_HOST,            //in: execution device kind
               const int device_id = 0,                     //in: execution device id
               const T scalar_value = TensorData<T>::zero); //in: scalar value
+
+ /** Performs tensor scaling by some scalar value.
+     Returns an error code (0:success). **/
+ template <typename T = double>
+ int scale(TensorTask * task_handle,                       //out: task handle associated with this operation or nullptr (synchronous)
+           const T scalar_value,                           //in: scalar value
+           const int device_kind = DEV_HOST,               //in: execution device kind
+           const int device_id = 0);                       //in: execution device id
 
  /** Computes the 1-norm of the tensor. **/
  int norm1(TensorTask * task_handle,                       //out: task handle associated with this operation or nullptr (synchronous)
@@ -785,6 +841,67 @@ bool Tensor::getDataAccessHostConst(const T ** data_ptr)
 }
 
 
+/** Returns a typed view of the full tensor. **/
+template<typename T>
+Tensor::View<T> Tensor::getSliceView()
+{
+ auto synced = sync(DEV_HOST,0,pimpl_->host_mem_,true); assert(synced);
+ T * body;
+ auto access_granted = getDataAccessHost(&body); assert(access_granted);
+ unsigned int num_dims = 0;
+ const auto * dims = getDimExtents(num_dims);
+ std::vector<std::size_t> full_extents(num_dims);
+ for(int i = 0; i < num_dims; ++i) full_extents[i] = dims[i];
+ return Tensor::View<T>(body,full_extents,full_extents,std::vector<std::size_t>(num_dims,0));
+}
+
+/** Returns a typed view of a slice of the tensor without base offsets. **/
+template<typename T, typename IntegralType>
+Tensor::View<T> Tensor::getSliceView(const std::initializer_list<IntegralType> slice_extents)
+{
+ static_assert(std::is_integral<IntegralType>::value,"FATAL(talsh::Tensor::getSliceView): Non-integral argument!");
+ auto synced = sync(DEV_HOST,0,pimpl_->host_mem_,true); assert(synced);
+ T * body;
+ auto access_granted = getDataAccessHost(&body); assert(access_granted);
+ unsigned int num_dims = 0;
+ const auto * dims = getDimExtents(num_dims);
+ std::vector<std::size_t> full_extents(num_dims);
+ for(int i = 0; i < num_dims; ++i) full_extents[i] = dims[i];
+ return Tensor::View<T>(body,full_extents,std::vector<std::size_t>(slice_extents),std::vector<std::size_t>(num_dims,0));
+}
+
+/** Returns a typed view of a slice of the tensor with base offsets. **/
+template<typename T, typename IntegralType>
+Tensor::View<T> Tensor::getSliceView(const std::initializer_list<IntegralType> slice_extents,
+                                     const std::initializer_list<IntegralType> slice_bases)
+{
+ static_assert(std::is_integral<IntegralType>::value,"FATAL(talsh::Tensor::getSliceView): Non-integral argument!");
+ auto synced = sync(DEV_HOST,0,pimpl_->host_mem_,true); assert(synced);
+ T * body;
+ auto access_granted = getDataAccessHost(&body); assert(access_granted);
+ unsigned int num_dims = 0;
+ const auto * dims = getDimExtents(num_dims);
+ std::vector<std::size_t> full_extents(num_dims);
+ for(int i = 0; i < num_dims; ++i) full_extents[i] = dims[i];
+ return Tensor::View<T>(body,full_extents,std::vector<std::size_t>(slice_extents),std::vector<std::size_t>(slice_bases));
+}
+
+
+/** Tensor element access by its multi-index. **/
+template <typename T, typename IntegralType>
+T & Tensor::operator[](const std::initializer_list<IntegralType> mlndx)
+{
+ static_assert(std::is_integral<IntegralType>::value,"FATAL(talsh::Tensor::operator[]): Non-integral multi-index!");
+ T * body;
+ auto access_granted = getDataAccessHost(&body); assert(access_granted);
+ unsigned int num_dims = 0;
+ const auto * dims = getDimExtents(num_dims); assert(num_dims == mlndx.size());
+ std::size_t offset = 0;
+ for(int i = num_dims-1; i >= 0; --i) offset = offset * dims[i] + mlndx.begin()[i];
+ return body[offset];
+}
+
+
 /** Performs tensor initialization to some scalar value. **/
 template <typename T>
 int Tensor::setValue(TensorTask * task_handle, //out: task handle associated with this operation or nullptr (synchronous)
@@ -813,6 +930,40 @@ int Tensor::setValue(TensorTask * task_handle, //out: task handle associated wit
   errc = talshTensorInit(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_M);
   if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
    std::cout << "#ERROR(talsh::Tensor::setValue): talshTensorInit error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+ }
+ return errc;
+}
+
+
+/** Performs tensor scaling by some scalar value. **/
+template <typename T>
+int Tensor::scale(TensorTask * task_handle, //out: task handle associated with this operation or nullptr (synchronous)
+                  const T scalar_value,     //in: scalar value
+                  const int device_kind,    //in: execution device kind
+                  const int device_id)      //in: execution device id
+{
+ int errc = TALSH_SUCCESS;
+ this->completeWriteTask();
+ talsh_tens_t * dtens = this->getTalshTensorPtr();
+ if(task_handle != nullptr){ //asynchronous
+  bool task_empty = task_handle->isEmpty(); assert(task_empty);
+  talsh_task_t * task_hl = task_handle->getTalshTaskPtr();
+  errc = talshTensorScale(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_M,task_hl);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::scale): talshTensorScale error " << errc << std::endl; //debug
+  assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
+  if(errc == TALSH_SUCCESS){
+   task_handle->used_tensors_[0] = this;
+   task_handle->num_tensors_ = 1;
+   this->resetWriteTask(task_handle);
+  }else{
+   task_handle->clean();
+  }
+ }else{ //synchronous
+  errc = talshTensorScale(dtens,realPart(scalar_value),imagPart(scalar_value),device_id,device_kind,COPY_M);
+  if(errc != TALSH_SUCCESS && errc != TRY_LATER && errc != DEVICE_UNABLE)
+   std::cout << "#ERROR(talsh::Tensor::scale): talshTensorScale error " << errc << std::endl; //debug
   assert(errc == TALSH_SUCCESS || errc == TRY_LATER || errc == DEVICE_UNABLE);
  }
  return errc;

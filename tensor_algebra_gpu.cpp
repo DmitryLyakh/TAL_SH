@@ -1,6 +1,6 @@
 /** Tensor Algebra Library core for GPU
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2020/08/02
+REVISION: 2020/09/23
 
 Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
@@ -92,6 +92,11 @@ TO BE FIXED:
 
 static int VERBOSE=1; //verbosity for error messages
 static int DEBUG=0; //debugging mode
+
+size_t fortran_cptr_int(void * cptr)
+{
+ return ((size_t)(cptr));
+}
 
 int tens_valid_data_kind(int datk, int * datk_size)
 /** Returns YEP if the data kind <datk> is valid in TAL-SH, NOPE otherwise.
