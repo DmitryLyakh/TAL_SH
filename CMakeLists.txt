@@ -1,6 +1,6 @@
 # Example cmake command to build TALSH
 # -DTALSH_GPU=ON -DTALSH_GPU_ARCH=70 
-# (Optional) -DBUILD_TEST=ON -DWITH_CUTENSOR=ON -DCUTENSOR_ROOT=/cutensor_root -DTALSH_FINE_TIMING=ON
+# (Optional) -DUSE_OPENMP=ON -DBUILD_TESTS=ON -DWITH_CUTENSOR=ON -DCUTENSOR_ROOT=/cutensor_root -DTALSH_FINE_TIMING=ON
 
 cmake_minimum_required(VERSION 3.17.0 FATAL_ERROR)
 project (TALSH VERSION 0.1.0 LANGUAGES C CXX Fortran)
@@ -17,10 +17,16 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_FIND_PACKAGE_NO_PACKAGE_REGISTRY ON)
 
 option(USE_HIP OFF)
+option(USE_OPENMP OFF)
 option(LINUX_GNU_ASAN OFF)
+option(BUILD_TESTS OFF)
 
 # find_package(MPI REQUIRED)
-find_package(OpenMP REQUIRED)
+if(USE_OPENMP)
+	find_package(OpenMP REQUIRED)
+else()
+	set(NO_OMP NO_OMP)
+endif()
 
 #TODO:
 #Cray, Clang compiler flags
@@ -68,8 +74,8 @@ if (NOT TALSH_BLAS)
     set(NO_BLAS NO_BLAS)
 endif()
 
-set(TALSH_CXX_COMPILE_DEFS ${TALSH_GPU_DEFS} ${NO_BLAS} NO_AMD NO_PHI LINUX)
-set(TALSH_Fortran_COMPILE_DEFS ${TALSH_GPU_DEFS} ${NO_BLAS} NO_AMD NO_PHI LINUX)
+set(TALSH_CXX_COMPILE_DEFS ${TALSH_GPU_DEFS} ${NO_BLAS} ${NO_OMP} NO_AMD NO_PHI LINUX)
+set(TALSH_Fortran_COMPILE_DEFS ${TALSH_GPU_DEFS} ${NO_BLAS} ${NO_OMP} NO_AMD NO_PHI LINUX)
 
 if (TALSH_GPU)
 	set(TALSH_INCLUDES ${CUDAToolkit_INCLUDE_DIRS})
@@ -126,7 +132,6 @@ target_include_directories(talsh_cxx PRIVATE ${TALSH_INCLUDES})
 target_compile_definitions(talsh_cxx PRIVATE ${TALSH_CXX_COMPILE_DEFS})
 target_compile_options(talsh_cxx PRIVATE ${TALSH_CXX_FLAGS})
 
-
 if(TALSH_GPU)
 	add_library(talsh_fort OBJECT ${TALSH_FORTRAN_SOURCES})
 	target_include_directories(talsh_fort PRIVATE ${TALSH_INCLUDES})
@@ -136,13 +141,19 @@ if(TALSH_GPU)
 	set_source_files_properties(${TALSH_CUDA_SOURCES} PROPERTIES CUDA_SOURCE_PROPERTY_FORMAT OBJ)
 	add_library(talsh STATIC ${TALSH_CUDA_SOURCES} $<TARGET_OBJECTS:talsh_cxx> $<TARGET_OBJECTS:talsh_fort>)
 	target_compile_options(talsh PRIVATE ${TALSH_CUDA_FLAGS})
-	target_link_libraries(talsh PUBLIC CUDA::cublas OpenMP::OpenMP_CXX)
+	if(USE_OPENMP)
+		target_link_libraries(talsh PUBLIC CUDA::cublas OpenMP::OpenMP_C)
+	else()
+		target_link_libraries(talsh PUBLIC CUDA::cublas)
+	endif()
 else()
 	add_library(talsh STATIC ${TALSH_FORTRAN_SOURCES} $<TARGET_OBJECTS:talsh_cxx>)
 	target_include_directories(talsh PUBLIC ${TALSH_INCLUDES})
 	target_compile_definitions(talsh PRIVATE ${TALSH_Fortran_COMPILE_DEFS})
 	target_compile_options(talsh PRIVATE ${TALSH_Fortran_FLAGS})
-	target_link_libraries(talsh PUBLIC OpenMP::OpenMP_CXX)
+	if(USE_OPENMP)
+		target_link_libraries(talsh PUBLIC OpenMP::OpenMP_C)
+	endif()
 endif()
 
 add_library(talsh::talsh ALIAS talsh)
@@ -161,7 +172,7 @@ set(TALSH_HEADERS
 	talshxx.hpp
     )
 
-if(BUILD_TEST)
+if(BUILD_TESTS)
 	enable_testing()
 	add_executable(talsh_test main.F90 test.cpp)
 	target_link_libraries(talsh_test talsh::talsh)
