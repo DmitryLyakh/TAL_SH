@@ -1,9 +1,9 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2020/11/20
+!REVISION: 2021/01/07
 
-!Copyright (C) 2013-2020 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2013-2021 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -284,7 +284,9 @@
         public tensor_block_pcontract_dlf  !multiplies two matrices derived from tensors to produce a third matrix (left is transposed, right is normal)
         public tensor_block_ftrace_dlf     !takes a full trace of a tensor block
         public tensor_block_ptrace_dlf     !takes a partial trace of a tensor block
+#ifndef NO_BLAS
         public tensor_block_pcontract_batch_dlf !batched version of tensor_block_pcontract_dlf
+#endif
 
        contains
 !-----------------
