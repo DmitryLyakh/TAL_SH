@@ -2,10 +2,10 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2020/10/07
+REVISION: 2021/01/27
 
-Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -218,7 +218,7 @@ OUTPUT:
    hsize-=mem_alloc_dec;
   }else{
    *arg_buf_size=hsize; arg_buf_host_size=hsize; err_code=0;
-   if(DEBUG) printf("\n#DEBUG(mem_manager:arg_buf_allocate): Pinned Host argument buffer address/size: %p %lld\n",arg_buf_host,(long long)hsize); //debug
+   if(DEBUG) printf("\n#DEBUG(mem_manager:arg_buf_allocate): Pinned Host argument buffer address/size: %p %lu\n",arg_buf_host,hsize); //debug
    break;
   }
 #else
@@ -227,7 +227,7 @@ OUTPUT:
    hsize-=mem_alloc_dec;
   }else{
    *arg_buf_size=hsize; arg_buf_host_size=hsize; err_code=0;
-   if(DEBUG) printf("\n#DEBUG(mem_manager:arg_buf_allocate): Host buffer address/size: %p %lld\n",arg_buf_host,(long long)hsize); //debug
+   if(DEBUG) printf("\n#DEBUG(mem_manager:arg_buf_allocate): Host buffer address/size: %p %lu\n",arg_buf_host,hsize); //debug
    break;
   }
 #endif /*NO_GPU*/
@@ -281,7 +281,7 @@ OUTPUT:
         hsize-=mem_alloc_dec;
        }else{
         arg_buf_gpu_size[i]=hsize; err_code=0;
-        if(DEBUG) printf("\n#DEBUG(mem_manager:arg_buf_allocate): GPU#%d argument buffer address/size: %p %lld\n",i,arg_buf_gpu[i],(long long)hsize); //debug
+        if(DEBUG) printf("\n#DEBUG(mem_manager:arg_buf_allocate): GPU#%d argument buffer address/size: %p %lu\n",i,arg_buf_gpu[i],hsize); //debug
         break;
        }
       }
@@ -542,12 +542,15 @@ static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, siz
 {
  int i,j,k,l,m,n;
  size_t bsz;
-
 #ifndef NO_OMP
  omp_set_nest_lock(&mem_lock);
 #endif
 #pragma omp flush
-// if(DEBUG) printf("\n#DEBUG(mem_manager:get_buf_entry): %lu %lu\n",bsize,blck_sizes[0]); //debug
+ if(DEBUG){
+  printf("\n#DEBUG(mem_manager:get_buf_entry): %lu %lu\n",bsize,blck_sizes[0]); //debug
+  printf("\n#DEBUG(mem_manager:get_buf_entry): Occupancy table:"); //debug
+  for(bsz=0;bsz<ab_occ_size;++bsz) printf(" %lu",ab_occ[bsz]); //debug
+ }
  *entry_ptr=NULL; *entry_num=-1;
  n=0; j=0; i=0; l=0; //l is a base offset within level i
  while(i<ab_conf.buf_depth){ //argument buffer level
@@ -561,7 +564,7 @@ static int get_buf_entry(ab_conf_t ab_conf, size_t bsize, void *arg_buf_ptr, siz
 #endif
     return 1;
    }
-//   if(DEBUG) printf("\n#DEBUG(mem_manager:get_buf_entry): Current level/offset/sizes: %d %d %d \n",i,l+j,blck_sizes[i]); //debug
+   //if(DEBUG) printf("\n#DEBUG(mem_manager:get_buf_entry): Current level/offset/sizes: %d %d %lu\n",i,l+j,blck_sizes[i]); //debug
    if(bsize <= blck_sizes[i]-ab_occ[m]){ //there is a good chance to find a free entry along this path
     if(i == ab_conf.buf_depth-1 && ab_occ[m] == 0){
      *entry_num=m; *entry_ptr=&(((char*)arg_buf_ptr)[ab_get_offset(ab_conf,i,l+j,blck_sizes)]); //entry found
@@ -713,9 +716,9 @@ RETURN STATUS:
  }
  err_code=0;
  ab_conf.buf_top=BLCK_BUF_TOP_HOST; ab_conf.buf_depth=BLCK_BUF_DEPTH_HOST; ab_conf.buf_branch=BLCK_BUF_BRANCH_HOST;
- //if(DEBUG) printf("\n#DEBUG(mem_manager:get_buf_entry_host): Allocating buffer entry for size %lu: ",bsize); //debug
+ if(DEBUG) printf("\n#DEBUG(mem_manager:get_buf_entry_host): Allocating buffer entry for size %lu: ",bsize); //debug
  err_code=get_buf_entry(ab_conf,bsize,arg_buf_host,abh_occ,abh_occ_size,blck_sizes_host,entry_ptr,entry_num);
- //if(DEBUG) printf("Status %d: Buffer entry %d: Address %p\n",err_code,*entry_num,*entry_ptr); //debug
+ if(DEBUG) printf("Status %d: Buffer entry %d: Address %p\n",err_code,*entry_num,*entry_ptr); //debug
  if(err_code == 0){
   err_code=ab_get_2d_pos(ab_conf,*entry_num,&i,&j);
   if(err_code == 0){num_args_host++; occ_size_host+=blck_sizes_host[i]; args_size_host+=bsize;}
@@ -752,9 +755,9 @@ INPUT:
  }
  err_code=0;
  ab_conf.buf_top=BLCK_BUF_TOP_HOST; ab_conf.buf_depth=BLCK_BUF_DEPTH_HOST; ab_conf.buf_branch=BLCK_BUF_BRANCH_HOST;
- //if(DEBUG) printf("\n#DEBUG(mem_manager:free_buf_entry_host): Deallocating buffer entry %d: ",entry_num); //debug
+ if(DEBUG) printf("\n#DEBUG(mem_manager:free_buf_entry_host): Deallocating buffer entry %d: ",entry_num); //debug
  err_code=free_buf_entry(ab_conf,abh_occ,abh_occ_size,blck_sizes_host,entry_num);
- //if(DEBUG) printf("Status %d\n",err_code); //debug
+ if(DEBUG) printf("Status %d\n",err_code); //debug
  if(err_code == 0){
   err_code=ab_get_2d_pos(ab_conf,entry_num,&i,&j);
   if(err_code == 0){num_args_host--; occ_size_host-=blck_sizes_host[i]; args_size_host=0;} //`args_size_host is not used (ignore it)
@@ -804,7 +807,7 @@ RETURN STATUS:
   if(gpu_is_mine(gpu_num) != 0){
    ab_conf.buf_top=BLCK_BUF_TOP_GPU; ab_conf.buf_depth=BLCK_BUF_DEPTH_GPU; ab_conf.buf_branch=BLCK_BUF_BRANCH_GPU;
    err_code=get_buf_entry(ab_conf,bsize,arg_buf_gpu[gpu_num],abg_occ[gpu_num],abg_occ_size[gpu_num],&blck_sizes_gpu[gpu_num][0],entry_ptr,entry_num);
-// if(err_code == 0 && DEBUG != 0) printf("\n#DEBUG(mem_manager:get_buf_entry_gpu): Entry allocated: %d %d %p\n",gpu_num,*entry_num,*entry_ptr); //debug
+   if(err_code == 0 && DEBUG != 0) printf("\n#DEBUG(mem_manager:get_buf_entry_gpu): Entry allocated: %d %d %p\n",gpu_num,*entry_num,*entry_ptr); //debug
    if(err_code == 0){
     err_code=ab_get_2d_pos(ab_conf,*entry_num,&i,&j);
     if(err_code == 0){num_args_gpu[gpu_num]++; occ_size_gpu[gpu_num]+=blck_sizes_gpu[gpu_num][i]; args_size_gpu[gpu_num]+=bsize;}
@@ -851,7 +854,7 @@ INPUT:
   if(gpu_is_mine(gpu_num) != 0){
    ab_conf.buf_top=BLCK_BUF_TOP_GPU; ab_conf.buf_depth=BLCK_BUF_DEPTH_GPU; ab_conf.buf_branch=BLCK_BUF_BRANCH_GPU;
    err_code=free_buf_entry(ab_conf,abg_occ[gpu_num],abg_occ_size[gpu_num],&blck_sizes_gpu[gpu_num][0],entry_num);
-// if(err_code == 0 && DEBUG != 0) printf("\n#DEBUG(mem_manager:free_buf_entry_gpu): Entry deallocated: %d %d\n",gpu_num,entry_num); //debug
+   if(err_code == 0 && DEBUG != 0) printf("\n#DEBUG(mem_manager:free_buf_entry_gpu): Entry deallocated: %d %d\n",gpu_num,entry_num); //debug
    if(err_code == 0){
     err_code=ab_get_2d_pos(ab_conf,entry_num,&i,&j);
     if(err_code == 0){num_args_gpu[gpu_num]--; occ_size_gpu[gpu_num]-=blck_sizes_gpu[gpu_num][i]; args_size_gpu[gpu_num]=0;} //`args_size_gpu is not used here (ignore it)
@@ -1079,7 +1082,7 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
      break;
     }else{
      if(occ[i] == blck_sz[lev]) ben=i;
-     prev_entry_occ=occ[i]; prev_lev_size=blck_sz[lev]; //debug
+     prev_entry_occ=occ[i]; prev_lev_size=blck_sz[lev];
     }
    }
    ++lev;
@@ -1087,7 +1090,7 @@ int get_buf_entry_from_address(int dev_id, const void * addr)
   if(ben >= 0){
    --lev;
    //if(DEBUG) ab_conf_print(*ab_conf); //debug
-   //if(DEBUG) printf("\n#DEBUG(mem_manager:get_buf_entry_from_address): Address %p -> Buffer entry %d\n",addr,ben); //debug
+   if(DEBUG) printf("\n#DEBUG(mem_manager:get_buf_entry_from_address): Address %p -> Buffer entry %d\n",addr,ben); //debug
    if(buf_offset != ab_get_offset(*ab_conf,lev,buf_offset/blck_sz[lev],blck_sz)){ //trap
 #ifndef NO_OMP
     omp_unset_nest_lock(&mem_lock);

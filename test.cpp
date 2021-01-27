@@ -69,7 +69,7 @@ void test_talsh_c(int * ierr)
  int host_arg_max;
  for(int i=0; i<ngpu; ++i) gpu_list[i]=i; //list of NVIDIA GPU devices to use in this process
  errc=talshInit(&host_buffer_size,&host_arg_max,ngpu,gpu_list,0,NULL,0,NULL);
- printf(" TAL-SH has been initialized: Status %d: Host buffer size = %lu \n",errc,host_buffer_size); if(errc){*ierr=2; return;};
+ printf(" TAL-SH has been initialized: Status %d: Host buffer size = %lu\n",errc,host_buffer_size); if(errc){*ierr=2; return;};
 
 //Allocate three tensor blocks in Host memory outside of TAL-SH (external application):
  //Tensor block 0:
@@ -928,7 +928,7 @@ void test_nwchem_c(int * ierr)
  int host_arg_max;
  for(int i=0; i<ngpu; ++i) gpu_list[i]=i; //list of NVIDIA GPU devices to use in this process
  errc=talshInit(&host_buffer_size,&host_arg_max,ngpu,gpu_list,0,NULL,0,NULL);
- printf(" TAL-SH has been initialized: Status %d: Host buffer size = %lu \n",errc,host_buffer_size); if(errc){*ierr=2; return;};
+ printf(" TAL-SH has been initialized: Status %d: Host buffer size = %lu\n",errc,host_buffer_size); if(errc){*ierr=2; return;};
 
 //Allocate three tensor blocks in Host memory outside of TAL-SH (external application):
  //Tensor block 0:
