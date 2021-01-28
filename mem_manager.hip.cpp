@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2021/01/27
+REVISION: 2021/01/28
 
 Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
@@ -72,34 +72,34 @@ typedef struct{
 #ifndef NO_OMP
 static omp_nest_lock_t mem_lock; //global lock for serializing memory allocation/deallocation in buffers
 #endif
-static int bufs_ready=0; //status of the Host and GPU argument buffers
-static ab_conf_t ab_conf_host; //Host argument buffer configuration
-static ab_conf_t ab_conf_gpu[MAX_GPUS_PER_NODE]; //GPU argument buffer configuration (for each GPU)
-static void *arg_buf_host; //base address of the argument buffer in Host memory (page-locked)
-static void *arg_buf_gpu[MAX_GPUS_PER_NODE]; //base addresses of argument buffers in GPUs Global memories
-static size_t arg_buf_host_size=0; //total size of the Host argument buffer in bytes
-static size_t arg_buf_gpu_size[MAX_GPUS_PER_NODE]; //total sizes of each GPU argument buffer in bytes
-static int max_args_host=0; //max number of arguments (those of the lowest size level) which can reside in Host buffer
-static int max_args_gpu[MAX_GPUS_PER_NODE]; //max number of arguments (those of the lowest size level) which can reside in a GPU buffer: will be overtaken by MAX_GPU_ARGS
-static size_t blck_sizes_host[BLCK_BUF_DEPTH_HOST]; //distinct tensor block buffered sizes (in bytes) on Host
-static size_t blck_sizes_gpu[MAX_GPUS_PER_NODE][BLCK_BUF_DEPTH_GPU]; //distinct tensor block buffered sizes (in bytes) on GPUs
-static int const_args_link[MAX_GPUS_PER_NODE][MAX_GPU_ARGS]; //linked list of free entries in constant memory banks for each GPU
-static int const_args_ffe[MAX_GPUS_PER_NODE]; //FFE of the const_args_link[] for each GPU
-static size_t *abh_occ=NULL; //occupation status for each buffer entry in Host argument buffer (*arg_buf_host)
-static size_t *abg_occ[MAX_GPUS_PER_NODE]; //occupation status for each buffer entry in GPU argument buffers (*arg_buf_gpu)
-static size_t abh_occ_size=0; //total number of entries in the multi-level Host argument buffer occupancy table
-static size_t abg_occ_size[MAX_GPUS_PER_NODE]; //total numbers of entries in the multi-level GPUs argument buffer occupancy tables
+int bufs_ready=0; //status of the Host and GPU argument buffers
+ab_conf_t ab_conf_host; //Host argument buffer configuration
+ab_conf_t ab_conf_gpu[MAX_GPUS_PER_NODE]; //GPU argument buffer configuration (for each GPU)
+void *arg_buf_host; //base address of the argument buffer in Host memory (page-locked)
+void *arg_buf_gpu[MAX_GPUS_PER_NODE]; //base addresses of argument buffers in GPUs Global memories
+size_t arg_buf_host_size=0; //total size of the Host argument buffer in bytes
+size_t arg_buf_gpu_size[MAX_GPUS_PER_NODE]; //total sizes of each GPU argument buffer in bytes
+int max_args_host=0; //max number of arguments (those of the lowest size level) which can reside in Host buffer
+int max_args_gpu[MAX_GPUS_PER_NODE]; //max number of arguments (those of the lowest size level) which can reside in a GPU buffer: will be overtaken by MAX_GPU_ARGS
+size_t blck_sizes_host[BLCK_BUF_DEPTH_HOST]; //distinct tensor block buffered sizes (in bytes) on Host
+size_t blck_sizes_gpu[MAX_GPUS_PER_NODE][BLCK_BUF_DEPTH_GPU]; //distinct tensor block buffered sizes (in bytes) on GPUs
+int const_args_link[MAX_GPUS_PER_NODE][MAX_GPU_ARGS]; //linked list of free entries in constant memory banks for each GPU
+int const_args_ffe[MAX_GPUS_PER_NODE]; //FFE of the const_args_link[] for each GPU
+size_t *abh_occ=NULL; //occupation status for each buffer entry in Host argument buffer (*arg_buf_host)
+size_t *abg_occ[MAX_GPUS_PER_NODE]; //occupation status for each buffer entry in GPU argument buffers (*arg_buf_gpu)
+size_t abh_occ_size=0; //total number of entries in the multi-level Host argument buffer occupancy table
+size_t abg_occ_size[MAX_GPUS_PER_NODE]; //total numbers of entries in the multi-level GPUs argument buffer occupancy tables
 // Buffer memory status:
-static int num_args_host=0; //number of occupied entries in the Host argument buffer
-static int num_args_gpu[MAX_GPUS_PER_NODE]={0}; //number of occupied entries in each GPU argument buffer
-static size_t occ_size_host=0; //total size (bytes) of all occupied entries in the Host argument buffer
-static size_t occ_size_gpu[MAX_GPUS_PER_NODE]={0}; //total size (bytes) of all occupied entries in each GPU buffer
-static size_t args_size_host=0; //total size (bytes) of all arguments in the Host argument buffer !`Not used now
-static size_t args_size_gpu[MAX_GPUS_PER_NODE]={0}; //total size (bytes) of all arguments in each GPU buffer !`Not used now
+int num_args_host=0; //number of occupied entries in the Host argument buffer
+int num_args_gpu[MAX_GPUS_PER_NODE]={0}; //number of occupied entries in each GPU argument buffer
+size_t occ_size_host=0; //total size (bytes) of all occupied entries in the Host argument buffer
+size_t occ_size_gpu[MAX_GPUS_PER_NODE]={0}; //total size (bytes) of all occupied entries in each GPU buffer
+size_t args_size_host=0; //total size (bytes) of all arguments in the Host argument buffer !`Not used now
+size_t args_size_gpu[MAX_GPUS_PER_NODE]={0}; //total size (bytes) of all arguments in each GPU buffer !`Not used now
 // Slab for multi-index storage (pinned Host memory):
-static int miBank[MAX_GPU_ARGS*MAX_MLNDS_PER_TENS][MAX_TENSOR_RANK]; //All active .dims[], .divs[], .grps[], .prmn[] will be stored here
-static int miFreeHandle[MAX_GPU_ARGS*MAX_MLNDS_PER_TENS]; //free entries for storing multi-indices
-static int miFFE=0; //number of free handles left in miBank
+int miBank[MAX_GPU_ARGS*MAX_MLNDS_PER_TENS][MAX_TENSOR_RANK]; //All active .dims[], .divs[], .grps[], .prmn[] will be stored here
+int miFreeHandle[MAX_GPU_ARGS*MAX_MLNDS_PER_TENS]; //free entries for storing multi-indices
+int miFFE=0; //number of free handles left in miBank
 
 //LOCAL (PRIVATE) FUNCTION PROTOTYPES:
 static int const_args_link_init(int gpu_beg, int gpu_end);

@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C++ API header.
-REVISION: 2020/12/09
+REVISION: 2021/01/28
 
-Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -40,7 +40,7 @@ namespace talsh{
 
 //Constants:
 
-static const std::size_t DEFAULT_HOST_BUFFER_SIZE = TALSH_NO_HOST_BUFFER; //small unused buffer will be allocated
+const std::size_t DEFAULT_HOST_BUFFER_SIZE = TALSH_NO_HOST_BUFFER; //small unused buffer will be allocated
 
 
 //Tensor data kind (static type VS numeric data kind constant conversions):

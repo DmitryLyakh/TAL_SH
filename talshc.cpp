@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2020/10/07
+REVISION: 2021/01/28
 
-Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -74,21 +74,21 @@ static int LOGGING_OPS=0; //logging basic tensor operations: Add, Contract
 
 //GLOBALS:
 // General:
-static int talsh_on=0;             //TAL-SH initialization flag (1:initalized; 0:not)
+int talsh_on=0;             //TAL-SH initialization flag (1:initalized; 0:not)
 #ifndef NO_OMP
 static omp_nest_lock_t talsh_lock; //TAL-SH global lock for thread safety
 #endif
-static clock_t talsh_begin_time;   //TAL-SH begin time (zero time reference)
+clock_t talsh_begin_time;   //TAL-SH begin time (zero time reference)
 // Accelerator configuration:
-static int talsh_gpu_beg;          //first Nvidia GPU in the assigned range
-static int talsh_gpu_end;          //last Nvidia GPU in the assigned range
+int talsh_gpu_beg;          //first Nvidia GPU in the assigned range
+int talsh_gpu_end;          //last Nvidia GPU in the assigned range
 // Device status:
-static int talsh_cpu=DEV_OFF;
-static int talsh_gpu[MAX_GPUS_PER_NODE]={DEV_OFF}; //current GPU status: {DEV_OFF,DEV_ON,DEV_ON_BLAS}
-static int talsh_mic[MAX_MICS_PER_NODE]={DEV_OFF}; //current MIC status: {DEV_OFF,DEV_ON,DEV_ON_BLAS}
-static int talsh_amd[MAX_AMDS_PER_NODE]={DEV_OFF}; //current AMD status: {DEV_OFF,DEV_ON,DEV_ON_BLAS}
+int talsh_cpu=DEV_OFF;                      //current CPU status: {DEV_OFF,DEV_ON,DEV_ON_BLAS}
+int talsh_gpu[MAX_GPUS_PER_NODE]={DEV_OFF}; //current GPU status: {DEV_OFF,DEV_ON,DEV_ON_BLAS}
+int talsh_mic[MAX_MICS_PER_NODE]={DEV_OFF}; //current MIC status: {DEV_OFF,DEV_ON,DEV_ON_BLAS}
+int talsh_amd[MAX_AMDS_PER_NODE]={DEV_OFF}; //current AMD status: {DEV_OFF,DEV_ON,DEV_ON_BLAS}
 // Failure statistics:
-static unsigned long long int not_clean_count=0LL; //number of times a NOT_CLEAN status was returned (possible indication of a memory leak)
+unsigned long long int not_clean_count=0LL; //number of times a NOT_CLEAN status was returned (possible indication of a memory leak)
 
 //INTERNAL TYPES:
 // Host task:

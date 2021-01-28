@@ -1,9 +1,9 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2020/10/02
+REVISION: 2021/01/28
 
-Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 
@@ -168,38 +168,38 @@ static int DEBUG=0; //debugging mode
 #ifndef NO_GPU
 //GLOBAL DATA:
 // GPU control on the current MPI process:
-static int gpu_up[MAX_GPUS_PER_NODE]={GPU_OFF}; //GPU_OFF(0): GPU is disabled; GPU_MINE(1): GPU is enabled; GPU_MINE_CUBLAS(2): GPU is BLAS enabled
-static hipDeviceProp_t gpu_prop[MAX_GPUS_PER_NODE]; //properties of all GPUs present on the node
-static talsh_stats_t gpu_stats[MAX_GPUS_PER_NODE]; //runtime statistics for all GPUs present on the node
+int gpu_up[MAX_GPUS_PER_NODE]={GPU_OFF}; //GPU_OFF(0): GPU is disabled; GPU_MINE(1): GPU is enabled; GPU_MINE_CUBLAS(2): GPU is BLAS enabled
+hipDeviceProp_t gpu_prop[MAX_GPUS_PER_NODE]; //properties of all GPUs present on the node
+talsh_stats_t gpu_stats[MAX_GPUS_PER_NODE]; //runtime statistics for all GPUs present on the node
 #ifndef NO_BLAS
 // Infrastructure for CUBLAS:
-static hipblasHandle_t cublas_handle[MAX_GPUS_PER_NODE]; //each GPU present on a node obtains its own cuBLAS context handle
+hipblasHandle_t cublas_handle[MAX_GPUS_PER_NODE]; //each GPU present on a node obtains its own cuBLAS context handle
 #endif /*NO_BLAS*/
 #ifdef USE_CUTENSOR
 // Infrastructure for cuTensor:
-static cutensorHandle_t cutensor_handle[MAX_GPUS_PER_NODE];   //each GPU present on a node obtains its own cuTensor context handle
-static void * cutensor_workspace[MAX_GPUS_PER_NODE] = {NULL}; //cuTensor workspace (in GPU memory)
-static size_t cutensor_worksize[MAX_GPUS_PER_NODE] = {0};     //cuTensor workspace size
-static const size_t CUTENSOR_WORKSPACE_SIZE = 128 * 1048576;  //default cuTensor workspace size
+cutensorHandle_t cutensor_handle[MAX_GPUS_PER_NODE];   //each GPU present on a node obtains its own cuTensor context handle
+void * cutensor_workspace[MAX_GPUS_PER_NODE] = {NULL}; //cuTensor workspace (in GPU memory)
+size_t cutensor_worksize[MAX_GPUS_PER_NODE] = {0};     //cuTensor workspace size
+const size_t CUTENSOR_WORKSPACE_SIZE = 128 * 1048576;  //default cuTensor workspace size
 #endif /*USE_CUTENSOR*/
 // Slabs for the GPU asynchronous resources:
 //  CUDA stream handles:
-static hipStream_t CUDAStreamBank[MAX_GPUS_PER_NODE][MAX_CUDA_TASKS]; //pre-allocated CUDA stream handles (for each CUDA device)
-static int CUDAStreamFreeHandle[MAX_GPUS_PER_NODE][MAX_CUDA_TASKS]; //free CUDA stream handles
-static int CUDAStreamFFE[MAX_GPUS_PER_NODE]; //number of free handles left in CUDAStreamFreeHandle
+hipStream_t CUDAStreamBank[MAX_GPUS_PER_NODE][MAX_CUDA_TASKS]; //pre-allocated CUDA stream handles (for each CUDA device)
+int CUDAStreamFreeHandle[MAX_GPUS_PER_NODE][MAX_CUDA_TASKS]; //free CUDA stream handles
+int CUDAStreamFFE[MAX_GPUS_PER_NODE]; //number of free handles left in CUDAStreamFreeHandle
 //  CUDA event handles:
-static hipEvent_t CUDAEventBank[MAX_GPUS_PER_NODE][MAX_CUDA_EVENTS]; //pre-allocated CUDA event handles (for each CUDA device)
-static int CUDAEventFreeHandle[MAX_GPUS_PER_NODE][MAX_CUDA_EVENTS]; //free CUDA event handles
-static int CUDAEventFFE[MAX_GPUS_PER_NODE]; //number of free handles left in CUDAEventFreeHandle
+hipEvent_t CUDAEventBank[MAX_GPUS_PER_NODE][MAX_CUDA_EVENTS]; //pre-allocated CUDA event handles (for each CUDA device)
+int CUDAEventFreeHandle[MAX_GPUS_PER_NODE][MAX_CUDA_EVENTS]; //free CUDA event handles
+int CUDAEventFFE[MAX_GPUS_PER_NODE]; //number of free handles left in CUDAEventFreeHandle
 // Mapped slab of tensor operation prefactors for GPU usage:
-static slab_t prefactors;         //mapped slab of prefactors
-static void * gpu_prefs_base_ptr; //mapped device pointer of the slab base
+slab_t prefactors;         //mapped slab of prefactors
+void * gpu_prefs_base_ptr; //mapped device pointer of the slab base
 // Slab of GPU constant memory arguments for each GPU (managed by "mem_manager.cpp"):
-__device__ __constant__ int const_args_dims[MAX_GPU_ARGS][MAX_TENSOR_RANK]; //storage for device constant memory arguments: dimension extents
-__device__ __constant__ int const_args_prmn[MAX_GPU_ARGS][MAX_TENSOR_RANK]; //storage for device constant memory arguments: permutation
+__constant__ int const_args_dims[MAX_GPU_ARGS][MAX_TENSOR_RANK]; //storage for device constant memory arguments: dimension extents
+__constant__ int const_args_prmn[MAX_GPU_ARGS][MAX_TENSOR_RANK]; //storage for device constant memory arguments: permutation
 // GPU error control and debugging for each GPU:
-__device__ static int gpu_error_count=0; //total number of CUDA errors registered on device till the current moment
-__device__ static int gpu_debug_dump[GPU_DEBUG_DUMP_SIZE]; //debug dump
+__device__ int gpu_error_count=0; //total number of CUDA errors registered on device till the current moment
+__device__ int gpu_debug_dump[GPU_DEBUG_DUMP_SIZE]; //debug dump
 // Global CUDA event recording policy:
 static int PRINT_TIMING=1; //non-zero value enables time printing statements
 // Infrastructure for function <gpu_tensor_block_copy_dlf> (blocking and non-blocking):
@@ -214,35 +214,35 @@ static int DISABLE_BLAS=0; //non-zero value will disable cuBLAS usage (if it had
 #else
 static int DISABLE_BLAS=1; //non-zero value will disable cuBLAS usage (if it had been cuBLAS compiled/linked)
 #endif /*NO_BLAS*/
-static cudaTask_t * LastTask[MAX_GPUS_PER_NODE]; //last CUDA task successfully scheduled on each GPU
-static float h_sgemm_beta_one=1.0f;
-static float h_sgemm_beta_zero=0.0f;
-static double h_dgemm_beta_one=1.0;
-static double h_dgemm_beta_zero=0.0;
-static hipComplex h_cgemm_beta_one={1.0f,0.0f};
-static hipComplex h_cgemm_beta_zero={0.0f,0.0f};
-static hipDoubleComplex h_zgemm_beta_one={1.0,0.0};
-static hipDoubleComplex h_zgemm_beta_zero={0.0,0.0};
-__device__ __constant__ static float sgemm_alpha_plus=1.0f;                  //default alpha constant for SGEMM
-__device__ __constant__ static float sgemm_alpha_minus=-1.0f;                //default alpha constant for SGEMM
-__device__ __constant__ static float sgemm_beta_one=1.0f;                    //default beta constant SGEMM
-__device__ __constant__ static float sgemm_beta_zero=0.0f;                   //zero beta constant SGEMM
-__device__ __constant__ static double dgemm_alpha_plus=1.0;                  //default alpha constant for DGEMM
-__device__ __constant__ static double dgemm_alpha_minus=-1.0;                //default alpha constant for DGEMM
-__device__ __constant__ static double dgemm_beta_one=1.0;                    //default beta constant DGEMM
-__device__ __constant__ static double dgemm_beta_zero=0.0;                   //zero beta constant DGEMM
-__device__ __constant__ static hipComplex cgemm_alpha_plus={1.0f,0.0f};       //default alpha constant CGEMM
-__device__ __constant__ static hipComplex cgemm_alpha_minus={-1.0f,0.0f};     //default alpha constant CGEMM
-__device__ __constant__ static hipComplex cgemm_beta_one={1.0f,0.0f};         //default beta constant CGEMM
-__device__ __constant__ static hipComplex cgemm_beta_zero={0.0f,0.0f};        //zero beta constant CGEMM
-__device__ __constant__ static hipDoubleComplex zgemm_alpha_plus={1.0,0.0};   //default alpha constant ZGEMM
-__device__ __constant__ static hipDoubleComplex zgemm_alpha_minus={-1.0,0.0}; //default alpha constant ZGEMM
-__device__ __constant__ static hipDoubleComplex zgemm_beta_one={1.0,0.0};     //default beta constant ZGEMM
-__device__ __constant__ static hipDoubleComplex zgemm_beta_zero={0.0,0.0};    //zero beta constant ZGEMM
+cudaTask_t * LastTask[MAX_GPUS_PER_NODE]; //last CUDA task successfully scheduled on each GPU
+float h_sgemm_beta_one=1.0f;
+float h_sgemm_beta_zero=0.0f;
+double h_dgemm_beta_one=1.0;
+double h_dgemm_beta_zero=0.0;
+hipComplex h_cgemm_beta_one={1.0f,0.0f};
+hipComplex h_cgemm_beta_zero={0.0f,0.0f};
+hipDoubleComplex h_zgemm_beta_one={1.0,0.0};
+hipDoubleComplex h_zgemm_beta_zero={0.0,0.0};
+__constant__ float sgemm_alpha_plus=1.0f;                  //default alpha constant for SGEMM
+__constant__ float sgemm_alpha_minus=-1.0f;                //default alpha constant for SGEMM
+__constant__ float sgemm_beta_one=1.0f;                    //default beta constant SGEMM
+__constant__ float sgemm_beta_zero=0.0f;                   //zero beta constant SGEMM
+__constant__ double dgemm_alpha_plus=1.0;                  //default alpha constant for DGEMM
+__constant__ double dgemm_alpha_minus=-1.0;                //default alpha constant for DGEMM
+__constant__ double dgemm_beta_one=1.0;                    //default beta constant DGEMM
+__constant__ double dgemm_beta_zero=0.0;                   //zero beta constant DGEMM
+__constant__ hipComplex cgemm_alpha_plus={1.0f,0.0f};       //default alpha constant CGEMM
+__constant__ hipComplex cgemm_alpha_minus={-1.0f,0.0f};     //default alpha constant CGEMM
+__constant__ hipComplex cgemm_beta_one={1.0f,0.0f};         //default beta constant CGEMM
+__constant__ hipComplex cgemm_beta_zero={0.0f,0.0f};        //zero beta constant CGEMM
+__constant__ hipDoubleComplex zgemm_alpha_plus={1.0,0.0};   //default alpha constant ZGEMM
+__constant__ hipDoubleComplex zgemm_alpha_minus={-1.0,0.0}; //default alpha constant ZGEMM
+__constant__ hipDoubleComplex zgemm_beta_one={1.0,0.0};     //default beta constant ZGEMM
+__constant__ hipDoubleComplex zgemm_beta_zero={0.0,0.0};    //zero beta constant ZGEMM
 // Infrastructure for kernels <gpu_array_norm2__>:
-__device__ static int norm2_wr_lock=0; //write lock shared by all <gpu_array_norm2__> running on GPU
+__device__ int norm2_wr_lock=0; //write lock shared by all <gpu_array_norm2__> running on GPU
 // Infrastructure for kernels <gpu_array_dot_product__>:
-__device__ static int dot_product_wr_lock=0; //write lock shared by all <gpu_array_dot_product__> running on GPU
+__device__ int dot_product_wr_lock=0; //write lock shared by all <gpu_array_dot_product__> running on GPU
 #endif /*NO_GPU*/
 //--------------------------------------------------------------------------------------------------------------
 #ifndef NO_GPU
