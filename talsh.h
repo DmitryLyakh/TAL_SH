@@ -1,8 +1,8 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2020/10/02
+REVISION: 2021/01/28
 
-Copyright (C) 2014-2020 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2020 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
 
 This file is part of ExaTensor.
 

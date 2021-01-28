@@ -601,6 +601,9 @@ std::size_t getDeviceMaxTensorSize(const int device_kind = DEV_HOST, //in: devic
 std::size_t getDeviceMaxBufferSize(const int device_kind = DEV_HOST, //in: device kind
                                    const int device_id = 0);         //in: device id
 
+// Return the current value of the total Flop count executed:
+double getTotalFlopCount();
+
 // Determine the optimal execution device for given tensors:
 int determineOptimalDevice(Tensor & tens0);
 int determineOptimalDevice(Tensor & tens0,
