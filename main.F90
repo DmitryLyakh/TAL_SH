@@ -1,7 +1,7 @@
 !TALSH::Fortran API testing.
 
-!Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -100,6 +100,11 @@
 #endif
 !Test TAL-SH C/C++ API interface:
         if(TEST_C_TALSH) then
+         write(*,'("Testing TAL-SH C/C++ API warm up ...")')
+         call test_talsh_c(ierr)
+         write(*,'("Done: Status ",i5)') ierr
+         if(ierr.ne.0) stop
+         write(*,*)''
          write(*,'("Testing TAL-SH C/C++ API ...")')
          call test_talsh_c(ierr)
          write(*,'("Done: Status ",i5)') ierr
