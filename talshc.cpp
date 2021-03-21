@@ -55,11 +55,8 @@ FOR DEVELOPER(s):
 **/
 
 #include "talsh.h"
-#include "talsh_complex.h"
-#include "device_algebra.h"
 #include "mem_manager.h"
 #include "timer.h"
-
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -67,6 +64,15 @@ FOR DEVELOPER(s):
 #ifndef NO_OMP
 #include <omp.h>
 #endif
+
+#ifdef USE_HIP
+#include "talsh_complex.hip.h"
+#include "device_algebra.hip.h"
+#else
+#include "talsh_complex.h"
+#include "device_algebra.h"
+#endif
+
 
 //PARAMETERS:
 static int VERBOSE=1;     //verbosity for errors
