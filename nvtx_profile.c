@@ -4,6 +4,8 @@
 
 #ifndef NO_GPU
 
+#ifndef USE_HIP
+
 #include "nvToolsExt.h"
 
 const uint32_t colors[] = {0xff00ff00, 0xff0000ff, 0xffffff00, 0xffff00ff, 0xff00ffff, 0xffff0000, 0xffffffff};
@@ -23,6 +25,13 @@ const int num_colors = sizeof(colors)/sizeof(uint32_t);
 }
 
 #define POP_RANGE nvtxRangePop();
+
+#else
+
+#define PUSH_RANGE(name,cid)
+#define POP_RANGE
+
+#endif
 
 #else
 

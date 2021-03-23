@@ -1,8 +1,10 @@
 # Example cmake command to build TALSH
-# -DTALSH_GPU=ON -DTALSH_GPU_ARCH=70 
-# (Optional) -DUSE_OPENMP=ON -DBUILD_TESTS=ON -DWITH_CUTENSOR=ON -DCUTENSOR_ROOT=/cutensor_root -DTALSH_FINE_TIMING=ON
+# -DTALSH_GPU=ON
+# (CUDA) -DTALSH_GPU_ARCH=70 [-DWITH_CUTENSOR=ON -DCUTENSOR_ROOT=/opt/cutensor]
+# (AMD) -DROCM_ROOT=$ROCM_PATH -DUSE_HIP=ON
+# (Optional) -DUSE_OPENMP=ON -DBUILD_TESTS=ON  -DTALSH_FINE_TIMING=ON
 
-cmake_minimum_required(VERSION 3.17.0 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.18.0 FATAL_ERROR)
 project (TALSH VERSION 0.1.0 LANGUAGES C CXX Fortran)
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -33,25 +35,33 @@ endif()
 # DF := -WF, when using IBM compilers
 # HIP, ASAN_COMPILE
 
+set(TALSH_GPU_DEFS NO_GPU)
+
 if (TALSH_GPU)
-	set(TALSH_GPU_DEFS "CUDA_ARCH=${TALSH_GPU_ARCH}0")
-	enable_language(CUDA)
-	set(CMAKE_CUDA_STANDARD 11)
-	set(CMAKE_CUDA_EXTENSIONS OFF)
-	set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-	# set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
-	set(CMAKE_CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
-	find_package(CUDAToolkit REQUIRED COMPONENTS cublas)
-else()
-	set(TALSH_GPU_DEFS NO_GPU)
+	if(USE_HIP)
+		set(TALSH_GPU_DEFS USE_HIP)
+		#TODO: check if ROCM_ROOT is valid
+		list (APPEND CMAKE_PREFIX_PATH ${ROCM_ROOT} ${ROCM_ROOT}/hip ${ROCM_ROOT}/hipblas)
+		find_package(hip REQUIRED)
+		find_package(hipblas REQUIRED)
+	else()
+		set(TALSH_GPU_DEFS "CUDA_ARCH=${TALSH_GPU_ARCH}0")
+		enable_language(CUDA)
+		set(CMAKE_CUDA_STANDARD 11)
+		set(CMAKE_CUDA_EXTENSIONS OFF)
+		set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+		# set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
+		set(CMAKE_CUDA_HOST_COMPILER ${CMAKE_CXX_COMPILER})
+		find_package(CUDAToolkit REQUIRED COMPONENTS cublas)
+	endif()
 endif()
 
 if(WITH_CUTENSOR)
-    set(TALSH_GPU_DEFS USE_CUTENSOR)
+  list(APPEND TALSH_GPU_DEFS USE_CUTENSOR)
 endif()
 
 if(EXATN_SERVICE)
-	set(TALSH_GPU_DEFS EXATN_SERVICE)
+  list(APPEND TALSH_GPU_DEFS EXATN_SERVICE)
 endif()
 
 if(CMAKE_Fortran_COMPILER_ID STREQUAL "Intel")
@@ -77,7 +87,7 @@ endif()
 set(TALSH_CXX_COMPILE_DEFS ${TALSH_GPU_DEFS} ${NO_BLAS} ${NO_OMP} NO_AMD NO_PHI LINUX)
 set(TALSH_Fortran_COMPILE_DEFS ${TALSH_GPU_DEFS} ${NO_BLAS} ${NO_OMP} NO_AMD NO_PHI LINUX)
 
-if (TALSH_GPU)
+if (TALSH_GPU AND NOT USE_HIP)
 	set(TALSH_INCLUDES ${CUDAToolkit_INCLUDE_DIRS})
 	if(WITH_CUTENSOR)
 		list(APPEND TALSH_INCLUDES ${CUTENSOR_ROOT}/include)
@@ -103,24 +113,33 @@ set(TALSH_CXX_SOURCES
 	timer.cpp
 	byte_packet.cpp
 	nvtx_profile.c
-	mem_manager.cpp
 	tensor_algebra_gpu.cpp
 	talshc.cpp
 	talsh_task.cpp
 	talshxx.cpp
     )
 
+if(USE_HIP)
+	list(APPEND TALSH_CXX_SOURCES mem_manager.hip.cpp)
+else()
+	list(APPEND TALSH_CXX_SOURCES mem_manager.h)
+endif()
+
 if(TALSH_GPU)
 	set(TALSH_CUDA_SOURCES tensor_algebra_gpu_nvidia.cu)
-else()
-	configure_file(tensor_algebra_gpu_nvidia.cu ${PROJECT_SOURCE_DIR}/tensor_algebra_gpu_nvidia.cpp COPYONLY)
+	set(TALSH_HIP_SOURCES tensor_algebra_gpu_nvidia.hip.cu)
+	if(USE_HIP)
+		configure_file(tensor_algebra_gpu_nvidia.hip.cu ${PROJECT_SOURCE_DIR}/tensor_algebra_gpu_nvidia.cpp COPYONLY)
+	else()
+		configure_file(tensor_algebra_gpu_nvidia.cu ${PROJECT_SOURCE_DIR}/tensor_algebra_gpu_nvidia.cpp COPYONLY)
+	endif()
 	list(APPEND TALSH_CXX_SOURCES tensor_algebra_gpu_nvidia.cpp)
 endif()
 
 if(TALSH_GPU)
 	set(TALSH_CUDA_FLAGS  ${TALSH_CUDA_FLAGS} -lineinfo -w -D_FORCE_INLINES -m64
 		-Xptxas --warn-on-spills;-gencode arch=compute_${TALSH_GPU_ARCH},code=sm_${TALSH_GPU_ARCH}; -ccbin ${CMAKE_CXX_COMPILER})
-	
+
 	if(TALSH_FINE_TIMING)
 		list(APPEND TALSH_CXX_COMPILE_DEFS GPU_FINE_TIMING)
 		list(APPEND TALSH_Fortran_COMPILE_DEFS GPU_FINE_TIMING)
@@ -131,6 +150,9 @@ add_library(talsh_cxx OBJECT ${TALSH_CXX_SOURCES})
 target_include_directories(talsh_cxx PRIVATE ${TALSH_INCLUDES})
 target_compile_definitions(talsh_cxx PRIVATE ${TALSH_CXX_COMPILE_DEFS})
 target_compile_options(talsh_cxx PRIVATE ${TALSH_CXX_FLAGS})
+if(USE_HIP)
+	target_link_libraries(talsh_cxx PRIVATE hip::device)
+endif()
 
 if(TALSH_GPU)
 	add_library(talsh_fort OBJECT ${TALSH_FORTRAN_SOURCES})
@@ -138,13 +160,23 @@ if(TALSH_GPU)
 	target_compile_definitions(talsh_fort PRIVATE ${TALSH_Fortran_COMPILE_DEFS})
 	target_compile_options(talsh_fort PRIVATE ${TALSH_Fortran_FLAGS})
 
-	set_source_files_properties(${TALSH_CUDA_SOURCES} PROPERTIES CUDA_SOURCE_PROPERTY_FORMAT OBJ)
-	add_library(talsh STATIC ${TALSH_CUDA_SOURCES} $<TARGET_OBJECTS:talsh_cxx> $<TARGET_OBJECTS:talsh_fort>)
-	target_compile_options(talsh PRIVATE ${TALSH_CUDA_FLAGS})
-	if(USE_OPENMP)
-		target_link_libraries(talsh PUBLIC CUDA::cublas OpenMP::OpenMP_C)
+	if(USE_HIP)
+		add_library(talsh STATIC ${TALSH_HIP_SOURCES} $<TARGET_OBJECTS:talsh_cxx> $<TARGET_OBJECTS:talsh_fort>)
 	else()
-		target_link_libraries(talsh PUBLIC CUDA::cublas)
+		set_source_files_properties(${TALSH_CUDA_SOURCES} PROPERTIES CUDA_SOURCE_PROPERTY_FORMAT OBJ)
+		add_library(talsh STATIC ${TALSH_CUDA_SOURCES} $<TARGET_OBJECTS:talsh_cxx> $<TARGET_OBJECTS:talsh_fort>)
+		target_compile_options(talsh PRIVATE ${TALSH_CUDA_FLAGS})
+	endif()
+
+	if(USE_HIP)
+		set(GPU_BLAS roc::hipblas hip::device)
+	else()
+		set(GPU_BLAS CUDA::cublas)
+	endif()
+	if(USE_OPENMP)
+		target_link_libraries(talsh PUBLIC ${GPU_BLAS} OpenMP::OpenMP_C)
+	else()
+		target_link_libraries(talsh PUBLIC ${GPU_BLAS})
 	endif()
 else()
 	add_library(talsh STATIC ${TALSH_FORTRAN_SOURCES} $<TARGET_OBJECTS:talsh_cxx>)
@@ -164,13 +196,21 @@ set(TALSH_HEADERS
 	nvtx_profile.h
 	mem_manager.h
 	tensor_algebra.h
-	device_algebra.h
-	talsh_complex.h
 	talsh.h
 	tensor_method.hpp
 	talsh_task.hpp
 	talshxx.hpp
     )
+
+if(USE_HIP)
+	list(APPEND TALSH_HEADERS
+		device_algebra.hip.h
+		talsh_complex.hip.h)
+else()
+	list(APPEND TALSH_HEADERS
+		device_algebra.h
+		talsh_complex.h)
+endif()
 
 if(BUILD_TESTS)
 	enable_testing()
