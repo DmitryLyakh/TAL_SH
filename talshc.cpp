@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2021/01/28
+REVISION: 2021/04/09
 
 Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
@@ -2947,7 +2947,7 @@ int talshTensorOpProgress(talsh_tens_op_t * tens_op, int * done)
    errc = talshTensorOpProgress(tens_op,done);
   }else{
    if(errc != TRY_LATER && VERBOSE)
-   printf("#ERROR(talshTensorOpProgress): RESOURCED->LOADED error for tensor operation %p\n",errc,tens_op);
+   printf("#ERROR(talshTensorOpProgress): RESOURCED->LOADED error %d for tensor operation %p\n",errc,tens_op);
   }
   break;
  case TALSH_OP_LOADED:
@@ -4799,7 +4799,7 @@ int talshTensorAdd(const char * cptrn,   //in: tensor addition pattern
   printf("%s",cptrn); printf(" ");
   talshTensorPrint(dtens); printf(" ");
   talshTensorPrint(ltens); printf(" ");
-  printf(": FMA Flop volume = %llu: Time (s) = ",talshTensorVolume(dtens));
+  printf(": FMA Flop volume = %lu: Time (s) = ",talshTensorVolume(dtens));
   tms=time_high_sec();
  }
  if(talsh_on == 0) return TALSH_NOT_INITIALIZED;
@@ -5080,7 +5080,7 @@ int talshTensorContract(const char * cptrn,        //in: C-string: symbolic cont
   talshTensorPrint(dtens); printf(" ");
   talshTensorPrint(ltens); printf(" ");
   talshTensorPrint(rtens); printf(" ");
-  printf(": FMA Flop volume = %llu: Time (s) = ",
+  printf(": FMA Flop volume = %lu: Time (s) = ",
          ((size_t)sqrt((double)(talshTensorVolume(dtens)*talshTensorVolume(ltens)*talshTensorVolume(rtens)))));
   tms=time_high_sec();
  }

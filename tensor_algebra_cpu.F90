@@ -4142,6 +4142,7 @@
 	  if(dtransp) then; call tensor_block_destroy(dta,j); if(j.ne.0) ierr=ierr+500+j; endif
 	 case(FULL_CONTRACTION)
 	  if(ltransp) then; call tensor_block_destroy(lta,j); if(j.ne.0) ierr=ierr+1000+j; endif
+	  if(rtransp) then; call tensor_block_destroy(rta,j); if(j.ne.0) ierr=ierr+1100+j; endif
 	 case(ADD_TENSOR)
 	  if(dtransp) then; call tensor_block_destroy(dta,j); if(j.ne.0) ierr=ierr+2000+j; endif
 	 case(MULTIPLY_SCALARS)
