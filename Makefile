@@ -7,7 +7,7 @@ NAME = talsh
 #However you will still need to read the meaning of those variables below.
 
 #Cray cross-compiling wrappers (only for Cray): [WRAP|NOWRAP]:
-export WRAP ?= NOWRAP
+export WRAP ?= WRAP
 #Compiler: [GNU|INTEL|CRAY|IBM|PGI]:
 export TOOLKIT ?= GNU
 #Optimization: [DEV|OPT|PRF]:
@@ -15,13 +15,13 @@ export BUILD_TYPE ?= OPT
 #MPI library base: [NONE]:
 export MPILIB ?= NONE
 #BLAS: [ATLAS|MKL|OPENBLAS|ACML|LIBSCI|ESSL|NONE]:
-export BLASLIB ?= OPENBLAS
+export BLASLIB ?= LIBSCI
 #NVIDIA GPU via CUDA: [CUDA|NOCUDA]:
-export GPU_CUDA ?= NOCUDA
+export GPU_CUDA ?= CUDA
 #NVIDIA GPU architecture (two digits, >=35):
-export GPU_SM_ARCH ?= 35
+export GPU_SM_ARCH ?= 70
 #HIP portability layer [YES|NO]:
-export USE_HIP ?= NO
+export USE_HIP ?= YES
 #Operating system: [LINUX|NO_LINUX]:
 export EXA_OS ?= LINUX
 #Only for Linux DEV builds with GNU: [YES|NO]:
@@ -101,7 +101,8 @@ export PATH_CUTT ?= /home/dima/src/cutt
 export PATH_CUTENSOR ?= /home/dima/src/cutensor
 
 #HIP (set these only if you build with HIP):
-export PATH_ROCM ?= /opt/rocm
+#export PATH_ROCM ?= /sw/spock/spack-envs/views/rocm-4.2.0
+export PATH_ROCM ?= /opt/rocm-4.2.0
 # Only reset these if HIP files are spread in system directories:
  export PATH_HIP_INC ?= $(PATH_ROCM)/hip/include
  export PATH_HIPBLAS_INC ?= $(PATH_ROCM)/hipblas/include
@@ -310,10 +311,12 @@ CUDA_LINK = $(CUDA_LINK_$(GPU_CUDA))
 
 #HIP INCLUDES:
 ifeq ($(USE_HIP),YES)
-HIP_INC = -DUSE_HIP -I$(PATH_HIP_INC) -I$(PATH_HIPBLAS_INC)
+HIP_INC = -D__HIP_PLATFORM_AMD__ -DUSE_HIP -I$(PATH_HIP_INC) -I$(PATH_HIPBLAS_INC)
 else
 HIP_INC = -I.
 endif
+
+CUDA_INC += $(HIP_INC)
 
 #HIP LIBS:
 ifeq ($(USE_HIP),YES)
@@ -321,6 +324,8 @@ HIP_LINK = -fPIC -L$(PATH_HIP_LIB) -L$(PATH_HIPBLAS_LIB) -lhipblas -lamdhip64
 else
 HIP_LINK = -L.
 endif
+
+CUDA_LINK += $(HIP_LINK)
 
 #Platform independence:
 PIC_FLAG_GNU = -fPIC

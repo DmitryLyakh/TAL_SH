@@ -70,9 +70,10 @@ FOR DEVELOPERS ONLY:
 
 #ifndef NO_GPU
 
+#ifndef USE_HIP
+
 #include <cuda.h>
 #include <cuda_runtime.h>
-
 #include <cublas_v2.h>
 
 #ifdef USE_CUTT
@@ -82,6 +83,8 @@ FOR DEVELOPERS ONLY:
 #ifdef USE_CUTENSOR
 #include "cutensor.h"
 #endif
+
+#endif /*USE_HIP*/
 
 #endif /*NO_GPU*/
 
