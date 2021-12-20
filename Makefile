@@ -7,7 +7,7 @@ NAME = talsh
 #However you will still need to read the meaning of those variables below.
 
 #Cray cross-compiling wrappers (only for Cray): [WRAP|NOWRAP]:
-export WRAP ?= WRAP
+export WRAP ?= NOWRAP
 #Compiler: [GNU|INTEL|CRAY|IBM|PGI]:
 export TOOLKIT ?= GNU
 #Optimization: [DEV|OPT|PRF]:
@@ -15,13 +15,13 @@ export BUILD_TYPE ?= OPT
 #MPI library base: [NONE]:
 export MPILIB ?= NONE
 #BLAS: [ATLAS|MKL|OPENBLAS|ACML|LIBSCI|ESSL|NONE]:
-export BLASLIB ?= LIBSCI
+export BLASLIB ?= OPENBLAS
 #NVIDIA GPU via CUDA: [CUDA|NOCUDA]:
-export GPU_CUDA ?= CUDA
+export GPU_CUDA ?= NOCUDA
 #NVIDIA GPU architecture (two digits, >=35):
-export GPU_SM_ARCH ?= 70
+export GPU_SM_ARCH ?= 35
 #HIP portability layer [YES|NO]:
-export USE_HIP ?= YES
+export USE_HIP ?= NO
 #Operating system: [LINUX|NO_LINUX]:
 export EXA_OS ?= LINUX
 #Only for Linux DEV builds with GNU: [YES|NO]:
@@ -70,7 +70,7 @@ export PATH_BLAS_MKL ?= $(PATH_INTEL)/mkl/lib/intel64
 export PATH_BLAS_MKL_DEP ?= $(PATH_INTEL)/compilers_and_libraries/linux/lib/intel64_lin
 export PATH_BLAS_MKL_INC ?= $(PATH_INTEL)/mkl/include/intel64/lp64
 # Set this path if you have chosen OpenBLAS:
-export PATH_BLAS_OPENBLAS ?= /usr/local/blas/openblas/lib
+export PATH_BLAS_OPENBLAS ?= /usr/local/blas/openblas/develop/lib
 # Set this path if you have chosen ACML:
 export PATH_BLAS_ACML ?= /opt/acml/5.3.1/gfortran64_fma4_mp/lib
 # Set this path if you have chosen Cray LibSci:
@@ -96,13 +96,13 @@ export PATH_CUDA ?= /usr/local/cuda
 # Reset your CUDA Host compiler if needed:
  export CUDA_HOST_COMPILER ?= /usr/bin/g++
 # cuTT path (only if you use cuTT library):
-export PATH_CUTT ?= /home/dima/src/cutt
+export PATH_CUTT ?= /usr/local/cutt
 # cuTensor path (only if you use cuTensor library):
-export PATH_CUTENSOR ?= /home/dima/src/cutensor
+export PATH_CUTENSOR ?= /usr/local/cutensor
 
 #HIP (set these only if you build with HIP):
 #export PATH_ROCM ?= /sw/spock/spack-envs/views/rocm-4.2.0
-export PATH_ROCM ?= /opt/rocm-4.2.0
+export PATH_ROCM ?= /opt/rocm
 # Only reset these if HIP files are spread in system directories:
  export PATH_HIP_INC ?= $(PATH_ROCM)/hip/include
  export PATH_HIPBLAS_INC ?= $(PATH_ROCM)/hipblas/include
