@@ -1,6 +1,6 @@
 !ExaTensor::TAL-SH: Parameters, types, C function interfaces:
 !Keep consistent with "tensor_algebra.h" when appropriate!
-!REVISION: 2020/10/01
+!REVISION: 2021/12/20
 
 !Copyright (C) 2014-2019 Dmitry I. Lyakh (Liakh)
 !Copyright (C) 2014-2019 Oak Ridge National Laboratory (UT-Battelle)
@@ -26,7 +26,7 @@
         public
 
 !TENSOR ALGEBRA LIMITS (keep consistent with tensor_algebra.h):
-        integer(C_INT), parameter, public:: MAX_TENSOR_RANK=32    !max allowed tensor rank (max number of indices in a tensor)
+        integer(C_INT), parameter, public:: MAX_TENSOR_RANK=56    !max allowed tensor rank (max number of indices in a tensor)
         integer(C_INT), parameter, public:: MAX_TENSOR_OPERANDS=4 !max number of tensor operands in a tensor operation
 #ifndef NO_PHI
 !DIR$ ATTRIBUTES OFFLOAD:mic:: MAX_TENSOR_RANK,MAX_TENSOR_OPERANDS
