@@ -1,6 +1,6 @@
 /** Tensor Algebra Library for NVidia GPU: NV-TAL (CUDA based).
 AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
-REVISION: 2021/01/28
+REVISION: 2021/12/20
 
 Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
@@ -4025,7 +4025,7 @@ __host__ static int cuda_task_finalize(cudaTask_t *cuda_task) //do not call this
      if(VERBOSE) printf("#ERROR(NV-TAL:cuda_task_finalize): constant memory resource release error %d\n",errc);
      ret_stat=NOT_CLEAN;
     }
-    tens_arg->const_mem_entry=0;
+    tens_arg->const_mem_entry=-1;
    }
    //printf("\n#DEBUG(NV-TAL::cuda_task_finalize): tensBlck_t argument %d end state:\n",i); tensBlck_print(tens_arg->tens_p); //debug
   }else{

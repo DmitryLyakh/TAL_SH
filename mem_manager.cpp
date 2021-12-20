@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2021/01/28
+REVISION: 2021/12/20
 
 Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
@@ -50,8 +50,8 @@ FOR DEVELOPERS ONLY:
 #define BLCK_BUF_DEPTH_HOST 13       //number of distinct tensor block buffer levels on Host
 #define BLCK_BUF_TOP_HOST 3          //number of argument buffer entries of the largest size (level 0) on Host: multiple of 3
 #define BLCK_BUF_BRANCH_HOST 2       //branching factor for each subsequent buffer level on Host
-//GPU argument buffer structure (the total number of entries must be less or equal to MAX_GPU_ARGS):
-#define BLCK_BUF_DEPTH_GPU 5         //number of distinct tensor block buffer levels on GPU
+//GPU argument buffer structure:
+#define BLCK_BUF_DEPTH_GPU 12        //number of distinct tensor block buffer levels on GPU
 #define BLCK_BUF_TOP_GPU 6           //number of argument buffer entries of the largest size (level 0) on GPU: multiple of 3
 #define BLCK_BUF_BRANCH_GPU 2        //branching factor for each subsequent buffer level on GPU
 
@@ -80,7 +80,7 @@ void *arg_buf_gpu[MAX_GPUS_PER_NODE]; //base addresses of argument buffers in GP
 size_t arg_buf_host_size=0; //total size of the Host argument buffer in bytes
 size_t arg_buf_gpu_size[MAX_GPUS_PER_NODE]; //total sizes of each GPU argument buffer in bytes
 int max_args_host=0; //max number of arguments (those of the lowest size level) which can reside in Host buffer
-int max_args_gpu[MAX_GPUS_PER_NODE]; //max number of arguments (those of the lowest size level) which can reside in a GPU buffer: will be overtaken by MAX_GPU_ARGS
+int max_args_gpu[MAX_GPUS_PER_NODE]; //max number of arguments (those of the lowest size level) which can reside in a GPU buffer
 size_t blck_sizes_host[BLCK_BUF_DEPTH_HOST]; //distinct tensor block buffered sizes (in bytes) on Host
 size_t blck_sizes_gpu[MAX_GPUS_PER_NODE][BLCK_BUF_DEPTH_GPU]; //distinct tensor block buffered sizes (in bytes) on GPUs
 int const_args_link[MAX_GPUS_PER_NODE][MAX_GPU_ARGS]; //linked list of free entries in constant memory banks for each GPU
@@ -294,7 +294,6 @@ OUTPUT:
         blck_sizes_gpu[i][j]=blck_sizes_gpu[i][j-1]/BLCK_BUF_BRANCH_GPU; max_args_gpu[i]*=BLCK_BUF_BRANCH_GPU;
         hsize+=max_args_gpu[i];
        }
-       if(max_args_gpu[i] > MAX_GPU_ARGS) return 11; //Increase MAX_GPU_ARGS and recompile
 // Initialize each GPU argument buffer occupancy tables:
        abg_occ[i]=(size_t*)malloc(hsize*sizeof(size_t)); if(abg_occ[i] == NULL) return 12; //GPU#i buffer occupancy table
        abg_occ_size[i]=hsize;
