@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API header.
-REVISION: 2021/01/28
+REVISION: 2021/12/29
 
 Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
@@ -223,6 +223,10 @@ extern "C"{
  size_t talshDeviceBufferFreeSize(int dev_num,
                                   int dev_kind = DEV_NULL);
  size_t talshDeviceBufferFreeSize_(int dev_num, int dev_kind);
+//  Get the device argument buffer base pointer:
+ void * talshDeviceBufferBasePtr(int dev_num,
+                                 int dev_kind = DEV_NULL);
+ void * talshDeviceBufferBasePtr_(int dev_num, int dev_kind);
 //  Query the current executed flop count:
  double talshDeviceGetFlops(int dev_kind = DEV_DEFAULT,
                             int dev_id = DEV_DEFAULT);

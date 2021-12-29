@@ -1,5 +1,5 @@
 /** ExaTensor::TAL-SH: Device-unified user-level C API implementation.
-REVISION: 2021/04/09
+REVISION: 2021/12/29
 
 Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
@@ -994,6 +994,41 @@ size_t talshDeviceBufferFreeSize(int dev_num,
 size_t talshDeviceBufferFreeSize_(int dev_num, int dev_kind) //Fortran wrapper
 {
  return talshDeviceBufferFreeSize(dev_num,dev_kind);
+}
+
+void * talshDeviceBufferBasePtr(int dev_num, int dev_kind)
+{
+ void * base_ptr = NULL;
+#pragma omp flush
+ if(talsh_on != 0){
+  if(dev_kind == DEV_NULL) dev_num=talshKindDevId(dev_num,&dev_kind);
+  switch(dev_kind){
+  case DEV_HOST:
+   base_ptr=get_arg_buf_ptr_host();
+   break;
+  case DEV_NVIDIA_GPU:
+#ifndef NO_GPU
+   base_ptr=get_arg_buf_ptr_gpu(dev_num);
+#endif
+   break;
+  case DEV_INTEL_MIC:
+#ifndef NO_PHI
+    //`Implement
+#endif
+   break;
+  case DEV_AMD_GPU:
+#ifndef NO_AMD
+    //`Implement
+#endif
+   break;
+  }
+ }
+ return base_ptr;
+}
+
+void * talshDeviceBufferBasePtr_(int dev_num, int dev_kind) //Fortran wrapper
+{
+ return talshDeviceBufferBasePtr(dev_num,dev_kind);
 }
 
 double talshDeviceGetFlops(int dev_kind, int dev_id)

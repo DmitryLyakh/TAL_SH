@@ -2,7 +2,7 @@
 implementation of the tensor algebra library TAL-SH:
 CP-TAL (TAL for CPU), NV-TAL (TAL for NVidia GPU),
 XP-TAL (TAL for Intel Xeon Phi), AM-TAL (TAL for AMD GPU).
-REVISION: 2021/12/20
+REVISION: 2021/12/29
 
 Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
 Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
@@ -450,6 +450,24 @@ Negative return status means that an error occurred. **/
  omp_unset_nest_lock(&mem_lock);
 #endif
  return 0;
+}
+#endif /*NO_GPU*/
+
+void * get_arg_buf_ptr_host()
+{
+#pragma omp flush
+ if(bufs_ready == 0) return NULL;
+ return arg_buf_host;
+}
+
+#ifndef NO_GPU
+void * get_arg_buf_ptr_gpu(int gpu_num)
+{
+#pragma omp flush
+ if(bufs_ready == 0) return NULL;
+ if(gpu_num < 0 || gpu_num >= MAX_GPUS_PER_NODE) return NULL;
+ if(gpu_is_mine(gpu_num) == 0) return NULL;
+ return arg_buf_gpu[gpu_num];
 }
 #endif /*NO_GPU*/
 
