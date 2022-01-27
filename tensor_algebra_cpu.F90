@@ -1,9 +1,9 @@
 !Tensor Algebra for Multi- and Many-core CPUs (OpenMP based).
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
-!REVISION: 2021/01/07
+!REVISION: 2022/01/27
 
-!Copyright (C) 2013-2021 Dmitry I. Lyakh (Liakh)
-!Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
+!Copyright (C) 2013-2022 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2014-2022 Oak Ridge National Laboratory (UT-Battelle)
 
 !This file is part of ExaTensor.
 
@@ -4144,7 +4144,9 @@
 	  if(ltransp) then; call tensor_block_destroy(lta,j); if(j.ne.0) ierr=ierr+1000+j; endif
 	  if(rtransp) then; call tensor_block_destroy(rta,j); if(j.ne.0) ierr=ierr+1100+j; endif
 	 case(ADD_TENSOR)
-	  if(dtransp) then; call tensor_block_destroy(dta,j); if(j.ne.0) ierr=ierr+2000+j; endif
+	  if(ltransp) then; call tensor_block_destroy(lta,j); if(j.ne.0) ierr=ierr+2000+j; endif
+	  if(rtransp) then; call tensor_block_destroy(rta,j); if(j.ne.0) ierr=ierr+2100+j; endif
+	  if(dtransp) then; call tensor_block_destroy(dta,j); if(j.ne.0) ierr=ierr+2200+j; endif
 	 case(MULTIPLY_SCALARS)
 	 end select
  !Check NaN in output tensor:
