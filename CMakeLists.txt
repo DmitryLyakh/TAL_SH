@@ -1,7 +1,7 @@
 # Example cmake command to build TALSH
 # -DTALSH_GPU=ON
 # (CUDA) -DTALSH_GPU_ARCH=70 [-DWITH_CUTENSOR=ON -DCUTENSOR_ROOT=/opt/cutensor]
-# (AMD) -DROCM_ROOT=$ROCM_PATH -DUSE_HIP=ON
+# (AMD) -DROCM_ROOT=$ROCM_PATH -DUSE_HIP=ON [-DTALSH_GPU_ARCH=gfx908]
 # (Optional) -DUSE_OPENMP=ON -DBUILD_TESTS=ON  -DTALSH_FINE_TIMING=ON
 
 cmake_minimum_required(VERSION 3.18.0 FATAL_ERROR)
@@ -42,6 +42,9 @@ if (TALSH_GPU)
 		set(TALSH_GPU_DEFS USE_HIP)
 		#TODO: check if ROCM_ROOT is valid
 		list (APPEND CMAKE_PREFIX_PATH ${ROCM_ROOT} ${ROCM_ROOT}/hip ${ROCM_ROOT}/hipblas)
+		if(TALSH_GPU_ARCH)
+			set(GPU_TARGETS ${TALSH_GPU_ARCH} CACHE STRING "GPU targets to compile for")
+		endif()
 		find_package(hip REQUIRED)
 		find_package(hipblas REQUIRED)
 	else()
