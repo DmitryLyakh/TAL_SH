@@ -1,8 +1,10 @@
 /** TAL-SH: Byte packet
 REVISION: 2020/06/30
 
-Copyright (C) 2018-2020 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2018-2020 Oak Ridge National Laboratory (UT-Battelle) **/
+Copyright (C) 2018-2022 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2018-2022 Oak Ridge National Laboratory (UT-Battelle)
+
+LICENSE: BSD 3-Clause **/
 
 #ifndef BYTE_PACKET_H_
 #define BYTE_PACKET_H_

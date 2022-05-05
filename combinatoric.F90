@@ -3,22 +3,9 @@
 !AUTHOR: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
 !Revision: 2017/05/10
 
-!Copyright (C) 2007-2017 Dmitry I. Lyakh (Liakh)
+!Copyright (C) 2007-2022 Dmitry I. Lyakh (Liakh)
 
-!This file is part of ExaTensor.
-
-!ExaTensor is free software: you can redistribute it and/or modify
-!it under the terms of the GNU Lesser General Public License as published
-!by the Free Software Foundation, either version 3 of the License, or
-!(at your option) any later version.
-
-!ExaTensor is distributed in the hope that it will be useful,
-!but WITHOUT ANY WARRANTY; without even the implied warranty of
-!MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-!GNU Lesser General Public License for more details.
-
-!You should have received a copy of the GNU Lesser General Public License
-!along with ExaTensor. If not, see <http://www.gnu.org/licenses/>.
+!LICENSE: BSD 3-Clause
 
 !PROCEDURES:
 ! - TRNG(i:ctrl,i:ni,i[1]:trn,i[1]:ngt): permutation generator which returns each new permutation.

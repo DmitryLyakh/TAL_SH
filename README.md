@@ -2,12 +2,12 @@ TAL-SH: Tensor Algebra Library for Shared Memory Computers:
         Nodes equipped with multicore CPU, NVIDIA GPU, AMD GPU,
         and Intel Xeon Phi. The library implements basic tensor
         algebra operations with interfaces to C, C++11, and Fortran 90+.
-Author: Dmitry I. Lyakh (Liakh): quant4me@gmail.com, liakhdi@ornl.gov
+Author: Dmitry I. Lyakh (Liakh): quant4me@gmail.com
 
-Copyright (C) 2014-2021 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2014-2021 Oak Ridge National Laboratory (UT-Battelle)
+Copyright (C) 2014-2022 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2014-2022 Oak Ridge National Laboratory (UT-Battelle)
 
-LICENSE: GNU Lesser General Public License v.3
+LICENSE: BSD 3-Clause
 
 API reference manual: DOC/TALSH_manual.txt
 

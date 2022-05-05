@@ -1,8 +1,10 @@
 /** TAL-SH: Tensor Method Interface (Tensor Functor)
 REVISION: 2019/09/18
 
-Copyright (C) 2018-2019 Dmitry I. Lyakh (Liakh)
-Copyright (C) 2018-2019 Oak Ridge National Laboratory (UT-Battelle) **/
+Copyright (C) 2018-2022 Dmitry I. Lyakh (Liakh)
+Copyright (C) 2018-2022 Oak Ridge National Laboratory (UT-Battelle)
+
+LICENSE: BSD 3-Clause **/
 
 #ifndef TENSOR_METHOD_HPP_
 #define TENSOR_METHOD_HPP_
