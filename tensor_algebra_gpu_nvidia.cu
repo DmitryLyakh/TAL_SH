@@ -2856,7 +2856,11 @@ __host__ int gpu_enable_fast_math(int gpu_num){
 #ifndef NO_BLAS
  for(i=gs;i<=gf;++i){
   if(gpu_is_mine(i) >= GPU_MINE_CUBLAS){
+#if CUDA_ARCH < 800
    if(cublasSetMathMode(cublas_handle[i],CUBLAS_TENSOR_OP_MATH) != CUBLAS_STATUS_SUCCESS) return 1;
+#else
+   if(cublasSetMathMode(cublas_handle[i],CUBLAS_TF32_TENSOR_OP_MATH) != CUBLAS_STATUS_SUCCESS) return 1;
+#endif
   }else{
    if(gpu_num >= 0) return 2;
   }
