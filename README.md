@@ -59,5 +59,6 @@ $ export USE_HIP = YES
 $ export PATH_ROCM = /opt/rocm
 $ make
 ```
+Note: ROCM versions 5.7+ should be used. Earlier ROCM versions may result in code that compiles but may show runtime errors (e.g. HSA_STATUS_ERROR_MEMORY_APERTURE_VIOLATION, or values different than reference ones in the tests). A potential workaround for earlier versions is to reduce hipcc optimization level to -O1.
 
 EXAMPLES: A number of examples is available in test.cpp and main.F90.
